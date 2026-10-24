@@ -298,13 +298,22 @@
     }
   }
 
+  function activityIsLive(session) {
+    return Boolean(
+      session?.lastSeenAt && Date.now() - new Date(session.lastSeenAt).getTime() < 2 * 60_000 && session.connected
+    );
+  }
+
   function renderProfilePill(pairings) {
     const active = (pairings || []).filter((pairing) => !pairing.revokedAt);
     const online = active.filter(
       (pairing) => pairing.lastSeenAt && Date.now() - new Date(pairing.lastSeenAt).getTime() < 3 * 60_000
     );
     const pill = $("#profile-pill");
-    if (online.length > 0) {
+    if (activityIsLive(state?.activitySession)) {
+      pill.className = "pill is-online";
+      $("#profile-pill-text").textContent = "Profile live (Discord)";
+    } else if (online.length > 0) {
       pill.className = "pill is-online";
       $("#profile-pill-text").textContent = "Profile live";
     } else if (active.length > 0) {
@@ -312,7 +321,53 @@
       $("#profile-pill-text").textContent = "Profile idle";
     } else {
       pill.className = "pill is-muted";
-      $("#profile-pill-text").textContent = "No companion";
+      $("#profile-pill-text").textContent = "Profile not live";
+    }
+  }
+
+  /** The in-Discord app card: launch link, live status and the one-time setup. */
+  function renderActivity(meta, session) {
+    const link = $("#activity-link");
+    const warning = $("#activity-warning");
+    const mapping = $("#activity-mapping");
+    const status = $("#activity-status");
+    const tag = $("#activity-tag");
+    if (!link) return;
+
+    const publicUrl = (meta?.publicUrl || location.origin).replace(/\/+$/, "");
+    const appId = meta?.clientId || "";
+    const ready = Boolean(appId && meta?.hasClientSecret);
+
+    if (appId) {
+      link.href = `https://discord.com/activities/${encodeURIComponent(appId)}`;
+      link.removeAttribute("aria-disabled");
+      link.classList.remove("is-disabled");
+    } else {
+      link.href = "#";
+      link.setAttribute("aria-disabled", "true");
+      link.classList.add("is-disabled");
+    }
+
+    if (warning) warning.hidden = ready;
+    if (mapping) mapping.textContent = `${publicUrl}/activity/`;
+
+    const live = activityIsLive(session);
+    if (tag) {
+      tag.textContent = live ? "Live now" : "In Discord";
+      tag.className = live ? "tag is-live" : "tag";
+    }
+
+    if (!status) return;
+    if (live) {
+      const when = new Date(session.lastSeenAt);
+      status.textContent = `Live on ${session.username || "your profile"} — last update ${when.toLocaleTimeString()}.`;
+      status.className = "hint is-live";
+    } else if (session?.lastSeenAt) {
+      status.textContent = `Last seen ${new Date(session.lastSeenAt).toLocaleString()}. Launch the app again to bring it back.`;
+      status.className = "hint";
+    } else {
+      status.textContent = "Not connected yet — press “Open in Discord” and leave the window open.";
+      status.className = "hint";
     }
   }
 
@@ -478,6 +533,7 @@
   function applyState(next, { fill = true } = {}) {
     state = next;
     renderAppIdWarning(next.meta);
+    renderActivity(next.meta, next.activitySession);
     renderBot(next.bot);
     renderProfilePill(next.pairings);
     renderAssets(next.assets || []);
@@ -703,6 +759,16 @@
   $("#copy-invite").addEventListener("click", async () => {
     const ok = await copyText($("#invite-url").value);
     toast(ok ? "Invite link copied" : "Copy failed", !ok);
+  });
+
+  $("#copy-activity")?.addEventListener("click", async () => {
+    const href = $("#activity-link")?.href;
+    if (!href || href.endsWith("#")) {
+      toast("Add your application id first", true);
+      return;
+    }
+    const ok = await copyText(href);
+    toast(ok ? "Activity link copied" : "Copy failed", !ok);
   });
 
   // ---------------------------------------------------------------- settings
