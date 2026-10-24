@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: statusc0rd
+    name: StatusC0rd
     runtime: node
     plan: free
     buildCommand: npm install
