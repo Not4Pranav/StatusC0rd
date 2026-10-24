@@ -1,0 +1,89 @@
+<!doctype html><html><head><meta charset="utf-8"><title>StatusC0rd</title>
+<style>
+:root{--bg:#1e1f22;--card:#2b2d31;--txt:#dbdee1;--muted:#949ba4;--accent:#5865f2;--ok:#57f287;--err:#fa777c}
+*{box-sizing:border-box}body{font-family:system-ui;background:var(--bg);color:var(--txt);margin:0;padding:32px}
+h1{font-size:22px;margin:0 0 4px}.sub{color:var(--muted);font-size:13px;margin-bottom:24px}
+.card{background:var(--card);border-radius:12px;padding:24px;max-width:640px;margin:0 auto 16px}
+label{display:block;font-size:12px;color:var(--muted);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.4px}
+input,select{width:100%;padding:10px;border-radius:8px;border:1px solid #1e1f22;background:#383a40;color:var(--txt);font-size:14px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+button{background:var(--accent);color:#fff;border:none;padding:12px 20px;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px}
+button.ghost{background:#383a40}.actions{display:flex;gap:12px;margin-top:24px;align-items:center;flex-wrap:wrap}
+#msg{font-size:13px}.ok{color:var(--ok)}.err{color:var(--err)}
+a{color:var(--accent)}.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.user{display:flex;justify-content:space-between;align-items:center;background:#383a40;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:14px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;background:var(--err)}
+.dot.on{background:var(--ok)}
+</style></head><body>
+<div class="card">
+  <h1>🔗 StatusC0rd — Connect accounts</h1>
+  <div class="sub">Users click once to authorize — their rich presence (with buttons) goes live, no tokens pasted anywhere.</div>
+  <div class="actions">
+    <a href="/api/rpc/authorize"><button type="button">Authorize with Discord</button></a>
+    <span class="hint">Redirect URI must match <code>REDIRECT_URI</code> in your Dev Portal.</span>
+  </div>
+  <div id="users"></div>
+</div>
+
+<div class="card">
+  <h1>🎮 StatusC0rd — Presence editor</h1>
+  <div class="sub">Bot: <b>{{BOT_TAG}}</b> · Applies to the bot <i>and</i> every connected account.</div>
+  <div class="sub">Invite the bot: <a href="{{INVITE_URL}}" target="_blank">{{INVITE_URL}}</a></div>
+
+  <form id="f">
+    <label>Activity name * (bot only — user RPC uses your app name)</label><input name="name" maxlength="128" placeholder="e.g. in the Dashboard">
+    <div class="row">
+      <div><label>Type (bot)</label><select name="type">
+        <option value="0">Playing</option><option value="1">Streaming</option>
+        <option value="2">Listening</option><option value="3">Watching</option>
+        <option value="4">Custom</option><option value="5">Competing</option></select></div>
+      <div><label>Status (bot)</label><select name="status">
+        <option value="online">Online</option><option value="idle">Idle</option>
+        <option value="dnd">Do Not Disturb</option><option value="invisible">Invisible</option></select></div>
+    </div>
+    <label>Details</label><input name="details" maxlength="128" placeholder="e.g. Editing presence">
+    <label>State</label><input name="state" maxlength="128" placeholder="e.g. v1.0 — dashboard">
+    <div id="urlWrap"><label>Stream URL (Streaming only)</label><input name="url" placeholder="https://twitch.tv/..."></div>
+    <div class="row">
+      <div><label>Large image (asset key or URL)</label><input name="largeImage" placeholder="large_image key"></div>
+      <div><label>Small image (asset key or URL)</label><input name="smallImage" placeholder="small_image key"></div>
+    </div>
+    <div class="row">
+      <div><label>Elapsed timer</label><select name="startedAt"><option value="false">Off</option><option value="true">On</option></select></div><div></div>
+    </div>
+    <label>Button 1 (user RPC)</label>
+    <div class="row"><input name="btn1Label" maxlength="30" placeholder="Label"><input name="btn1Url" placeholder="https://..."></div>
+    <label>Button 2 (user RPC)</label>
+    <div class="row"><input name="btn2Label" maxlength="30" placeholder="Label"><input name="btn2Url" placeholder="https://..."></div>
+    <div class="hint">Images: upload art in Dev Portal → Rich Presence → Art Assets and paste the asset key. User-RPC buttons appear on connected accounts.</div>
+    <div class="actions">
+      <button type="submit">Apply presence</button>
+      <button type="button" class="ghost" id="clear">Clear</button>
+      <span id="msg"></span>
+    </div>
+  </form>
+  <div class="actions"><form method="post" action="/logout"><button class="ghost" type="submit">Log out</button></form></div>
+</div>
+<script>
+const $=s=>document.querySelector(s), f=$('#f');
+function fill(c){for(const[k,v]of Object.entries(c)){const el=f.elements[k];if(!el)continue;
+  el.value=Array.isArray(v)?'':String(v??'');}
+  if(Array.isArray(c.buttons)){c.buttons.forEach((b,i)=>{f.elements['btn'+(i+1)+'Label'].value=b.label;f.elements['btn'+(i+1)+'Url'].value=b.url;});}}
+async function loadUsers(){const us=await (await fetch('/api/rpc/users')).json();
+  $('#users').innerHTML=us.map(u=>`<div class="user"><span><span class="dot ${u.connected?'on':''}"></span>${u.username}</span>
+    <button class="ghost" style="padding:6px 12px" onclick="disconnect('${u.id}')">Disconnect</button></div>`).join('')
+    || '<div class="hint" style="margin-top:10px">No accounts connected yet.</div>';}
+async function disconnect(id){await fetch('/api/rpc/disconnect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:id})});loadUsers();}
+fetch('/api/presence').then(r=>r.json()).then(fill);loadUsers();setInterval(loadUsers,10000);
+$('#urlWrap').style.display=f.elements.type.value==='1'?'':'none';
+f.elements.type.onchange=e=>$('#urlWrap').style.display=e.target.value==='1'?'':'none';
+function say(t,ok){const m=$('#msg');m.textContent=t;m.className=ok?'ok':'err';setTimeout(()=>m.textContent='',3000);}
+f.onsubmit=async e=>{e.preventDefault();
+  const d=Object.fromEntries(new FormData(f));d.startedAt=d.startedAt==='true';
+  const r=await fetch('/api/presence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+  const j=await r.json();say(r.ok?'Presence applied ✅':(j.error||'Failed'),r.ok);};
+$('#clear').onclick=async()=>{const r=await fetch('/api/presence/clear',{method:'POST'});
+  const j=await r.json();say(r.ok?'Presence cleared':(j.error||'Failed'),r.ok);};
+if(location.search.includes('connected='))say('Connected: '+decodeURIComponent(location.search.split('connected=')[1]),true);
+</script>
+</body></html>

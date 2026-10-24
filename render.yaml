@@ -1,0 +1,23 @@
+msjservices:
+  - type: web
+    name: statusc0rd
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_VERSION
+        value: "18"
+      - key: CLIENT_ID
+        value: "1554342719923560518"
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: DASHBOARD_KEY
+        sync: false
+      - key: REDIRECT_URI
+        sync: false
