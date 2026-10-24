@@ -1,189 +1,144 @@
-require("dotenv").config();
-const fs = require("fs");
-const crypto = require("crypto");
-const path = require("path");
-const express = require("express");
-const session = require("express-session");
-const { Client, GatewayIntentBits } = require("discord.js");
-const RPCManager = require("./rpc/manager");
-const { exchangeCode, fetchMe } = require("./rpc/discordApi");
+"use strict";
 
-const CONFIG_PATH = path.join(__dirname, "data", "config.json");
-const PORT = process.env.PORT || 3000;
-const REQUIRED_ENV = ["CLIENT_ID", "DISCORD_TOKEN", "CLIENT_SECRET", "SESSION_SECRET", "DASHBOARD_KEY", "REDIRECT_URI"];
-const missingEnv = REQUIRED_ENV.filter(key => !process.env[key]?.trim());
+require("dotenv").config({ quiet: true });
 
-if (missingEnv.length) {
-  throw new Error(`Missing required environment variables: ${missingEnv.join(", ")}`);
-}
+const fs = require("node:fs");
+const http = require("node:http");
+const path = require("node:path");
 
-function loadConfig() {
-  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")); } catch { return {}; }
-}
-function saveConfig(cfg) {
-  fs.writeFileSync(CONFIG_PATH + ".tmp", JSON.stringify(cfg, null, 2));
-  fs.renameSync(CONFIG_PATH + ".tmp", CONFIG_PATH);
-}
-let config = loadConfig();
+const pkg = require("./package.json");
+const { normalizeEnv } = require("./src/env");
+const { SettingsStore } = require("./src/settings");
+const { AssetStore } = require("./src/assets");
+const { DiscordBot } = require("./src/bot");
+const { KeepAlive } = require("./src/keepalive");
+const { DEFAULT_CONFIG } = require("./src/presence");
+const { createApp } = require("./app");
 
-const rpc = new RPCManager();
-function rpcActivityFromConfig(cfg) {
-  const a = {};
-  if (cfg.details) a.details = cfg.details;
-  if (cfg.state) a.state = cfg.state;
-  const assets = {};
-  if (cfg.largeImage) assets.large_image = cfg.largeImage;
-  if (cfg.smallImage) assets.small_image = cfg.smallImage;
-  if (Object.keys(assets).length) a.assets = assets;
-  if (cfg.startedAt) a.timestamps = { start: Date.now() };
-  if (Array.isArray(cfg.buttons) && cfg.buttons.length)
-    a.buttons = cfg.buttons.filter(b => b.label && b.url).slice(0, 2);
-  return a;
-}
+/**
+ * The server always boots - even with no configuration at all - and serves the
+ * setup wizard. Nothing has to be edited on disk or in a shell to get started.
+ */
+async function main() {
+  const { env, problems, isProduction } = normalizeEnv(process.env);
+  for (const problem of problems) console.warn(`[config] ${problem}`);
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  const port = Number(process.env.PORT) || 3000;
+  const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
+  fs.mkdirSync(dataDir, { recursive: true });
 
-function buildActivity(cfg) {
-  const type = Number(cfg.type) || 0;
-  const activity = { name: cfg.name || "...", type };
-  if (cfg.state) activity.state = cfg.state;
-  if (cfg.details && type !== 4) activity.details = cfg.details;
-  if (type === 1 && cfg.url) activity.url = cfg.url;
-  const assets = {};
-  if (cfg.largeImage) assets.large_image = cfg.largeImage;
-  if (cfg.smallImage) assets.small_image = cfg.smallImage;
-  if (Object.keys(assets).length) activity.assets = assets;
-  if (cfg.startedAt) activity.timestamps = { start: Date.now() };
-  return activity;
-}
+  warnAboutLegacyTokens(dataDir, console);
 
-function applyPresence() {
-  const activity = config.name ? buildActivity(config) : null;
-  if (client.user) {
-    client.user.setPresence({
-      status: ["online", "idle", "dnd", "invisible"].includes(config.status) ? config.status : "online",
-      activities: activity ? [activity] : []
-    }).catch(console.error);
+  const settings = new SettingsStore(path.join(dataDir, "settings.json"), { env });
+  const assets = new AssetStore(path.join(dataDir, "assets"), settings);
+  assets.prune();
+
+  const effective = settings.effective();
+  const bot = new DiscordBot({
+    token: effective.botToken,
+    clientId: effective.clientId,
+    enabled: effective.botEnabled
+  });
+
+  const keepAlive = new KeepAlive({
+    getPublicUrl: () => settings.effective().publicUrl,
+    intervalMinutes: effective.keepAlive.intervalMinutes
+  });
+
+  // Restore the last saved presence.
+  const savedPresence = settings.get().presence || DEFAULT_CONFIG;
+  if (savedPresence.enabled) bot.setPresence(savedPresence);
+  else bot.clearPresence(savedPresence.status);
+
+  const app = createApp({ settings, assets, bot, keepAlive, version: pkg.version });
+  const server = http.createServer(app);
+
+  await new Promise((resolve, reject) => {
+    server.once("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        reject(new Error(`Port ${port} is already in use. Set PORT to a free port and try again.`));
+      } else reject(error);
+    });
+    server.listen(port, "0.0.0.0", resolve);
+  });
+
+  printBanner({ settings, effective, port, version: pkg.version, isProduction });
+
+  keepAlive.configure({ ...effective.keepAlive, publicUrl: effective.publicUrl });
+
+  // Connect to Discord after the HTTP server is up: a bad token or an
+  // unreachable gateway can never take the dashboard offline.
+  bot.start().catch((error) => console.error("[bot] start failed:", error.message));
+
+  let shuttingDown = false;
+  async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[server] ${signal} received - shutting down`);
+    app.locals.closeStreams();
+    keepAlive.stop();
+    const forceExit = setTimeout(() => {
+      console.error("[server] shutdown timed out; exiting");
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
+    await new Promise((resolve) => server.close(resolve));
+    await bot.stop();
+    clearTimeout(forceExit);
+    process.exit(0);
   }
-  rpc.broadcast(activity ? rpcActivityFromConfig(config) : null);
+
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+
+  return { server, app, bot, settings, assets, keepAlive };
 }
 
-client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
-  rpc.connectAll().then(applyPresence);
-});
-client.login(process.env.DISCORD_TOKEN).catch(e => {
-  console.error("Discord login failed:", e.message);
-  process.exit(1);
-});
-
-const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(session({
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: "lax", maxAge: 1000 * 60 * 60 * 8 }
-}));
-
-function requireAuth(req, res, next) {
-  if (req.session.authed) return next();
-  return res.redirect("/login");
-}
-
-app.get("/health", (req, res) => res.sendStatus(200));
-app.get("/login", (req, res) => res.sendFile(path.join(__dirname, "views", "login.html")));
-app.post("/login", (req, res) => {
-  if (req.body.key === process.env.DASHBOARD_KEY) {
-    req.session.authed = true;
-    return res.redirect("/");
+function printBanner({ settings, effective, port, version, isProduction }) {
+  const line = "─".repeat(64);
+  console.log(`\n${line}`);
+  console.log(`  StatusC0rd v${version}  ·  http://localhost:${port}  ·  ${isProduction ? "production" : "development"}`);
+  if (settings.needsSetup()) {
+    console.log(`${line}`);
+    console.log("  FIRST RUN - open the setup wizard to finish configuring:");
+    console.log(`    http://localhost:${port}/setup`);
+    if (settings.setupToken) {
+      console.log("");
+      console.log(`  Setup token: ${settings.setupToken}`);
+      console.log("  (also stored in data/setup-token.txt)");
+    }
+  } else {
+    console.log(`${line}`);
+    console.log(`  Dashboard: http://localhost:${port}/login`);
+    console.log(`  Bot:       ${effective.botEnabled ? "connecting…" : "dashboard only (no bot token)"}`);
+    console.log(`  Keep-up:   ${effective.keepAlive.enabled ? `pinging ${effective.publicUrl} every ${effective.keepAlive.intervalMinutes}m` : "off"}`);
   }
-  res.redirect("/login?error=1");
-});
-app.post("/logout", (req, res) => { req.session.destroy(() => res.redirect("/login")); });
+  console.log(`${line}\n`);
+}
 
-app.get("/", requireAuth, (req, res) => {
-  res.send(
-    fs.readFileSync(path.join(__dirname, "views", "dashboard.html"), "utf8")
-      .replace("{{INVITE_URL}}", `https://discord.com/oauth2/authorize?client_id=${process.env.CLIENT_ID}&scope=bot&permissions=0`)
-      .replace("{{BOT_TAG}}", client.user ? client.user.tag : "starting...")
+/** The v1.0.0 build stored other people's OAuth tokens in data/users.json. */
+function warnAboutLegacyTokens(dataDir, logger) {
+  const legacy = path.join(dataDir, "users.json");
+  if (!fs.existsSync(legacy)) return;
+  logger.warn(
+    `[security] ${legacy} contains OAuth tokens from the removed user-RPC feature. ` +
+      "Delete that file - those tokens are no longer used by this app."
   );
-});
-
-app.get("/api/rpc/authorize", requireAuth, (req, res) => {
-  req.session.oauthState = crypto.randomBytes(16).toString("hex");
-  const url = new URL("https://discord.com/oauth2/authorize");
-  url.searchParams.set("client_id", process.env.CLIENT_ID);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("redirect_uri", process.env.REDIRECT_URI);
-  url.searchParams.set("scope", "rpc");
-  url.searchParams.set("state", req.session.oauthState);
-  res.redirect(url.toString());
-});
-
-app.get("/api/rpc/callback", async (req, res) => {
-  try {
-    if (!req.session.oauthState || req.query.state !== req.session.oauthState)
-      return res.status(400).send("Invalid OAuth state.");
-    req.session.oauthState = null;
-    const tokenResp = await exchangeCode(req.query.code);
-    const me = await fetchMe(tokenResp.access_token);
-    await rpc.addUser(me.id, me.username, tokenResp);
-    res.redirect("/?connected=" + encodeURIComponent(me.username));
-  } catch (e) {
-    console.error("OAuth callback failed:", e.message);
-    res.status(500).send("Authorization failed: " + e.message);
-  }
-});
-
-app.post("/api/rpc/disconnect", requireAuth, (req, res) => {
-  rpc.removeUser(String(req.body.userId || ""));
-  res.json({ ok: true });
-});
-
-app.get("/api/rpc/users", requireAuth, (req, res) => res.json(rpc.listUsers()));
-
-const TYPES = { 0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 };
-function sanitize(body) {
-  const buttons = [];
-  for (let i = 1; i <= 2; i++) {
-    const label = String(body["btn" + i + "Label"] || "").slice(0, 30);
-    const url = String(body["btn" + i + "Url"] || "").slice(0, 512);
-    if (/^https?:\/\//.test(url)) buttons.push({ label: label || "Click", url });
-  }
-  const out = {
-    name: String(body.name || "").slice(0, 128),
-    type: TYPES[body.type] !== undefined ? Number(body.type) : 0,
-    state: String(body.state || "").slice(0, 128),
-    details: String(body.details || "").slice(0, 128),
-    status: ["online", "idle", "dnd", "invisible"].includes(body.status) ? body.status : "online",
-    url: String(body.url || "").slice(0, 512),
-    appId: String(body.appId || "").replace(/[^0-9]/g, "").slice(0, 20),
-    largeImage: String(body.largeImage || "").slice(0, 256),
-    smallImage: String(body.smallImage || "").slice(0, 256),
-    startedAt: !!body.startedAt,
-    buttons
-  };
-  if (out.type !== 1) out.url = "";
-  return out;
 }
 
-app.get("/api/presence", requireAuth, (req, res) => res.json(config));
+if (require.main === module) {
+  main().catch((error) => {
+    console.error("[fatal]", error.message);
+    process.exit(1);
+  });
 
-app.post("/api/presence", requireAuth, (req, res) => {
-  config = sanitize(req.body);
-  if (!config.name) return res.status(400).json({ ok: false, error: "Activity name is required." });
-  saveConfig(config);
-  applyPresence();
-  res.json({ ok: true, config });
-});
+  process.on("unhandledRejection", (reason) => {
+    console.error("[unhandledRejection]", reason);
+  });
+  process.on("uncaughtException", (error) => {
+    console.error("[uncaughtException]", error);
+    process.exit(1);
+  });
+}
 
-app.post("/api/presence/clear", requireAuth, (req, res) => {
-  config.name = "";
-  saveConfig(config);
-  applyPresence();
-  res.json({ ok: true });
-});
-
-app.listen(PORT, () => console.log(`Dashboard: http://localhost:${PORT}`));
+module.exports = { main };

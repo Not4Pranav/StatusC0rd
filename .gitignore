@@ -2,5 +2,18 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+# Runtime state - contains the bot token, client secret and key hash
+data/settings.json
+data/setup-token.txt
+data/assets/
 data/users.json
-npm-debug.log
+data/*.tmp
+data/*.corrupt-*
+data/session*
+
+# Logs and OS noise
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+coverage/

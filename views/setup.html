@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="csrf-token" content="{{CSRF}}" />
+    <title>Set up StatusC0rd</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/upload.js" defer></script>
+    <script src="/setup.js" defer></script>
+  </head>
+  <body
+    class="setup"
+    data-needs-token="{{NEEDS_TOKEN}}"
+    data-client-id="{{CLIENT_ID}}"
+    data-bot-managed="{{BOT_MANAGED}}"
+  >
+    <main class="setup-shell">
+      <header class="setup-head">
+        <div class="brand brand-lg">
+          <span class="brand-mark" aria-hidden="true">S</span>
+          <span>StatusC<strong>0</strong>rd</span>
+        </div>
+        <span class="version">v{{VERSION}}</span>
+      </header>
+
+      <p class="setup-intro">
+        Three short steps. Everything is stored on this server — no file editing, no restarts.
+      </p>
+
+      <ol class="steps" id="steps">
+        <li data-step-tab="1" class="is-active"><span>1</span> Account</li>
+        <li data-step-tab="2"><span>2</span> Bot</li>
+        <li data-step-tab="3"><span>3</span> Presence</li>
+      </ol>
+
+      <div id="alert" class="alert" role="alert" hidden></div>
+
+      <!-- step 1 ------------------------------------------------------------ -->
+      <section class="step" data-step="1">
+        <div class="lock-box" id="lock-box" hidden>
+          <h2>Unlock setup</h2>
+          <p class="hint">
+            This instance is reachable from the internet, so setup needs the one-time token printed
+            in the server logs (and saved in <code>data/setup-token.txt</code>).
+          </p>
+          <form id="unlock-form" class="stack">
+            <label class="field">
+              <span>Setup token</span>
+              <input id="setup-token" name="token" type="text" autocomplete="one-time-code" spellcheck="false" placeholder="e.g. 3f9a1c77d2b84e50" />
+            </label>
+            <button class="btn primary" type="submit">Unlock</button>
+          </form>
+        </div>
+
+        <div id="account-step">
+          <h2>Create your dashboard login</h2>
+          <p class="hint">
+            You will use this key to sign in. Pick something long — it protects the whole dashboard.
+          </p>
+          <form id="account-form" class="stack">
+            <label class="field">
+              <span>Dashboard key</span>
+              <input id="admin-key" name="adminKey" type="password" minlength="12" autocomplete="new-password" required />
+            </label>
+            <label class="field">
+              <span>Repeat key</span>
+              <input id="admin-key-2" type="password" minlength="12" autocomplete="new-password" required />
+            </label>
+            <div class="actions">
+              <button class="btn primary" type="submit" id="account-next">Continue</button>
+              <button class="btn ghost" type="button" id="gen-key">Generate a strong key</button>
+            </div>
+          </form>
+
+          <details class="advanced">
+            <summary>Optional · allow Discord sign-in</summary>
+            <p class="hint">
+              Lets chosen Discord accounts sign in without the key. Add the redirect URL
+              <code id="redirect-hint">https://your-host/auth/discord/callback</code> to your
+              application's OAuth2 settings.
+            </p>
+            <label class="field">
+              <span>OAuth2 client secret</span>
+              <input id="client-secret" type="password" autocomplete="off" spellcheck="false" />
+            </label>
+            <label class="field">
+              <span>Allowed Discord user IDs (comma separated)</span>
+              <input id="allowed-ids" type="text" autocomplete="off" placeholder="123456789012345678" />
+            </label>
+          </details>
+        </div>
+      </section>
+
+      <!-- step 2 ------------------------------------------------------------ -->
+      <section class="step" data-step="2" hidden>
+        <h2>Connect the bot</h2>
+        <p class="hint">
+          The bot keeps the presence online 24/7 on this server. Create the token in
+          <a href="https://discord.com/developers/applications" target="_blank" rel="noreferrer">Developer Portal</a>
+          → your app → Bot → Reset Token.
+        </p>
+        <form id="bot-form" class="stack">
+          <label class="field">
+            <span>Application (client) ID</span>
+            <input id="client-id" type="text" inputmode="numeric" autocomplete="off" value="{{CLIENT_ID}}" placeholder="e.g. 123456789012345678" />
+            <small>
+              Developer Portal → General Information → Application ID. Required: Discord attributes
+              the activity (and the companion connection) to this application.
+            </small>
+          </label>
+          <label class="field">
+            <span>Bot token</span>
+            <input id="bot-token" type="password" autocomplete="off" spellcheck="false" placeholder="MTA…" />
+          </label>
+          <div class="actions">
+            <button class="btn ghost" type="button" id="test-bot">Test connection</button>
+            <button class="btn primary" type="submit" id="bot-next">Continue</button>
+            <button class="btn link" type="button" id="skip-bot">Skip — dashboard only</button>
+          </div>
+          <div id="bot-result" class="alert is-ok" hidden></div>
+        </form>
+      </section>
+
+      <!-- step 3 ------------------------------------------------------------ -->
+      <section class="step" data-step="3" hidden>
+        <h2>Design your presence</h2>
+        <p class="hint">You can change all of this later. Photos work on your own profile via the companion.</p>
+
+        <div class="setup-grid">
+          <div>
+            <label class="field">
+              <span>Activity name</span>
+              <input id="presence-name" type="text" maxlength="128" value="StatusC0rd" />
+            </label>
+            <div class="row">
+              <label class="field">
+                <span>Type</span>
+                <select id="presence-type">
+                  <option value="0">Playing</option>
+                  <option value="2">Listening</option>
+                  <option value="3">Watching</option>
+                  <option value="5">Competing</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Status</span>
+                <select id="presence-status">
+                  <option value="online">Online</option>
+                  <option value="idle">Idle</option>
+                  <option value="dnd">Do not disturb</option>
+                  <option value="invisible">Invisible</option>
+                </select>
+              </label>
+            </div>
+            <label class="field">
+              <span>Details (line 1)</span>
+              <input id="presence-details" type="text" maxlength="128" placeholder="Building something cool" />
+            </label>
+            <label class="field">
+              <span>State (line 2)</span>
+              <input id="presence-state" type="text" maxlength="128" placeholder="statusc0rd" />
+            </label>
+
+            <div class="row">
+              <div class="field">
+                <span>Large photo</span>
+                <div class="upload-slot" id="slot-large">
+                  <img alt="" hidden />
+                  <span>Choose image</span>
+                  <input type="file" accept="image/*" hidden />
+                </div>
+              </div>
+              <div class="field">
+                <span>Small photo</span>
+                <div class="upload-slot" id="slot-small">
+                  <img alt="" hidden />
+                  <span>Choose image</span>
+                  <input type="file" accept="image/*" hidden />
+                </div>
+              </div>
+            </div>
+
+            <label class="check" style="margin-top: 16px">
+              <input type="checkbox" id="keep-alive" checked />
+              <span>Keep this server awake so the bot stays online 24/7</span>
+            </label>
+
+            <label class="field" style="margin-top: 16px">
+              <span>Public URL of this dashboard</span>
+              <input id="public-url" type="url" placeholder="https://status.example.com" />
+              <small>
+                Discord downloads your images from this address, so it must be reachable over the
+                internet. Keep the address you are using now if it is already public.
+              </small>
+            </label>
+          </div>
+
+          <div>
+            <div class="preview">
+              <div class="preview-art">
+                <span class="preview-art-fallback" id="setup-preview-fallback">S</span>
+                <img id="setup-preview-large" alt="" hidden />
+                <span class="preview-small" id="setup-preview-small-wrap" hidden>
+                  <img id="setup-preview-small" alt="" />
+                </span>
+              </div>
+              <div class="preview-body">
+                <div class="preview-type" id="setup-preview-type">PLAYING</div>
+                <div class="preview-name" id="setup-preview-name">StatusC0rd</div>
+                <div class="preview-line" id="setup-preview-details"></div>
+                <div class="preview-line" id="setup-preview-state"></div>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button class="btn primary" type="button" id="finish">Finish setup</button>
+              <button class="btn ghost" type="button" id="back-2">Back</button>
+            </div>
+            <p class="hint" id="finish-hint"></p>
+          </div>
+        </div>
+      </section>
+
+      <footer class="setup-foot">
+        Your bot token, client secret and dashboard key never leave this server.
+      </footer>
+    </main>
+  </body>
+</html>

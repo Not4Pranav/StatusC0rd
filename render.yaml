@@ -3,25 +3,36 @@ services:
     name: StatusC0rd
     runtime: node
     plan: free
-    buildCommand: npm install
+    region: oregon
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: "18"
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Everything below is optional: the setup wizard stores the same values in
+      # data/settings.json. Variables win when both are present.
+      # Your own Discord application ID. Leave blank to enter it in the wizard.
       - key: CLIENT_ID
-        value: "1554342719923560518"
-      - key: APPLICATION_ID
-        value: "1554342719923560518"
-      - key: PUBLIC_KEY
-        value: "cd1c10dd26d6f42bf638c40bb2d556077df764ebade5f23cf09cbaec4b8d14cc"
+        sync: false
       - key: DISCORD_TOKEN
-        sync: false
-      - key: CLIENT_SECRET
-        sync: false
-      - key: SESSION_SECRET
         sync: false
       - key: DASHBOARD_KEY
         sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: ALLOWED_DISCORD_IDS
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SETUP_TOKEN
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
       - key: REDIRECT_URI
         sync: false
+      - key: KEEP_ALIVE
+        value: "true"
