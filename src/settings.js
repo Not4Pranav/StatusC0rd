@@ -166,7 +166,7 @@ class SettingsStore {
       this.setupToken = String(this.env.SETUP_TOKEN);
       return;
     }
-    if (this.data.setupComplete) return;
+    if (this.data.setupComplete || this.keyFromEnv) return;
     // Written next to the settings file so the owner can read it from the
     // filesystem even if logs are not accessible.
     const tokenFile = path.join(path.dirname(this.file), "setup-token.txt");
@@ -235,6 +235,12 @@ class SettingsStore {
   // ------------------------------------------------------------------ setup
 
   needsSetup() {
+    // A deployment that supplies its dashboard key through the environment is
+    // already configured - there is nothing left for the wizard to collect. This
+    // also matters on hosts with an ephemeral disk (Render's free plan), where
+    // data/settings.json is wiped on every restart: without it the site would
+    // fall back to /setup after a reboot even though the env is complete.
+    if (this.keyFromEnv) return false;
     return !this.data.setupComplete || !this.hasAdminKey;
   }
 

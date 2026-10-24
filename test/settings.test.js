@@ -170,3 +170,11 @@ test("hashKey/verifyKey round trip", () => {
   assert.equal(verifyKey("secret-valuf", hashed), false);
   assert.equal(verifyKey("secret-value", {}), false);
 });
+
+test("an environment-configured deployment never falls back to the wizard", () => {
+  const { store, dir } = makeStore({ DASHBOARD_KEY: "env-provided-key-1234" });
+  assert.equal(store.needsSetup(), false, "env key + no wizard state is still configured");
+  assert.equal(store.verifyAdminKey("env-provided-key-1234"), true);
+  assert.equal(store.setupToken ?? "", "", "no setup token is generated when the wizard is off");
+  assert.equal(fs.existsSync(path.join(dir, "setup-token.txt")), false);
+});
