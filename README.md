@@ -3,7 +3,7 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-91%20passing-3ddc97)
+![status: tested](https://img.shields.io/badge/tests-108%20passing-3ddc97)
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
@@ -165,7 +165,16 @@ The bot lives on the server, so it is online as long as the server is:
 
 New here, or want the $0 walkthrough (Discord app → free host → first presence →
 pairing, plus which free hosts are actually worth using)? See
-[docs/free-setup.md](docs/free-setup.md).
+[docs/free-setup.md](docs/free-setup.md) — or open **`/guide`** on any running
+instance, which renders that same file in the browser. `/welcome` is the public
+overview page, so a fresh deployment can be handed to a stranger as-is:
+
+| Route | Who it is for |
+| --- | --- |
+| `/welcome` | anyone — what StatusC0rd does, and how the three free paths differ |
+| `/guide` | anyone — the full setup guide, rendered from `docs/free-setup.md` |
+| `/setup` | the operator, on first boot, for the three-step wizard |
+| `/` | the signed-in dashboard |
 
 ### Render
 
@@ -296,7 +305,7 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ```sh
 npm run dev    # node --watch
 npm run check  # parse every source file
-npm test       # 91 tests (node:test only)
+npm test       # 108 tests (node:test only)
 ```
 
 `test/companion-e2e.test.js` is the proof for the headline flow: it boots a real

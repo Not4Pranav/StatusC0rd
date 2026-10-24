@@ -5,7 +5,7 @@ const path = require("node:path");
 const express = require("express");
 const cookieSession = require("cookie-session");
 
-const { createRenderer } = require("./src/views");
+const { createRenderer, escapeHtml } = require("./src/views");
 const { sanitizePresence, buildActivity, DEFAULT_CONFIG } = require("./src/presence");
 const {
   safeEqual,
@@ -19,6 +19,7 @@ const {
 } = require("./src/auth");
 const oauth = require("./src/oauth");
 const { createZip } = require("./src/zip");
+const { loadGuide } = require("./src/guide");
 
 
 /** Personalized double-click launchers for people who never open a terminal. */
@@ -377,6 +378,57 @@ function createApp({
       setup: settings.needsSetup() ? "required" : "complete",
       bot: bot.getState().status
     });
+  });
+
+  // -------------------------------------------------------------- public site
+
+  /** Where the "main" call to action should take the visitor. */
+  function primaryAction(req) {
+    if (req.session?.user) return { href: "/", label: "Open dashboard" };
+    if (settings.needsSetup()) return { href: "/setup", label: "Start setup" };
+    return { href: "/login", label: "Sign in" };
+  }
+
+  app.get("/welcome", (req, res) => {
+    const action = primaryAction(req);
+    res.setHeader("Cache-Control", "no-store");
+    res.type("html").send(
+      render("welcome.html", {
+        VERSION: version,
+        PRIMARY_HREF: action.href,
+        PRIMARY_LABEL: action.label,
+        SIGNED_IN: req.session?.user ? "true" : "false",
+        SETUP_REQUIRED: settings.needsSetup() ? "true" : "false"
+      })
+    );
+  });
+
+  /**
+   * The $0 deployment guide, rendered from `docs/free-setup.md` so the website
+   * and the repository can never disagree.
+   */
+  app.get("/guide", (req, res) => {
+    const guide = loadGuide();
+    const action = primaryAction(req);
+    const toc = guide.headings
+      .filter((heading) => heading.level === 2)
+      .map((heading) => `<a href="#${heading.id}">${escapeHtml(heading.text)}</a>`)
+      .join("");
+    const updated = guide.updatedAt
+      ? `Last updated ${new Date(guide.updatedAt).toISOString().slice(0, 10)}`
+      : "";
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.type("html").send(
+      render("guide.html", {
+        VERSION: version,
+        GUIDE_TITLE: guide.title,
+        GUIDE_HTML: guide.html,
+        TOC_HTML: toc,
+        GUIDE_UPDATED: updated,
+        BACK_HREF: action.href,
+        BACK_LABEL: action.label
+      })
+    );
   });
 
   // ------------------------------------------------------------------- setup

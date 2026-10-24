@@ -591,3 +591,65 @@ test("HTTPS gets a secure session cookie and HSTS, plain http still works", asyn
   const plain = await ctx.request("/login");
   assert.equal(plain.headers.get("strict-transport-security"), null, "no HSTS on plain http");
 });
+
+test("the setup guide is readable without signing in", async (t) => {
+  const ctx = await startApp({ completeSetup: false });
+  t.after(() => ctx.close());
+
+  const res = await ctx.request("/guide");
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get("content-type"), /text\/html/);
+
+  const html = await res.text();
+  // Rendered from docs/free-setup.md, so a heading from that file must be here.
+  assert.match(html, /<h1 id="[^"]*"/);
+  assert.match(html, /Path A/);
+  assert.match(html, /href="#1-what-the-user-gets"/);
+  assert.match(html, /<div class="md-table">/);
+  // No template tokens may survive the render.
+  assert.ok(!html.includes("{{{"));
+  assert.ok(!html.includes("{{"));
+});
+
+test("the guide survives an unreadable docs folder", async (t) => {
+  const { renderMarkdown } = require("../src/markdown");
+  const { loadGuide } = require("../src/guide");
+  const guide = loadGuide("/nonexistent/free-setup.md");
+  assert.equal(guide.available, false);
+  assert.match(guide.html, /missing from this deployment/);
+  assert.deepEqual(guide.headings, []);
+  // The page still renders with the fallback block.
+  assert.equal(typeof renderMarkdown, "function");
+});
+
+test("the overview page points a first-time visitor at setup", async (t) => {
+  const ctx = await startApp({ completeSetup: false });
+  t.after(() => ctx.close());
+
+  const res = await ctx.request("/welcome");
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  assert.match(html, /class="btn primary lg" href="\/setup">Start setup</);
+  assert.match(html, /href="\/guide"/);
+});
+
+test("the overview page offers sign-in once setup is done", async (t) => {
+  const ctx = await startApp({ completeSetup: true });
+  t.after(() => ctx.close());
+
+  const html = await (await ctx.request("/welcome")).text();
+  assert.match(html, /class="btn primary lg" href="\/login">Sign in</);
+
+  const csrf = await ctx.signIn();
+  assert.ok(csrf);
+  const signedIn = await (await ctx.request("/welcome")).text();
+  assert.match(signedIn, /class="btn primary lg" href="\/">Open dashboard</);
+});
+
+test("the login page links to the free guide", async (t) => {
+  const ctx = await startApp({ completeSetup: true });
+  t.after(() => ctx.close());
+
+  const html = await (await ctx.request("/login")).text();
+  assert.match(html, /href="\/guide">Free setup guide</);
+});

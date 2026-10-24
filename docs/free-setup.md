@@ -1,5 +1,11 @@
 # StatusC0rd — how it works, and a 100% free setup
 
+> **You are reading this inside StatusC0rd.** Every deployment serves this same
+> guide at `/guide` (linked from the sign-in page and the dashboard), and the
+> welcome page at `/welcome` explains the project to anyone who lands on it.
+> The file you are looking at, `docs/free-setup.md`, is the single source for
+> both: edit it once, and the website renders the update.
+
 Two audiences, two short answers:
 
 - **If you are the person using someone's StatusC0rd instance:** open the URL, sign
