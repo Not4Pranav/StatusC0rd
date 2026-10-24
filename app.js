@@ -20,6 +20,7 @@ const {
 const oauth = require("./src/oauth");
 const { createZip } = require("./src/zip");
 const { loadGuide } = require("./src/guide");
+const { createActivityService, ActivityError, FRAME_ANCESTORS } = require("./src/activity");
 
 
 /** Personalized double-click launchers for people who never open a terminal. */
@@ -164,6 +165,8 @@ function createApp({
   const writeLimiter = new RateLimiter({ windowMs: 60_000, max: 60 });
   const setupLimiter = new RateLimiter({ windowMs: 5 * 60_000, max: 20 });
   const companionLimiter = new RateLimiter({ windowMs: 60_000, max: 120, now });
+  const activityLimiter = new RateLimiter({ windowMs: 60_000, max: 180, now });
+  const activityService = createActivityService({ settings, assets, logger, now });
 
   const streams = new Set();
 
@@ -179,7 +182,12 @@ function createApp({
       // Only meaningful (and only harmless) on a real HTTPS deployment.
       res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
     }
-    res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    // An Activity is embedded by the Discord client, so that page alone has to
+    // allow Discord as its frame ancestor; COOP would also fight the iframe.
+    const isActivity = req.path === "/activity" || req.path.startsWith("/activity/");
+    if (!isActivity) {
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    }
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     res.setHeader(
       "Content-Security-Policy",
@@ -195,10 +203,20 @@ function createApp({
         "form-action 'self'",
         // Production blocks framing (clickjacking); development allows it so the
         // dashboard can be embedded in a hosted live-preview iframe.
-        `frame-ancestors ${isProduction ? "'self'" : "*"}`
+        `frame-ancestors ${isActivity ? FRAME_ANCESTORS : isProduction ? "'self'" : "*"}`
       ].join("; ")
     );
     next();
+  });
+
+  // `/activity` is a directory on disk, so serve the canonical slash form here:
+  // express.static would answer with its own redirect, and the Activity's
+  // relative URLs (and Discord's proxy mapping) need the trailing slash.
+  // Express 5's non-strict routing matches `/activity/` here as well, so hand
+  // the slash form on instead of redirecting it to itself.
+  app.get("/activity", (req, res, next) => {
+    if (req.path === "/activity/") return next();
+    return res.redirect(302, "/activity/");
   });
 
   app.use(
@@ -285,10 +303,13 @@ function createApp({
       })),
       pairings: settings.listPairings(),
       keepAlive: keepAlive ? keepAlive.getState() : null,
+      activitySession: activityService.snapshot(),
       meta: {
         version,
         setupComplete: !settings.needsSetup(),
         clientId: settings.effective().clientId,
+        hasClientSecret: Boolean(settings.effective().clientSecret),
+        activityReady: activityService.ready(),
         botEnabled: settings.effective().botEnabled,
         discordLoginEnabled: settings.effective().discordLoginEnabled,
         publicUrl: settings.effective().publicUrl || origin,
@@ -1030,6 +1051,73 @@ function createApp({
     settings.touchPairing(pairing.id, req.body?.discordConnected ? "connected" : req.body?.error || "offline");
     broadcastState();
     res.json({ ok: true });
+  });
+
+  // ------------------------------------------------------------- discord app
+  // The zero-install path: Discord embeds `/activity/` in an iframe and this
+  // page pushes the saved presence to the user's own profile. Nothing is
+  // downloaded - the browser is already inside Discord.
+  //
+  // When the Activity is proxied, Discord rewrites `https://<app>.discordsays.com`
+  // to the URL mapping target, so the page only ever uses relative URLs. The
+  // same endpoints are also mounted at `/api/activity/*` for direct use.
+
+  const activityApi = ["/activity/api", "/api/activity"];
+
+  function activityError(res, error) {
+    const status = error instanceof ActivityError ? error.status : error.status || 502;
+    if (status >= 500 && !(error instanceof ActivityError)) logger.warn?.("[activity]", error.message);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(status).json({ ok: false, error: error.message, code: error.code || null });
+  }
+
+  function bearer(req) {
+    return String(req.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  }
+
+  app.get("/activity/", activityLimiter.middleware(), (req, res) => {
+    const effective = settings.effective();
+    res.setHeader("Cache-Control", "no-store");
+    res.type("html").send(
+      render("activity.html", {
+        VERSION: version,
+        CLIENT_ID: effective.clientId,
+        DASHBOARD_URL: effective.publicUrl || originOf(req)
+      })
+    );
+  });
+
+  app.post(activityApi.map((base) => `${base}/token`), activityLimiter.middleware(), async (req, res) => {
+    try {
+      const { accessToken, expiresIn } = await activityService.exchangeToken(req.body?.code);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ ok: true, access_token: accessToken, expires_in: expiresIn });
+    } catch (error) {
+      activityError(res, error);
+    }
+  });
+
+  app.get(activityApi.map((base) => `${base}/presence`), activityLimiter.middleware(), async (req, res) => {
+    try {
+      const payload = await activityService.presence({ accessToken: bearer(req), origin: publicOrigin(req) });
+      res.setHeader("Cache-Control", "no-store");
+      broadcastState();
+      res.json({ ok: true, ...payload });
+    } catch (error) {
+      activityService.noteError(error.message);
+      activityError(res, error);
+    }
+  });
+
+  app.get(activityApi.map((base) => `${base}/status`), (req, res) => {
+    const session = activityService.snapshot();
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      ok: true,
+      configured: activityService.ready(),
+      applicationId: activityService.config().clientId || null,
+      session
+    });
   });
 
   // --------------------------------------------------------------- fallbacks

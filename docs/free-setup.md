@@ -22,15 +22,22 @@ Discord shows two different things, and StatusC0rd fills both:
 | | **Bot card** (always on) | **Your own profile** (rich) |
 | --- | --- | --- |
 | Shows | name, activity type, state/status text | photo (large + small), details, state, hover text, **buttons**, timer |
-| Runs on | the server, 24/7 | the paired computer (Discord desktop app open) |
-| Setup | bot token in the wizard | download a launcher, double-click |
-| Editable from | dashboard | dashboard, no restart, no re-pair |
+| Runs on | the server, 24/7 | the Discord app itself, as a web Activity |
+| Setup | bot token in the wizard | click **Open in Discord**, nothing installed |
+| Editable from | dashboard | dashboard, no restart, no rejoin |
 
 Why the split: Discord's bot gateway only accepts `name`, `type` and `state` for
-presence. Images and buttons exist only on *user* presence, and user presence can
-only be set through the Discord client sitting on the same machine as your
-account (local RPC). That is why StatusC0rd has a tiny companion app: it is the
-only compliant way to get a photo + buttons on your own profile.
+presence, so photos and buttons are impossible on a bot card. For *your own*
+profile they exist, but only a Discord client can set them. There are two ways
+to be that client, and StatusC0rd ships both:
+
+- **The in-Discord app (default, zero install).** StatusC0rd is also a Discord
+  Activity: a web page Discord loads *inside* the client. It asks for
+  `rpc.activities.write` and pushes your saved card to your profile while the
+  window is open. Nothing is downloaded, and it works on desktop, web and mobile.
+- **The optional companion.** A ~700-line Node script that talks to the local
+  Discord socket. No setup inside Discord, but it has to be installed and kept
+  running - only worth it if you want the presence without opening the Activity.
 
 ### The user's five minutes
 
@@ -40,12 +47,12 @@ only compliant way to get a photo + buttons on your own profile.
    The preview on the right is exactly what Discord will show.
 3. **Apply presence** → the bot card updates within a second. This stays online
    24/7 as long as the server is up.
-4. **My profile** tab → *Pair this computer* → download `StatusC0rd-mac.zip`
-   (macOS) / `StatusC0rd.bat` (Windows) / `statusc0rd.sh` (Linux) → double-click.
-   A small window opens and stays open; the badge flips to **Profile live**.
+4. **My profile** tab → **Open in Discord** (or the app in Discord's app
+   launcher). A panel opens inside Discord showing the same card; the badge
+   flips to **Profile live**. No download, no terminal.
 5. Now the same card, with photos and buttons, is on their own profile. Edits in
-   the dashboard arrive in ~5 seconds. Closing the window clears the presence
-   (it does not leave a stale card behind).
+   the dashboard arrive in ~5 seconds, without rejoining. Closing the panel
+   clears the presence (it does not leave a stale card behind).
 
 Photos: PNG/JPEG/WebP/GIF, at least 16×16, 2 MB max, cropped to a square in the
 browser, stored under `data/assets/`, served over HTTPS from `/assets/<id>.png`
@@ -60,14 +67,19 @@ Browser ──HTTPS──▶ your host (this repo, Node 20+)
                      ├─▶ Discord gateway        → bot card, 24/7, auto-reconnect
                      ├─▶ /assets/<id>.<ext>     → the photos Discord downloads
                      ├─▶ /health                → health check + keep-alive target
-                     └─▶ companion on your PC   → your profile: photos + buttons
+                     ├─▶ /activity/             → the in-Discord app (no install)
+                     └─▶ companion (optional)   → same card without the Activity
 ```
 
 - `index.js` boots the store, the bot, the keep-alive and the HTTP server.
 - `app.js` is the whole HTTP surface: views, auth, presence CRUD, photo upload,
   pairings, launcher downloads, the generated companion script.
+- `src/activity.js` is the server half of the in-Discord app: it exchanges the
+  Activity's OAuth2 code (the client secret never reaches the browser), verifies
+  who is asking, and shapes the saved presence into a `setActivity` payload.
 - `src/companion/agent.js` is one file that both the CLI and `handle.start()` use;
-  it speaks Discord's IPC protocol directly (no extra dependencies).
+  it speaks Discord's IPC protocol directly (no extra dependencies). It is
+  optional now - the Activity needs no install.
 - `data/` holds `settings.json` (mode `0600`), `assets/`, `setup-token.txt`.
   `DATA_DIR` moves it. That directory **is** the deployment's state.
 - `npm test` = 91 tests, including `test/companion-e2e.test.js`, which drives a
@@ -136,6 +148,33 @@ certificates (free), GitHub repo (free), DuckDNS subdomain (free).
    dashboard's **Settings** tab. Anyone not on that allowlist can't sign in.
 
 No privileged intents are needed. Leave them all off.
+
+### Turn on the in-Discord app (5 clicks, once)
+
+This is what puts photos and buttons on your own profile with nothing installed.
+It needs the public URL from whichever host you pick, so do it after step 5-7 —
+or now, and edit the URL later.
+
+1. **Activities → Settings** → tick **Enable Activities**. Discord creates a
+   `Launch` entry-point command for you.
+2. **Activities → URL Mappings** → prefix `/`, target
+   `https://YOUR-URL/activity/` (keep the trailing slash).
+3. **OAuth2 → General** → copy the **Client Secret** into the dashboard's
+   **Settings → Application & bot** (or set `CLIENT_SECRET`). The Activity's
+   token exchange happens on your server, so the secret never reaches a browser.
+4. Install the app on your server with the commands scope so the launcher shows
+   it:
+
+   ```
+   https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot%20applications.commands&permissions=0
+   ```
+
+5. In Discord: join a voice channel → open the **App Launcher** → StatusC0rd, or
+   run the app's `/launch` command. That is the whole install.
+
+> The Activity only shows rich presence **while its window is open** - that is a
+> Discord rule, not a bug. Your friends see the card, the timer keeps counting,
+> and closing it removes the card. The bot card is the thing that stays 24/7.
 
 ---
 

@@ -1682,3 +1682,32 @@ body.site {
   padding-top: 20px;
   border-top: 1px solid var(--border);
 }
+
+/* ------------------------------------------------- activity (in Discord) --- */
+
+.btn.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.hint.is-live {
+  color: var(--ok);
+}
+
+details.card.advanced {
+  padding: 16px;
+}
+
+details.card.advanced > summary {
+  cursor: pointer;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+details.card.advanced[open] > summary {
+  margin-bottom: 12px;
+}
+
+details.card.advanced .hint:first-of-type {
+  margin-top: 0;
+}

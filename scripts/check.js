@@ -7,10 +7,12 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const vm = require("node:vm");
+const { execFileSync } = require("node:child_process");
 
 const ROOT = path.join(__dirname, "..");
-const SKIP = new Set(["node_modules", ".git", "coverage", "data"]);
+// `vendor` holds third-party builds (the Discord Embedded App SDK bundle), which
+// are shipped as-is and not maintained here.
+const SKIP = new Set(["node_modules", ".git", "coverage", "data", "vendor"]);
 const files = [];
 
 function walk(dir) {
@@ -18,7 +20,7 @@ function walk(dir) {
     if (SKIP.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full);
-    else if (entry.name.endsWith(".js")) files.push(full);
+    else if (entry.name.endsWith(".js") || entry.name.endsWith(".mjs")) files.push(full);
   }
 }
 
@@ -26,13 +28,14 @@ walk(ROOT);
 
 let failed = 0;
 for (const file of files.sort()) {
-  const code = fs.readFileSync(file, "utf8");
   try {
-    // Compiling without running catches syntax errors only.
-    new vm.Script(code, { filename: file });
+    // `node --check` parses without running, and unlike `vm.Script` it
+    // understands ESM (`import`/`export`), which the browser code now uses.
+    execFileSync(process.execPath, ["--check", file], { stdio: "pipe" });
   } catch (error) {
     failed += 1;
-    console.error(`✗ ${path.relative(ROOT, file)}: ${error.message}`);
+    const detail = String(error.stderr || error.message).split("\n").find((line) => line.trim());
+    console.error(`✗ ${path.relative(ROOT, file)}: ${detail}`);
   }
 }
 

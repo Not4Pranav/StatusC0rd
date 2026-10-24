@@ -252,12 +252,57 @@
         <div class="pane" data-pane="profile" id="pane-profile" role="tabpanel">
           <div class="card">
             <div class="card-head">
-              <h2>Put this presence on your own Discord profile</h2>
+              <h2>Your own profile — no download</h2>
+              <span class="tag" id="activity-tag">In Discord</span>
             </div>
             <p class="hint">
-              Discord only shows text for bots — photos, buttons and the timer need to be pushed by
-              <strong>your</strong> Discord client. Pair this computer and run the one-line command;
-              it then follows whatever you set in this dashboard.
+              Photos, the two lines of text, the timer and the buttons live on <strong>your</strong>
+              profile, and Discord only lets a Discord client set them. The zero-install way is the
+              built-in StatusC0rd app: it opens inside Discord, like a game, and pushes whatever you
+              saved here — every five seconds, no rejoin.
+            </p>
+
+            <div class="alert is-warn" id="activity-warning" hidden>
+              The in-Discord app needs an application ID and a client secret.
+              Add both under <a href="#" data-goto="settings">Settings → Application &amp; bot</a>.
+            </div>
+
+            <ol class="notes numbered">
+              <li>Make sure the app is installed on your server (invite it with the <code>applications.commands</code> scope).</li>
+              <li>Join any voice channel and open the <strong>App Launcher</strong>, or run the app's <code>Launch</code> command.</li>
+              <li>Leave the window open — it shows exactly what your friends see.</li>
+            </ol>
+
+            <div class="actions">
+              <a class="btn primary" id="activity-link" href="#" target="_blank" rel="noreferrer noopener">
+                Open in Discord
+              </a>
+              <button class="btn ghost" type="button" id="copy-activity">Copy link</button>
+            </div>
+            <p class="hint" id="activity-status">Not connected yet.</p>
+
+            <details class="advanced" id="activity-setup">
+              <summary>One-time setup in the Discord Developer Portal</summary>
+              <ol class="notes numbered">
+                <li><strong>Activities → Settings</strong> → tick <strong>Enable Activities</strong>.</li>
+                <li><strong>Activities → URL Mappings</strong> → prefix <code>/</code>, target
+                  <code id="activity-mapping">your-public-url/activity/</code>.</li>
+                <li>Keep <code>PUBLIC_URL</code> in this dashboard pointing at the same HTTPS host —
+                  Discord fetches your photos from there.</li>
+              </ol>
+              <p class="hint">
+                Anyone who can install the app can launch it. Limit launch access with
+                <code>ALLOWED_DISCORD_IDS</code> if this instance is not just for you.
+              </p>
+            </details>
+          </div>
+
+          <details class="card advanced" id="companion-card">
+            <summary><strong>Advanced: run it on your computer instead</strong> (download, not needed for most people)</summary>
+            <p class="hint">
+              The local companion talks to the Discord desktop app over its local socket. It works
+              offline from this dashboard and keeps the presence while the window is open, but it
+              has to be installed and kept running — the in-Discord app above does not.
             </p>
 
             <div class="alert is-warn" id="appid-warning" hidden>
@@ -268,7 +313,7 @@
 
             <ol class="notes numbered">
               <li>Click <strong>Pair this computer</strong>.</li>
-              <li>Copy the command and run it in a terminal (Node.js 20+).</li>
+              <li>Double-click the download (Node.js 20+ and the Discord desktop app are required).</li>
               <li>Keep it running — it reconnects automatically if Discord restarts.</li>
             </ol>
 
@@ -320,7 +365,7 @@
             <div class="card-head" style="margin-top: 22px"><h2>Paired devices</h2></div>
             <div id="pairing-list"></div>
             <p class="hint" id="pairing-empty">No devices paired yet.</p>
-          </div>
+          </details>
         </div>
 
         <!-- =============================================== bot ============= -->

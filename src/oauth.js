@@ -4,9 +4,10 @@
  * Minimal Discord OAuth2 client.
  *
  * The dashboard only needs an identity ("who is signing in"), which is the
- * `identify` scope. Rich-presence scopes (`rpc`, `rpc.activities.write`) are
- * restricted by Discord to approved partners and only work against a local
- * Discord client, so they are deliberately not requested here.
+ * `identify` scope. The `rpc` scope (raw RPC against a local Discord client) is
+ * restricted to approved partners, but `rpc.activities.write` - the scope an
+ * Activity needs to set a user's rich presence - is available to any app, and is
+ * requested from inside the Activity rather than here.
  */
 
 const API_BASE = "https://discord.com/api/v10";
@@ -81,15 +82,7 @@ function buildAuthorizeUrl({ clientId, redirectUri, state, scope = "identify" })
  * Exchange an authorization code for an access token.
  * @param {{code: string, clientId: string, clientSecret: string, redirectUri: string}} params
  */
-async function exchangeCode({ code, clientId, clientSecret, redirectUri }) {
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    code,
-    client_id: clientId,
-    client_secret: clientSecret,
-    redirect_uri: redirectUri
-  });
-
+async function requestToken(body) {
   const token = await request(
     `${API_BASE}/oauth2/token`,
     {
@@ -104,6 +97,35 @@ async function exchangeCode({ code, clientId, clientSecret, redirectUri }) {
     throw new DiscordApiError("Discord returned no access token.", { status: 502 });
   }
   return token;
+}
+
+async function exchangeCode({ code, clientId, clientSecret, redirectUri }) {
+  return requestToken(
+    new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri
+    })
+  );
+}
+
+/**
+ * Exchange an Activity's OAuth2 code.
+ *
+ * `authorize()` inside an Activity does not take a redirect URI - Discord
+ * completes the redirect itself - so the token request must not send one.
+ */
+async function exchangeActivityCode({ code, clientId, clientSecret }) {
+  return requestToken(
+    new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      client_id: clientId,
+      client_secret: clientSecret
+    })
+  );
 }
 
 /** Fetch the signed-in user's profile. */
@@ -133,6 +155,7 @@ module.exports = {
   DiscordApiError,
   buildAuthorizeUrl,
   exchangeCode,
+  exchangeActivityCode,
   fetchMe,
   revokeToken,
   API_BASE,

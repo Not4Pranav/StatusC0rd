@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>StatusC0rd</title>
+    <link rel="stylesheet" href="./activity.css" />
+    <script type="module" src="./activity.mjs"></script>
+  </head>
+  <body data-client-id="{{CLIENT_ID}}" data-dashboard="{{DASHBOARD_URL}}">
+    <header class="bar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">S</span>
+        <span>StatusC<strong>0</strong>rd</span>
+      </div>
+      <span class="pill" id="state-pill" data-state="idle"><span class="dot"></span><span id="state-text">Connecting…</span></span>
+    </header>
+
+    <main>
+      <section class="card" id="setup-card" hidden>
+        <h1 id="setup-title">Almost there</h1>
+        <p id="setup-body"></p>
+        <button class="btn" id="open-dashboard" type="button" hidden>Open the dashboard</button>
+      </section>
+
+      <section class="card" id="preview-card" hidden>
+        <div class="preview">
+          <div class="art">
+            <span class="art-fallback" id="art-fallback" aria-hidden="true">S</span>
+            <img id="art-large" alt="" hidden />
+            <span class="art-small" id="art-small-wrap" hidden><img id="art-small" alt="" /></span>
+          </div>
+          <div class="body">
+            <div class="type" id="pv-type">PLAYING</div>
+            <div class="name" id="pv-name">StatusC0rd</div>
+            <div class="line" id="pv-details"></div>
+            <div class="line" id="pv-state"></div>
+            <div class="time" id="pv-time"></div>
+            <div class="buttons" id="pv-buttons"></div>
+          </div>
+        </div>
+        <p class="hint">
+          This is what your friends see on your profile while this window is open. Edit it in the
+          <a href="#" id="dashboard-link" target="_blank" rel="noreferrer noopener">dashboard</a>
+          — changes land here within five seconds, no rejoin.
+        </p>
+        <p class="hint" id="buttons-note" hidden>
+          Your Discord client ignored the buttons; they are supported in newer desktop builds only.
+        </p>
+      </section>
+
+      <section class="card" id="error-card" hidden>
+        <h2 id="error-title">Something went wrong</h2>
+        <p id="error-body"></p>
+        <button class="btn ghost" id="retry" type="button">Try again</button>
+      </section>
+
+      <p class="footer">StatusC0rd v{{VERSION}}</p>
+    </main>
+  </body>
+</html>

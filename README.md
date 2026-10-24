@@ -3,7 +3,7 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-108%20passing-3ddc97)
+![status: tested](https://img.shields.io/badge/tests-119%20passing-3ddc97)
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
@@ -95,9 +95,34 @@ Consequences worth knowing:
 
 ---
 
-## Put it on your own profile (companion)
+## Put it on your own profile (in Discord, no install)
 
-Dashboard → **My profile** → *Pair this computer*.
+Dashboard → **My profile** → **Open in Discord** (or launch StatusC0rd from
+Discord's app launcher). A panel opens inside Discord and pushes your saved card
+to your own profile: photo, both lines, timer and (where the client allows it)
+the two buttons. Edits in the dashboard land there in ~5 seconds.
+
+That is a Discord **Activity**, not a bot: Discord loads `/activity/` in an
+iframe inside its own client, the page asks for `identify` +
+`rpc.activities.write`, and the server exchanges the OAuth2 code — the client
+secret never reaches the browser. One-time setup is on the app's **Activities**
+page:
+
+| Where | What |
+| --- | --- |
+| Activities → Settings | tick **Enable Activities** |
+| Activities → URL Mappings | prefix `/` → `https://your-host/activity/` |
+| OAuth2 → General | copy **Client Secret** into Settings (or `CLIENT_SECRET`) |
+| OAuth2 → URL generator, or the invite link | install with `bot applications.commands` |
+
+Presence only shows **while the panel is open** — Discord allows nothing else,
+for anybody. The bot card (below) is the part that stays 24/7.
+
+### Optional: the local companion
+
+If you would rather not open the Activity, the same card can be pushed by a tiny
+script on your own computer. Dashboard → **My profile** → *Advanced: run it on
+your computer instead* → *Pair this computer*.
 
 **No terminal needed:** download the launcher for your OS and double-click it.
 
@@ -144,6 +169,9 @@ Notes:
   password. Keep it out of screencasts and git.
 - Discord RPC does not support the *Streaming* and *Custom status* types; the
   companion renders those as **Playing** so the update never fails.
+- The companion is the older path. It exists because the local socket gives you
+  live buttons on every desktop build; the Activity is enough for most people and
+  needs nothing installed.
 
 ---
 
@@ -171,6 +199,7 @@ overview page, so a fresh deployment can be handed to a stranger as-is:
 
 | Route | Who it is for |
 | --- | --- |
+| `/activity/` | the in-Discord app — Discord loads this inside the client (no install) |
 | `/welcome` | anyone — what StatusC0rd does, and how the three free paths differ |
 | `/guide` | anyone — the full setup guide, rendered from `docs/free-setup.md` |
 | `/setup` | the operator, on first boot, for the three-step wizard |
@@ -305,7 +334,7 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ```sh
 npm run dev    # node --watch
 npm run check  # parse every source file
-npm test       # 108 tests (node:test only)
+npm test       # 119 tests (node:test only)
 ```
 
 `test/companion-e2e.test.js` is the proof for the headline flow: it boots a real
