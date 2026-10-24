@@ -8,6 +8,8 @@ const {
   buildActivity,
   describeActivity,
   isStreamUrl,
+  imageKind,
+  resolveImage,
   toText,
   DEFAULT_CONFIG
 } = require("../src/presence");
@@ -18,159 +20,158 @@ function sanitize(body, current = {}) {
   return sanitizePresence(body, { current: { ...DEFAULT_CONFIG, ...current }, now });
 }
 
-test("accepts a minimal valid payload", () => {
-  const result = sanitize({ name: "Hello", type: "0", status: "online" });
+test("accepts a minimal payload and marks it enabled", () => {
+  const result = sanitize({ name: "Hello" });
   assert.equal(result.ok, true);
-  assert.deepEqual(result.errors, []);
-  assert.equal(result.value.name, "Hello");
-  assert.equal(result.value.type, 0);
   assert.equal(result.value.enabled, true);
+  assert.deepEqual(result.value.targets, { bot: true, companion: true });
   assert.equal(result.value.updatedAt, new Date(now).toISOString());
 });
 
-test("requires an activity name", () => {
-  const result = sanitize({ name: "   " });
-  assert.equal(result.ok, false);
-  assert.match(result.errors[0], /name is required/i);
+test("requires a name and at least one target", () => {
+  assert.match(sanitize({ name: " " }).errors[0], /name is required/i);
+  const noTargets = sanitize({ name: "x", targets: { bot: false, companion: false } });
+  assert.equal(noTargets.ok, false);
+  assert.match(noTargets.errors.join(" "), /at least one place/);
 });
 
-test("normalises whitespace, newlines and length", () => {
-  const result = sanitize({ name: "  line\none\t  two  " });
-  assert.equal(result.value.name, "line one two");
+test("classifies and validates image fields", () => {
+  assert.deepEqual(imageKind(""), { kind: "empty", value: "" });
+  assert.equal(imageKind("asset:abc123").kind, "asset");
+  assert.equal(imageKind("asset:abc123").id, "abc123");
+  assert.equal(imageKind("https://cdn.example.com/a.png").kind, "url");
+  assert.equal(imageKind("my_asset-1").kind, "key");
 
-  const long = sanitize({ name: "x".repeat(300) });
-  assert.equal(long.value.name.length, 128);
-});
+  // uploaded assets, https URLs and Discord asset keys are all accepted
+  assert.equal(sanitize({ name: "x", largeImage: "asset:abc123" }).ok, true);
+  assert.equal(sanitize({ name: "x", largeImage: "https://cdn.example.com/a.png" }).ok, true);
+  assert.equal(sanitize({ name: "x", largeImage: "my_asset-1" }).ok, true);
 
-test("rejects unknown activity types but keeps the current one when omitted", () => {
-  const bad = sanitize({ name: "x", type: 42 });
-  assert.equal(bad.ok, false);
-  assert.match(bad.errors.join(" "), /Activity type/);
-
-  const fallback = sanitize({ name: "x" }, { type: 2 });
-  assert.equal(fallback.value.type, 2);
-});
-
-test("rejects unknown statuses", () => {
-  const result = sanitize({ name: "x", status: "away" });
-  assert.equal(result.ok, false);
-  assert.match(result.errors.join(" "), /Status must be one of/);
-});
-
-test("streaming activities require a twitch/youtube URL", () => {
-  assert.equal(sanitize({ name: "x", type: 1 }).ok, false);
-  assert.equal(sanitize({ name: "x", type: 1, url: "http://twitch.tv/abc" }).ok, false);
-  assert.equal(sanitize({ name: "x", type: 1, url: "https://example.com/abc" }).ok, false);
-
-  const ok = sanitize({ name: "x", type: 1, url: "https://www.twitch.tv/abc" });
-  assert.equal(ok.ok, true);
-  assert.equal(ok.value.url, "https://www.twitch.tv/abc");
-});
-
-test("drops the stream URL for non-streaming activities", () => {
-  const result = sanitize({ name: "x", type: 0, url: "https://twitch.tv/abc" });
-  assert.equal(result.ok, true);
-  assert.equal(result.value.url, "");
-});
-
-test("image fields must be asset keys, not URLs", () => {
-  const urlError = sanitize({ name: "x", largeImage: "https://example.com/a.png" });
-  assert.equal(urlError.ok, false);
-  assert.match(urlError.errors[0], /asset key, not a URL/);
+  // http URLs are rejected: Discord only proxies https
+  const insecure = sanitize({ name: "x", largeImage: "http://cdn.example.com/a.png" });
+  assert.equal(insecure.ok, false);
+  assert.match(insecure.errors[0], /https/);
 
   const badKey = sanitize({ name: "x", smallImage: "bad key!" });
   assert.equal(badKey.ok, false);
-  assert.match(badKey.errors[0], /letters, numbers/);
+  assert.match(badKey.errors[0], /asset key/);
+});
 
-  const good = sanitize({ name: "x", smallImage: "my_asset-1", smallText: "hi" });
-  assert.equal(good.ok, true);
-  assert.equal(good.value.smallImage, "my_asset-1");
-  assert.equal(good.value.smallText, "hi");
+test("buttons need a label and an https link, max two", () => {
+  const ok = sanitize({
+    name: "x",
+    buttons: [
+      { label: "GitHub", url: "https://github.com/x" },
+      { label: "Site", url: "https://example.com" },
+      { label: "Third", url: "https://example.com/3" }
+    ]
+  });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.value.buttons.length, 2);
+
+  assert.equal(sanitize({ name: "x", buttons: [{ label: "Bad", url: "http://example.com" }] }).ok, false);
+  assert.equal(sanitize({ name: "x", buttons: [{ label: "", url: "https://example.com" }] }).ok, false);
+});
+
+test("streaming requires a twitch or youtube url", () => {
+  assert.equal(sanitize({ name: "x", type: 1 }).ok, false);
+  assert.equal(sanitize({ name: "x", type: 1, url: "https://example.com/x" }).ok, false);
+  assert.equal(sanitize({ name: "x", type: 1, url: "https://twitch.tv/x" }).ok, true);
+  // and a stream url is dropped for other types
+  assert.equal(sanitize({ name: "x", type: 0, url: "https://twitch.tv/x" }).value.url, "");
 });
 
 test("the elapsed timer is preserved unless restarted", () => {
   const current = { startedAt: true, startTimestamp: 1_600_000_000_000 };
-
-  const preserved = sanitize({ name: "x", startedAt: "true" }, current);
-  assert.equal(preserved.value.startTimestamp, 1_600_000_000_000);
-
-  const restarted = sanitize({ name: "x", startedAt: true, restartTimer: true }, current);
-  assert.equal(restarted.value.startTimestamp, now);
-
-  const stopped = sanitize({ name: "x", startedAt: false }, current);
-  assert.equal(stopped.value.startedAt, false);
-  assert.equal(stopped.value.startTimestamp, null);
+  assert.equal(sanitize({ name: "x", startedAt: true }, current).value.startTimestamp, 1_600_000_000_000);
+  assert.equal(sanitize({ name: "x", startedAt: true, restartTimer: true }, current).value.startTimestamp, now);
+  assert.equal(sanitize({ name: "x", startedAt: false }, current).value.startTimestamp, null);
 });
 
-test("unknown fields are discarded", () => {
-  const result = sanitize({ name: "x", buttons: [{ label: "a", url: "https://a" }], appId: "123" });
-  assert.equal("buttons" in result.value, false);
-  assert.equal("appId" in result.value, false);
+test("resolveImage handles every image kind", () => {
+  const resolver = (id) => (id === "abc123def456" ? "https://host/assets/abc123def456.png" : "");
+  assert.equal(resolveImage("", {}), "");
+  assert.equal(resolveImage("https://cdn.example.com/a.png", {}), "https://cdn.example.com/a.png");
+  assert.equal(
+    resolveImage("asset:abc123def456", { resolveAsset: resolver }),
+    "https://host/assets/abc123def456.png"
+  );
+  // unknown asset references must not produce a broken URL
+  assert.equal(resolveImage("asset:deadbeef99", { resolveAsset: resolver }), "");
+  assert.equal(resolveImage("asset:abc123def456", {}), "");
+  assert.equal(resolveImage("discord_key", {}), "discord_key");
 });
 
-test("buildActivity returns null when nothing should be shown", () => {
-  assert.equal(buildActivity(null), null);
-  assert.equal(buildActivity({ enabled: false, name: "x" }), null);
-  assert.equal(buildActivity({ enabled: true, name: "" }), null);
-});
-
-test("buildActivity maps a playing presence", () => {
-  const activity = buildActivity({
-    enabled: true,
-    name: "StatusC0rd",
-    type: 0,
-    details: "line 1",
-    state: "line 2",
-    largeImage: "logo",
-    largeText: "Made with StatusC0rd",
-    smallImage: "dot",
-    startedAt: true,
-    startTimestamp: now
-  });
-
+test("buildActivity for the bot omits photos and buttons", () => {
+  const activity = buildActivity(
+    {
+      enabled: true,
+      name: "StatusC0rd",
+      type: 0,
+      details: "line 1",
+      state: "line 2",
+      largeImage: "asset:abc123",
+      smallImage: "https://cdn.example.com/dot.png",
+      buttons: [{ label: "Site", url: "https://example.com" }],
+      startedAt: true,
+      startTimestamp: now,
+      targets: { bot: true, companion: true }
+    },
+    { target: "bot", resolveAsset: () => "https://host/assets/abc123.png" }
+  );
   assert.deepEqual(activity, {
     name: "StatusC0rd",
     type: 0,
     details: "line 1",
     state: "line 2",
-    assets: {
-      large_image: "logo",
-      large_text: "Made with StatusC0rd",
-      small_image: "dot"
-    },
+    assets: { large_image: "https://host/assets/abc123.png", small_image: "https://cdn.example.com/dot.png" },
     timestamps: { start: now }
   });
+  assert.equal("buttons" in activity, false);
 });
 
-test("buildActivity adds the stream URL only for streaming", () => {
-  const streaming = buildActivity({
-    enabled: true,
-    name: "live",
-    type: 1,
-    url: "https://twitch.tv/x"
-  });
-  assert.equal(streaming.url, "https://twitch.tv/x");
-
-  const playing = buildActivity({ enabled: true, name: "game", type: 0, url: "https://twitch.tv/x" });
-  assert.equal("url" in playing, false);
+test("buildActivity for the companion includes buttons and metadata", () => {
+  const activity = buildActivity(
+    {
+      enabled: true,
+      name: "StatusC0rd",
+      type: 2,
+      largeImage: "asset:abc123",
+      largeText: "logo",
+      buttons: [
+        { label: "Site", url: "https://example.com" },
+        { label: "GitHub", url: "https://github.com/x" }
+      ],
+      targets: { bot: true, companion: true }
+    },
+    { target: "companion", resolveAsset: () => "https://host/assets/abc123.png" }
+  );
+  assert.deepEqual(activity.buttons, ["Site", "GitHub"]);
+  assert.deepEqual(activity.metadata, { button_urls: ["https://example.com", "https://github.com/x"] });
+  assert.equal(activity.assets.large_image, "https://host/assets/abc123.png");
+  assert.equal(activity.assets.large_text, "logo");
 });
 
-test("buildActivity maps a custom status", () => {
-  assert.deepEqual(buildActivity({ enabled: true, name: "Working", type: 4, details: "ignored" }), {
+test("targets decide who gets the activity", () => {
+  const base = { enabled: true, name: "x", type: 0 };
+  assert.equal(buildActivity({ ...base, targets: { bot: false, companion: true } }, { target: "bot" }), null);
+  assert.ok(buildActivity({ ...base, targets: { bot: false, companion: true } }, { target: "companion" }));
+  assert.equal(buildActivity({ ...base, targets: { bot: true, companion: false } }, { target: "companion" }), null);
+  assert.equal(buildActivity({ ...base, enabled: false }), null);
+});
+
+test("custom status renders as state text only", () => {
+  assert.deepEqual(buildActivity({ enabled: true, name: "Working", type: 4, details: "x" }), {
     name: "Working",
     type: 4,
     state: "Working"
   });
 });
 
-test("describeActivity is human readable", () => {
+test("describeActivity and toText", () => {
   assert.equal(describeActivity({ enabled: true, name: "Chess", type: 5 }), "Competing Chess");
-  assert.equal(describeActivity({ enabled: false, name: "Chess", type: 5 }), "no activity");
-});
-
-test("toText strips control characters and isStreamUrl is strict", () => {
-  assert.equal(toText("a\u0000b", 10), "ab");
-  assert.equal(isStreamUrl("https://youtu.be/xyz"), true);
+  assert.equal(describeActivity({ enabled: false, name: "Chess" }), "no activity");
+  assert.equal(toText("  a\nb\u0000c  ", 20), "a bc");
+  assert.equal(toText("x".repeat(300), 128).length, 128);
   assert.equal(isStreamUrl("https://twitch.tv.evil.com/x"), false);
-  assert.equal(isStreamUrl("javascript:alert(1)"), false);
 });

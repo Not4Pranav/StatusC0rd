@@ -9,9 +9,10 @@
     <title>StatusC0rd</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
+    <script src="/upload.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
-  <body class="app" data-bot-enabled="{{BOT_ENABLED}}">
+  <body class="app">
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">S</span>
@@ -19,9 +20,11 @@
         <span class="version">v{{VERSION}}</span>
       </div>
       <div class="topbar-right">
-        <span id="bot-pill" class="pill is-muted" title="Bot connection status">
-          <span class="dot" id="bot-dot"></span>
-          <span id="bot-pill-text">Connecting…</span>
+        <span id="bot-pill" class="pill is-muted" title="Bot connection">
+          <span class="dot"></span><span id="bot-pill-text">Connecting…</span>
+        </span>
+        <span id="profile-pill" class="pill is-muted" title="Companion on your computer">
+          <span class="dot"></span><span id="profile-pill-text">Profile</span>
         </span>
         <span class="user-chip" id="user-chip">
           <span class="avatar" id="user-avatar" aria-hidden="true">?</span>
@@ -34,192 +37,389 @@
       </div>
     </header>
 
+    <nav class="tabs" role="tablist">
+      <button role="tab" class="tab is-active" data-tab="presence">Presence</button>
+      <button role="tab" class="tab" data-tab="photos">Photos</button>
+      <button role="tab" class="tab" data-tab="profile">My profile</button>
+      <button role="tab" class="tab" data-tab="bot">Bot &amp; 24/7</button>
+      <button role="tab" class="tab" data-tab="settings">Settings</button>
+    </nav>
+
     <main class="layout">
       <section class="col">
-        <div class="card">
-          <div class="card-head">
-            <h2>Live preview</h2>
-            <span id="preview-note" class="tag">Applying…</span>
-          </div>
-          <div class="preview">
-            <div class="preview-art" id="preview-art">
-              <span class="preview-art-fallback" id="preview-fallback" aria-hidden="true">S</span>
-              <img id="preview-large" alt="" hidden />
-              <span class="preview-small" id="preview-small-wrap" hidden>
-                <img id="preview-small" alt="" />
-              </span>
+        <!-- ============================================= presence ========== -->
+        <div class="pane is-active" data-pane="presence">
+          <div class="card">
+            <div class="card-head">
+              <h2>Live preview</h2>
+              <span id="preview-note" class="tag">Saved</span>
             </div>
-            <div class="preview-body">
-              <div class="preview-type" id="preview-type">PLAYING</div>
-              <div class="preview-name" id="preview-name">StatusC0rd</div>
-              <div class="preview-line" id="preview-details"></div>
-              <div class="preview-line" id="preview-state"></div>
-              <div class="preview-line preview-time" id="preview-time"></div>
+            <div class="preview">
+              <div class="preview-art">
+                <span class="preview-art-fallback" id="preview-fallback" aria-hidden="true">S</span>
+                <img id="preview-large" alt="" hidden />
+                <span class="preview-small" id="preview-small-wrap" hidden>
+                  <img id="preview-small" alt="" />
+                </span>
+              </div>
+              <div class="preview-body">
+                <div class="preview-type" id="preview-type">PLAYING</div>
+                <div class="preview-name" id="preview-name">StatusC0rd</div>
+                <div class="preview-line" id="preview-details"></div>
+                <div class="preview-line" id="preview-state"></div>
+                <div class="preview-time" id="preview-time"></div>
+                <div class="preview-buttons" id="preview-buttons"></div>
+              </div>
             </div>
+            <p class="hint" id="target-hint"></p>
           </div>
-          <p class="hint">
-            This is how the bot's profile card looks. Discord renders the real thing with your
-            application's uploaded assets.
-          </p>
+
+          <form class="card" id="presence-form" novalidate>
+            <div class="card-head">
+              <h2>Presence</h2>
+              <span id="form-note" class="tag" hidden>Unsaved changes</span>
+            </div>
+            <div id="form-errors" class="alert" role="alert" hidden></div>
+
+            <label class="field">
+              <span>Activity name <em>*</em></span>
+              <input name="name" type="text" maxlength="128" required autocomplete="off" placeholder="Building StatusC0rd" />
+            </label>
+
+            <div class="row">
+              <label class="field">
+                <span>Type</span>
+                <select name="type">
+                  <option value="0">Playing</option>
+                  <option value="1">Streaming</option>
+                  <option value="2">Listening</option>
+                  <option value="3">Watching</option>
+                  <option value="4">Custom status</option>
+                  <option value="5">Competing</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Status</span>
+                <select name="status">
+                  <option value="online">Online</option>
+                  <option value="idle">Idle</option>
+                  <option value="dnd">Do not disturb</option>
+                  <option value="invisible">Invisible</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="row" data-when="details">
+              <label class="field">
+                <span>Details (line 1)</span>
+                <input name="details" type="text" maxlength="128" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>State (line 2)</span>
+                <input name="state" type="text" maxlength="128" autocomplete="off" />
+              </label>
+            </div>
+
+            <label class="field" data-when="url" hidden>
+              <span>Stream URL</span>
+              <input name="url" type="url" maxlength="512" autocomplete="off" placeholder="https://twitch.tv/your-channel" />
+              <small>Streaming needs a Twitch or YouTube link.</small>
+            </label>
+
+            <fieldset class="targets" data-when="targets">
+              <legend>Show this presence on</legend>
+              <label class="check">
+                <input type="checkbox" name="targetBot" checked />
+                <span>The bot <small>— text only, online 24/7</small></span>
+              </label>
+              <label class="check">
+                <input type="checkbox" name="targetCompanion" checked />
+                <span>My own profile <small>— photos + buttons, needs the companion</small></span>
+              </label>
+            </fieldset>
+
+            <div class="check-row" data-when="timer">
+              <label class="check">
+                <input type="checkbox" name="startedAt" />
+                <span>Elapsed timer</span>
+              </label>
+              <label class="check subtle">
+                <input type="checkbox" name="restartTimer" />
+                <span>Restart from now</span>
+              </label>
+            </div>
+
+            <details class="advanced" data-when="advanced">
+              <summary>Buttons &amp; photo hover text</summary>
+              <div class="row">
+                <label class="field">
+                  <span>Button 1 label</span>
+                  <input name="btn1Label" type="text" maxlength="32" autocomplete="off" placeholder="Website" />
+                </label>
+                <label class="field">
+                  <span>Button 1 link</span>
+                  <input name="btn1Url" type="url" autocomplete="off" placeholder="https://…" />
+                </label>
+              </div>
+              <div class="row">
+                <label class="field">
+                  <span>Button 2 label</span>
+                  <input name="btn2Label" type="text" maxlength="32" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>Button 2 link</span>
+                  <input name="btn2Url" type="url" autocomplete="off" />
+                </label>
+              </div>
+              <div class="row">
+                <label class="field">
+                  <span>Large photo tooltip</span>
+                  <input name="largeText" type="text" maxlength="128" autocomplete="off" />
+                </label>
+                <label class="field">
+                  <span>Small photo tooltip</span>
+                  <input name="smallText" type="text" maxlength="128" autocomplete="off" />
+                </label>
+              </div>
+            </details>
+
+            <div class="actions">
+              <button class="btn primary" type="submit" id="apply-btn">Apply presence</button>
+              <button class="btn ghost" type="button" id="clear-btn">Clear</button>
+              <a class="btn link" href="#" data-goto="photos">Add photos</a>
+              <a class="btn link" href="#" data-goto="profile">Put it on my profile</a>
+            </div>
+          </form>
         </div>
 
-        <form class="card" id="presence-form" novalidate>
-          <div class="card-head">
-            <h2>Presence</h2>
-            <span id="form-note" class="tag" hidden>Unsaved changes</span>
+        <!-- =============================================== photos ========== -->
+        <div class="pane" data-pane="photos">
+          <div class="card">
+            <div class="card-head"><h2>Presence photos</h2></div>
+            <p class="hint">
+              Upload images here and they are served from this server, so they work on your profile
+              and for the bot's card art. Discord needs the URL to be publicly reachable over HTTPS.
+            </p>
+            <div class="alert is-warn" id="https-warning" hidden>
+              This dashboard is not on HTTPS, so Discord cannot fetch your images yet. Add a domain
+              or a tunnel and set the public URL in <a href="#" data-goto="bot">Bot &amp; 24/7</a>.
+            </div>
+
+            <div class="row photo-row">
+              <div class="field">
+                <span>Large image</span>
+                <div class="upload-slot" id="slot-large" data-size="large">
+                  <img alt="" hidden />
+                  <span>Choose image</span>
+                  <input type="file" accept="image/*" hidden />
+                </div>
+                <button class="btn ghost small" type="button" data-clear-image="large">Remove</button>
+              </div>
+              <div class="field">
+                <span>Small image</span>
+                <div class="upload-slot" id="slot-small" data-size="small">
+                  <img alt="" hidden />
+                  <span>Choose image</span>
+                  <input type="file" accept="image/*" hidden />
+                </div>
+                <button class="btn ghost small" type="button" data-clear-image="small">Remove</button>
+              </div>
+            </div>
+
+            <details class="advanced">
+              <summary>Use an image URL instead</summary>
+              <div class="row">
+                <label class="field">
+                  <span>Large image URL</span>
+                  <input id="url-large" type="url" placeholder="https://…" />
+                </label>
+                <label class="field">
+                  <span>Small image URL</span>
+                  <input id="url-small" type="url" placeholder="https://…" />
+                </label>
+              </div>
+              <button class="btn ghost small" type="button" id="use-urls">Use these URLs</button>
+            </details>
+
+            <div class="card-head" style="margin-top: 24px"><h2>Library</h2></div>
+            <div id="asset-grid" class="asset-grid"></div>
+            <p class="hint" id="asset-empty">Nothing uploaded yet.</p>
+          </div>
+        </div>
+
+        <!-- =============================================== profile ========= -->
+        <div class="pane" data-pane="profile">
+          <div class="card">
+            <div class="card-head">
+              <h2>Put this presence on your own Discord profile</h2>
+            </div>
+            <p class="hint">
+              Discord only shows text for bots — photos, buttons and the timer need to be pushed by
+              <strong>your</strong> Discord client. Pair this computer and run the one-line command;
+              it then follows whatever you set in this dashboard.
+            </p>
+
+            <ol class="notes numbered">
+              <li>Click <strong>Pair this computer</strong>.</li>
+              <li>Copy the command and run it in a terminal (Node.js 18+).</li>
+              <li>Keep it running — it reconnects automatically if Discord restarts.</li>
+            </ol>
+
+            <div class="actions">
+              <input id="pair-label" class="inline-input" type="text" maxlength="60" value="My computer" aria-label="Device name" />
+              <button class="btn primary" type="button" id="pair-btn">Pair this computer</button>
+            </div>
+
+            <div id="pair-result" hidden>
+              <label class="field">
+                <span>Run this</span>
+                <div class="copy-row">
+                  <input id="pair-command" type="text" readonly />
+                  <button class="btn ghost small" type="button" id="copy-command">Copy</button>
+                </div>
+              </label>
+              <p class="hint">
+                Windows (PowerShell): <code>curl.exe -fsSL "…" | node</code> ·
+                macOS/Linux: <code>curl -fsSL "…" | node</code>.
+                Prefer a file? <a id="pair-download" href="#" download>Download the script</a>.
+                <strong>Keep the link private — it contains this device's pairing token.</strong>
+              </p>
+            </div>
+
+            <div class="card-head" style="margin-top: 22px"><h2>Paired devices</h2></div>
+            <div id="pairing-list"></div>
+            <p class="hint" id="pairing-empty">No devices paired yet.</p>
+          </div>
+        </div>
+
+        <!-- =============================================== bot ============= -->
+        <div class="pane" data-pane="bot">
+          <div class="card">
+            <div class="card-head"><h2>Bot status</h2></div>
+            <dl class="facts">
+              <div><dt>Connection</dt><dd id="bot-status">—</dd></div>
+              <div><dt>Account</dt><dd id="bot-tag">—</dd></div>
+              <div><dt>Last presence update</dt><dd id="bot-last">—</dd></div>
+              <div><dt>Uptime</dt><dd id="bot-uptime">—</dd></div>
+            </dl>
+            <div id="bot-error" class="alert" role="alert" hidden></div>
+            <label class="field">
+              <span>Invite link</span>
+              <div class="copy-row">
+                <input id="invite-url" type="text" readonly value="{{INVITE_URL}}" />
+                <button class="btn ghost small" type="button" id="copy-invite">Copy</button>
+              </div>
+            </label>
           </div>
 
-          <div id="form-errors" class="alert" role="alert" hidden></div>
+          <div class="card">
+            <div class="card-head">
+              <h2>24/7 online</h2>
+              <span class="tag" id="keepalive-tag">—</span>
+            </div>
+            <p class="hint">
+              Free hosts sleep a service after a period without traffic, which disconnects the bot.
+              StatusC0rd pings its own public URL to stay awake.
+            </p>
+            <form id="keepalive-form" class="stack">
+              <label class="field">
+                <span>Public URL of this dashboard</span>
+                <input name="publicUrl" type="url" placeholder="https://status.example.com" />
+              </label>
+              <div class="row">
+                <label class="check">
+                  <input type="checkbox" name="enabled" />
+                  <span>Keep the service awake</span>
+                </label>
+                <label class="field">
+                  <span>Ping every (minutes)</span>
+                  <input name="intervalMinutes" type="number" min="5" max="60" step="1" />
+                </label>
+              </div>
+              <div class="actions">
+                <button class="btn primary" type="submit">Save</button>
+                <span class="hint" id="keepalive-info"></span>
+              </div>
+            </form>
+          </div>
+        </div>
 
-          <label class="field">
-            <span>Activity name <em>*</em></span>
-            <input
-              name="name"
-              type="text"
-              maxlength="128"
-              required
-              autocomplete="off"
-              placeholder="e.g. Building StatusC0rd"
-            />
-          </label>
-
-          <div class="row">
-            <label class="field">
-              <span>Activity type</span>
-              <select name="type">
-                <option value="0">Playing</option>
-                <option value="1">Streaming</option>
-                <option value="2">Listening</option>
-                <option value="3">Watching</option>
-                <option value="4">Custom status</option>
-                <option value="5">Competing</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Bot status</span>
-              <select name="status">
-                <option value="online">Online</option>
-                <option value="idle">Idle</option>
-                <option value="dnd">Do not disturb</option>
-                <option value="invisible">Invisible</option>
-              </select>
-            </label>
+        <!-- =============================================== settings ======== -->
+        <div class="pane" data-pane="settings">
+          <div class="card">
+            <div class="card-head"><h2>Application &amp; bot</h2></div>
+            <form id="app-form" class="stack">
+              <label class="field">
+                <span>Application (client) ID</span>
+                <input name="clientId" type="text" inputmode="numeric" autocomplete="off" />
+              </label>
+              <label class="field">
+                <span>Bot token</span>
+                <input name="botToken" type="password" autocomplete="off" spellcheck="false" placeholder="leave blank to keep the current token" />
+                <small id="bot-token-hint"></small>
+              </label>
+              <button class="btn primary" type="submit">Save application settings</button>
+            </form>
           </div>
 
-          <div class="row" data-when="details">
-            <label class="field">
-              <span>Details</span>
-              <input name="details" type="text" maxlength="128" autocomplete="off" placeholder="Line 1" />
-            </label>
-            <label class="field">
-              <span>State</span>
-              <input name="state" type="text" maxlength="128" autocomplete="off" placeholder="Line 2" />
-            </label>
+          <div class="card">
+            <div class="card-head"><h2>Discord sign-in</h2></div>
+            <form id="sso-form" class="stack">
+              <label class="field">
+                <span>OAuth2 client secret</span>
+                <input name="clientSecret" type="password" autocomplete="off" placeholder="leave blank to keep" />
+              </label>
+              <label class="field">
+                <span>Allowed Discord user IDs</span>
+                <input name="allowedIds" type="text" autocomplete="off" placeholder="123456789012345678, 987654321098765432" />
+                <small>Redirect URL: <code id="redirect-hint"></code></small>
+              </label>
+              <button class="btn primary" type="submit">Save sign-in settings</button>
+            </form>
           </div>
 
-          <label class="field" data-when="url" hidden>
-            <span>Stream URL</span>
-            <input
-              name="url"
-              type="url"
-              maxlength="512"
-              autocomplete="off"
-              placeholder="https://twitch.tv/your-channel"
-            />
-            <small>Streaming presences require a Twitch or YouTube link.</small>
-          </label>
-
-          <div class="row" data-when="assets">
-            <label class="field">
-              <span>Large image key</span>
-              <input name="largeImage" type="text" maxlength="256" autocomplete="off" placeholder="e.g. logo" />
-            </label>
-            <label class="field">
-              <span>Large image text</span>
-              <input name="largeText" type="text" maxlength="128" autocomplete="off" placeholder="Tooltip" />
-            </label>
+          <div class="card">
+            <div class="card-head"><h2>Dashboard key</h2></div>
+            <form id="key-form" class="stack">
+              <label class="field">
+                <span>Current key</span>
+                <input name="currentAdminKey" type="password" autocomplete="current-password" />
+              </label>
+              <label class="field">
+                <span>New key (12+ characters)</span>
+                <input name="newAdminKey" type="password" minlength="12" autocomplete="new-password" />
+              </label>
+              <button class="btn primary" type="submit">Change key</button>
+            </form>
           </div>
-
-          <div class="row" data-when="assets">
-            <label class="field">
-              <span>Small image key</span>
-              <input name="smallImage" type="text" maxlength="256" autocomplete="off" placeholder="e.g. live" />
-            </label>
-            <label class="field">
-              <span>Small image text</span>
-              <input name="smallText" type="text" maxlength="128" autocomplete="off" placeholder="Tooltip" />
-            </label>
-          </div>
-
-          <div class="check-row" data-when="timer">
-            <label class="check">
-              <input type="checkbox" name="startedAt" />
-              <span>Show elapsed timer</span>
-            </label>
-            <label class="check subtle">
-              <input type="checkbox" name="restartTimer" />
-              <span>Restart from now</span>
-            </label>
-          </div>
-
-          <p class="hint" data-when="assets">
-            Image keys come from your application's <strong>Rich Presence → Art Assets</strong>.
-            Plain image URLs are not supported by Discord for bot presences.
-          </p>
-
-          <div class="actions">
-            <button class="btn primary" type="submit" id="apply-btn">Apply presence</button>
-            <button class="btn ghost" type="button" id="clear-btn">Clear presence</button>
-          </div>
-        </form>
+        </div>
       </section>
 
       <aside class="col">
         <div class="card">
-          <div class="card-head"><h2>Bot</h2></div>
-          <dl class="facts">
-            <div><dt>Status</dt><dd id="bot-status">—</dd></div>
-            <div><dt>Account</dt><dd id="bot-tag">—</dd></div>
-            <div><dt>Last presence update</dt><dd id="bot-last">—</dd></div>
-            <div><dt>Uptime</dt><dd id="bot-uptime">—</dd></div>
-          </dl>
-          <div id="bot-error" class="alert" role="alert" hidden></div>
-        </div>
-
-        <div class="card">
-          <div class="card-head"><h2>Application</h2></div>
-          <dl class="facts">
-            <div><dt>Client ID</dt><dd id="app-id">—</dd></div>
-            <div><dt>App version</dt><dd id="app-version">—</dd></div>
-          </dl>
-          <label class="field">
-            <span>Bot invite link</span>
-            <div class="copy-row">
-              <input id="invite-url" type="text" readonly value="{{INVITE_URL}}" />
-              <button class="btn ghost small" type="button" id="copy-invite">Copy</button>
-            </div>
-          </label>
+          <div class="card-head"><h2>Where it shows</h2></div>
+          <ul class="notes numbered">
+            <li><strong>Bot card</strong> — name, type and status text, 24/7 on this server.</li>
+            <li><strong>Your profile</strong> — full rich presence with photos, buttons and timer while the companion runs.</li>
+          </ul>
           <p class="hint">
-            The invite requests the <code>bot</code> scope with no permissions. You only need the
-            bot in a server if you want it visible to others.
+            Discord restricts user-account rich presence to software running on the user's own
+            computer, which is why the companion exists.
           </p>
         </div>
 
+        <div class="card" id="setup-card" hidden>
+          <div class="card-head"><h2>Guided setup</h2></div>
+          <p class="hint">Re-run the wizard to change the key, bot token and first presence.</p>
+          <button class="btn ghost" type="button" id="rerun-setup">Open setup wizard</button>
+        </div>
+
         <div class="card">
-          <div class="card-head"><h2>Good to know</h2></div>
+          <div class="card-head"><h2>Tips</h2></div>
           <ul class="notes">
-            <li>
-              Discord restricts user-account rich presence (<code>rpc</code>) and presence buttons
-              to approved partners, so this dashboard drives the <strong>bot's</strong> presence
-              only.
-            </li>
-            <li>
-              Presence updates are rate limited by Discord; rapid saves are coalesced
-              automatically.
-            </li>
-            <li>
-              Changes are stored in <code>data/config.json</code> and restored on restart.
-            </li>
+            <li>Images are square-cropped automatically; 512×512 looks best.</li>
+            <li>The elapsed timer keeps counting between edits unless you tick “Restart from now”.</li>
+            <li>Presence updates are throttled to respect Discord's rate limits.</li>
           </ul>
         </div>
       </aside>

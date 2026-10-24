@@ -255,6 +255,40 @@ class DiscordBot extends EventEmitter {
     });
   }
 
+  /**
+   * Swap credentials at runtime (used by the setup wizard and settings page).
+   * @param {{token: string, enabled?: boolean}} credentials
+   */
+  async reconfigure({ token = this.token, enabled = this.enabled } = {}) {
+    const nextToken = String(token || "").trim();
+    const nextEnabled = Boolean(enabled && nextToken);
+    if (nextToken === this.token && nextEnabled === this.enabled) return this.getState();
+
+    await this.stop();
+    this.token = nextToken;
+    this.enabled = nextEnabled;
+    this.stopping = false;
+    this.connecting = false;
+    this.retryDelay = RETRY_BASE_MS;
+    this.note = nextEnabled
+      ? null
+      : nextToken
+        ? "Bot disabled with BOT_ENABLED=false - the dashboard still works."
+        : "No bot token configured - the dashboard works, but the bot is offline.";
+
+    this._setState({
+      enabled: nextEnabled,
+      status: nextEnabled ? "idle" : "disabled",
+      connected: false,
+      tag: nextEnabled ? null : this.state.tag,
+      error: null,
+      note: this.note
+    });
+
+    if (nextEnabled) await this._connect();
+    return this.getState();
+  }
+
   async stop() {
     this.stopping = true;
     clearTimeout(this.retryTimer);

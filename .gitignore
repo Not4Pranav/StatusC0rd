@@ -3,7 +3,10 @@ node_modules/
 .env.*
 !.env.example
 
-# Runtime state
+# Runtime state - contains the bot token, client secret and key hash
+data/settings.json
+data/setup-token.txt
+data/assets/
 data/users.json
 data/*.tmp
 data/*.corrupt-*
