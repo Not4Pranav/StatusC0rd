@@ -306,15 +306,28 @@ test("launchers are generated per pairing and stay private", async (t) => {
   ).json();
 
   assert.match(pair.launchers.windows, /\/companion\/start\.bat\?pair=/);
-  assert.match(pair.launchers.mac, /\/companion\/start\.command\?pair=/);
+  assert.match(pair.launchers.mac, /\/companion\/start-mac\.zip\?pair=/);
 
-  const mac = await ctx.request(`/companion/start.command?pair=${pair.token}`);
-  assert.equal(mac.status, 200);
-  assert.match(mac.headers.get("content-disposition"), /StatusC0rd\.command/);
-  const macBody = await mac.text();
-  assert.match(macBody, /^#!\/bin\/bash/);
-  assert.ok(macBody.includes(pair.token), "launcher embeds the pairing token");
-  assert.match(macBody, /command -v node/, "explains the Node.js requirement");
+  // macOS gets a zip so the execute bit survives the download (double-clickable).
+  const macZip = await ctx.request(`/companion/start-mac.zip?pair=${pair.token}`);
+  assert.equal(macZip.status, 200);
+  assert.equal(macZip.headers.get("content-type"), "application/zip");
+  assert.match(macZip.headers.get("content-disposition"), /StatusC0rd-mac\.zip/);
+  const zip = Buffer.from(await macZip.arrayBuffer());
+  assert.equal(zip.readUInt32LE(0), 0x04034b50, "local file header");
+  const nameLength = zip.readUInt16LE(26);
+  const name = zip.subarray(30, 30 + nameLength).toString("utf8");
+  assert.equal(name, "StatusC0rd.command");
+  // External attributes live in the *central directory* entry.
+  const centralOffset = zip.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]));
+  assert.ok(centralOffset > 0, "central directory entry found");
+  const mode = (zip.readUInt32LE(centralOffset + 38) >>> 16) & 0o777;
+  assert.equal(mode, 0o755, "launcher is stored executable");
+  const dataLength = zip.readUInt32LE(18);
+  const content = zip.subarray(30 + nameLength, 30 + nameLength + dataLength).toString("utf8");
+  assert.match(content, /^#!\/bin\/bash/);
+  assert.ok(content.includes(pair.token), "launcher embeds the pairing token");
+  assert.match(content, /command -v node/, "explains the Node.js requirement");
 
   const win = await ctx.request(`/companion/start.bat?pair=${pair.token}`);
   const winBody = await win.text();

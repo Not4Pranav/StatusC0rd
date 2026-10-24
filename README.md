@@ -96,10 +96,18 @@ Consequences worth knowing:
 
 Dashboard → **My profile** → *Pair this computer*.
 
-**No terminal needed:** download the launcher for your OS and double-click it
-(`StatusC0rd.command` on macOS, `StatusC0rd.bat` on Windows, a `.sh` elsewhere).
-Each launcher is generated for that one paired device and simply fetches and runs
-the companion, keeping a window open with live status.
+**No terminal needed:** download the launcher for your OS and double-click it.
+
+- **macOS** — `StatusC0rd-mac.zip`; unzip (Safari does it automatically) and
+  double-click `StatusC0rd.command`. It is shipped as a zip on purpose: macOS
+  strips the execute bit from plain downloads, while Archive Utility restores the
+  `0755` mode stored in the archive.
+- **Windows** — `StatusC0rd.bat`, double-click.
+- **Linux** — `statusc0rd.sh`; `chmod +x` once, then run (or use the `curl | node`
+  line below).
+
+Each launcher is generated for that one paired device, checks for Node.js, and
+downloads/runs the companion in a window with live status.
 
 Prefer a terminal:
 

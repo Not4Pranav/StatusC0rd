@@ -18,6 +18,7 @@ const {
   publicUser
 } = require("./src/auth");
 const oauth = require("./src/oauth");
+const { createZip } = require("./src/zip");
 
 
 /** Personalized double-click launchers for people who never open a terminal. */
@@ -800,7 +801,7 @@ function createApp({
       command,
       scriptUrl: `${origin}/companion.js?pair=${token}`,
       launchers: {
-        mac: `${origin}/companion/start.command?pair=${token}`,
+        mac: `${origin}/companion/start-mac.zip?pair=${token}`,
         linux: `${origin}/companion/start.sh?pair=${token}`,
         windows: `${origin}/companion/start.bat?pair=${token}`
       }
@@ -838,6 +839,27 @@ function createApp({
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Disposition", `inline; filename="statusc0rd-companion.js"`);
     res.type("text/plain").send(prelude + source);
+  });
+
+  /**
+   * macOS download: a zip so Archive Utility restores the 0755 mode. A bare
+   * `.command` download loses its execute bit and cannot be double-clicked.
+   */
+  app.get("/companion/start-mac.zip", companionLimiter.middleware(), (req, res) => {
+    const pairing = settings.findPairingByToken(String(req.query.pair || ""));
+    if (!pairing) {
+      return res
+        .status(404)
+        .type("text")
+        .send("This pairing link is invalid or was revoked. Create a new one in the StatusC0rd dashboard.");
+    }
+    const origin = settings.effective().publicUrl || originOf(req);
+    const script = launcherScript({ platform: "mac", server: origin, token: String(req.query.pair), label: pairing.label });
+    const zip = createZip([{ name: "StatusC0rd.command", data: script, mode: 0o755 }]);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", 'attachment; filename="StatusC0rd-mac.zip"');
+    res.setHeader("Cache-Control", "no-store");
+    res.send(zip);
   });
 
   /** Double-click launchers (.command / .sh / .bat) built per pairing. */
