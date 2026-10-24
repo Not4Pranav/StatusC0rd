@@ -1,11 +1,11 @@
-msjservices:
+services:
   - type: web
     name: statusc0rd
     runtime: node
     plan: free
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /login
+    healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
         value: "18"

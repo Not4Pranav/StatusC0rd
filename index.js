@@ -86,6 +86,7 @@ function requireAuth(req, res, next) {
   return res.redirect("/login");
 }
 
+app.get("/health", (req, res) => res.sendStatus(200));
 app.get("/login", (req, res) => res.sendFile(path.join(__dirname, "views", "login.html")));
 app.post("/login", (req, res) => {
   if (req.body.key === process.env.DASHBOARD_KEY) {
