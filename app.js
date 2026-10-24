@@ -19,6 +19,58 @@ const {
 } = require("./src/auth");
 const oauth = require("./src/oauth");
 
+
+/** Personalized double-click launchers for people who never open a terminal. */
+function launcherScript({ platform, server, token, label }) {
+  const scriptUrl = `${server}/companion.js?pair=${token}`;
+  const safeLabel = String(label || "this computer").replace(/["&<>|^]/g, "");
+  if (platform === "windows") {
+    return [
+      "@echo off",
+      `title StatusC0rd companion - ${safeLabel}`,
+      "setlocal",
+      "where node >nul 2>nul",
+      "if errorlevel 1 (",
+      "  echo Node.js is required. Install the LTS version from https://nodejs.org and run this file again.",
+      "  pause",
+      "  exit /b 1",
+      ")",
+      "set \"TARGET=%TEMP%\\statusc0rd-companion.js\"",
+      `powershell -NoProfile -Command "iwr -UseBasicParsing '${scriptUrl}' -OutFile '%TARGET%'"`,
+      "if errorlevel 1 (",
+      "  echo Could not download the companion. Check your connection and that the dashboard URL is reachable.",
+      "  pause",
+      "  exit /b 1",
+      ")",
+      "node \"%TARGET%\"",
+      "echo.",
+      "echo The companion stopped. Closing in 10 seconds...",
+      "timeout /t 10 >nul",
+      "endlocal",
+      ""
+    ].join("\r\n");
+  }
+  return [
+    "#!/bin/bash",
+    `# StatusC0rd companion launcher for ${safeLabel}`,
+    `# Keep this file private - it contains this computer's pairing token.`,
+    'if ! command -v node >/dev/null 2>&1; then',
+    '  echo "Node.js is required. Install the LTS version from https://nodejs.org"',
+    '  echo "then run this file again."',
+    '  read -r -p "Press Enter to close..." _',
+    "  exit 1",
+    "fi",
+    'TARGET="${TMPDIR:-/tmp}/statusc0rd-companion.js"',
+    `if ! curl -fsSL "${scriptUrl}" -o "$TARGET"; then`,
+    '  echo "Could not download the companion. Check your connection and the dashboard URL."',
+    '  read -r -p "Press Enter to close..." _',
+    "  exit 1",
+    "fi",
+    'exec node "$TARGET"',
+    ""
+  ].join("\n");
+}
+
 const VIEWS_DIR = path.join(__dirname, "views");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const AGENT_PATH = path.join(__dirname, "src", "companion", "agent.js");
@@ -741,7 +793,18 @@ function createApp({
     const origin = settings.effective().publicUrl || originOf(req);
     const command = `curl -fsSL "${origin}/companion.js?pair=${token}" | node`;
     broadcastState();
-    res.json({ ok: true, pairing, token, command, scriptUrl: `${origin}/companion.js?pair=${token}` });
+    res.json({
+      ok: true,
+      pairing,
+      token,
+      command,
+      scriptUrl: `${origin}/companion.js?pair=${token}`,
+      launchers: {
+        mac: `${origin}/companion/start.command?pair=${token}`,
+        linux: `${origin}/companion/start.sh?pair=${token}`,
+        windows: `${origin}/companion/start.bat?pair=${token}`
+      }
+    });
   });
 
   app.delete("/api/companion/pairings/:id", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
@@ -775,6 +838,25 @@ function createApp({
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Disposition", `inline; filename="statusc0rd-companion.js"`);
     res.type("text/plain").send(prelude + source);
+  });
+
+  /** Double-click launchers (.command / .sh / .bat) built per pairing. */
+  app.get("/companion/start.:ext", companionLimiter.middleware(), (req, res) => {
+    const pairing = settings.findPairingByToken(String(req.query.pair || ""));
+    if (!pairing) {
+      return res
+        .status(404)
+        .type("text")
+        .send("This pairing link is invalid or was revoked. Create a new one in the StatusC0rd dashboard.");
+    }
+    const platform = req.params.ext === "bat" ? "windows" : req.params.ext === "command" ? "mac" : "linux";
+    const origin = settings.effective().publicUrl || originOf(req);
+    const body = launcherScript({ platform, server: origin, token: String(req.query.pair), label: pairing.label });
+    const filename = platform === "windows" ? "StatusC0rd.bat" : platform === "mac" ? "StatusC0rd.command" : "statusc0rd.sh";
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-store");
+    res.send(body);
   });
 
   app.get("/api/companion/config", companionLimiter.middleware(), (req, res) => {

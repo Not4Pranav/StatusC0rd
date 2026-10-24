@@ -342,26 +342,47 @@ async function requestJson(url, { token, method = "GET", body, etag } = {}) {
  * @param {{server: string, token: string, appId: string, label?: string,
  *          fetchImpl?: Function, logImpl?: Function}} config
  */
-async function run(config = {}) {
+/**
+ * Start syncing the dashboard presence into the local Discord client.
+ *
+ * Returns a handle as soon as the first presence has been applied, which makes
+ * the whole loop testable and embeddable (`run()` below keeps the CLI alive).
+ *
+ * @param {{server: string, token: string, appId: string, label?: string}} config
+ * @param {{pollIntervalMs?: number, heartbeatIntervalMs?: number, cli?: boolean,
+ *          env?: object, platform?: string, logger?: {log: Function, warn: Function}}} [options]
+ */
+async function start(config = {}, options = {}) {
   const server = String(config.server || "").replace(/\/+$/, "");
   const token = String(config.token || "");
   const appId = String(config.appId || "");
+  const logger = options.logger || { log, warn };
+  const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
+  const heartbeatIntervalMs = options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS;
+  const say = (...args) => logger.log(...args);
+  const sayWarn = (...args) => logger.warn(...args);
+
   if (!server || !token) {
-    console.error("Missing configuration. Pair this computer from the StatusC0rd dashboard and run the command it shows.");
-    process.exitCode = 1;
-    return;
+    throw new Error(
+      "Missing configuration. Pair this computer from the StatusC0rd dashboard and run the command it shows."
+    );
   }
 
-  log(`StatusC0rd companion starting (${config.label || os.hostname()})`);
-  log(`Server: ${server}`);
+  say(`StatusC0rd companion starting (${config.label || os.hostname()})`);
+  say(`Server: ${server}`);
 
-  const ipc = new DiscordIpc({ appId });
+  const ipc = new DiscordIpc({ appId, env: options.env, platform: options.platform });
   let lastActivityJson = "";
   let etag = null;
   let stopping = false;
   let reconnectDelay = RECONNECT_MIN_MS;
+  let reconnectTimer = null;
   let discordError = null;
   let configError = null;
+  let unmatchedPairing = false;
+  let currentActivity = null;
+  let pollTimer = null;
+  let heartbeatTimer = null;
 
   // --- config polling ------------------------------------------------------
   async function fetchConfig({ force = false } = {}) {
@@ -376,13 +397,13 @@ async function run(config = {}) {
       return result.data;
     } catch (error) {
       if (error.status === 401 || error.status === 403) {
-        warn(error.message);
+        sayWarn(error.message);
+        unmatchedPairing = true;
         stopping = true;
-        process.exitCode = 0;
         return null;
       }
       if (configError !== error.message) {
-        warn(`Cannot reach the dashboard: ${error.message}`);
+        sayWarn(`Cannot reach the dashboard: ${error.message}`);
         configError = error.message;
       }
       return null;
@@ -390,40 +411,52 @@ async function run(config = {}) {
   }
 
   // --- discord connection --------------------------------------------------
+  function scheduleReconnect() {
+    if (stopping || reconnectTimer) return;
+    const delay = reconnectDelay;
+    reconnectDelay = Math.min(RECONNECT_MAX_MS, reconnectDelay * 2);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (!stopping) void connectDiscord();
+    }, delay);
+    reconnectTimer.unref?.();
+    return delay;
+  }
+
   async function connectDiscord() {
     try {
       await ipc.connect();
       reconnectDelay = RECONNECT_MIN_MS;
       discordError = null;
-      log("Connected to Discord.");
-      lastActivityJson = ""; // force a re-send
+      say("Connected to Discord.");
+      lastActivityJson = ""; // force a re-send after a reconnect
+      if (currentActivity) ipc.setActivity(currentActivity);
       await reportStatus();
+      return true;
     } catch (error) {
       discordError = error.message;
+      const delay = scheduleReconnect();
       if (error.code === "ENOENT" || /Could not connect/i.test(error.message)) {
-        warn(`Discord is not running (${error.message}). Retrying in ${Math.round(reconnectDelay / 1000)}s…`);
+        sayWarn(`Discord is not running (${error.message}). Retrying in ${Math.round(delay / 1000)}s…`);
       } else {
-        warn(`Discord connection failed: ${error.message}`);
+        sayWarn(`Discord connection failed: ${error.message}`);
       }
-      setTimeout(() => {
-        if (!stopping) void connectDiscord();
-      }, reconnectDelay);
-      reconnectDelay = Math.min(RECONNECT_MAX_MS, reconnectDelay * 2);
+      return false;
     }
   }
 
   ipc.onClose = () => {
-    warn("Discord closed the connection (did it quit?). Reconnecting…");
+    if (stopping) return;
+    sayWarn("Discord closed the connection (did it quit?). Reconnecting…");
     lastActivityJson = "";
+    currentActivity = null;
     discordError = "disconnected";
-    setTimeout(() => {
-      if (!stopping) void connectDiscord();
-    }, reconnectDelay);
+    scheduleReconnect();
   };
 
   ipc.onError = (error) => {
     if (error && error.message && error.message !== discordError) {
-      warn(`Discord: ${error.message}`);
+      sayWarn(`Discord: ${error.message}`);
       discordError = error.message;
     }
   };
@@ -439,6 +472,7 @@ async function run(config = {}) {
           platform: process.platform,
           hostname: os.hostname(),
           error: discordError || configError || null,
+          activity: currentActivity ? currentActivity.name : null,
           ...extra
         }
       });
@@ -447,76 +481,131 @@ async function run(config = {}) {
     }
   }
 
-  // --- main loop -----------------------------------------------------------
-  let currentActivity = null;
-
+  // --- applying ------------------------------------------------------------
   async function applyFromServer(configPayload) {
-    if (!configPayload) return;
+    if (!configPayload) return null;
     const target = configPayload.activity || null;
     const activityJson = JSON.stringify(target);
-    if (activityJson === lastActivityJson) return;
+    if (activityJson === lastActivityJson) return target;
     lastActivityJson = activityJson;
     currentActivity = target;
 
-    if (!ipc.ready) return; // applied after (re)connect
+    if (!ipc.ready) return target; // applied after (re)connect
     ipc.setActivity(target);
-    if (target) {
-      log(`Presence updated: ${target.name || "custom status"}`);
-    } else {
-      log("Presence cleared.");
-    }
-    await reportStatus({ activity: target ? target.name : null });
+    say(target ? `Presence updated: ${target.name || "custom status"}` : "Presence cleared.");
+    await reportStatus();
+    return target;
   }
 
-  await connectDiscord();
+  async function refresh() {
+    const payload = await fetchConfig();
+    if (payload) await applyFromServer(payload);
+    return currentActivity;
+  }
+
+  const connected = await connectDiscord();
   await applyFromServer(await fetchConfig({ force: true }));
 
-  const pollTimer = setInterval(() => {
-    void (async () => {
-      if (stopping) return;
-      const payload = await fetchConfig();
-      if (payload) await applyFromServer(payload);
-      if (ipc.ready && currentActivity) {
-        // Re-assert occasionally: Discord drops activity when a game launches.
-        const activityJson = JSON.stringify(currentActivity);
-        if (activityJson !== lastActivityJson) {
-          await applyFromServer({ activity: currentActivity });
+  if (!stopping) {
+    pollTimer = setInterval(() => {
+      if (!stopping) void refresh();
+    }, pollIntervalMs);
+    pollTimer.unref?.();
+
+    heartbeatTimer = setInterval(() => {
+      if (!stopping) void reportStatus();
+    }, heartbeatIntervalMs);
+    heartbeatTimer.unref?.();
+
+    void reportStatus();
+  }
+
+  const handle = {
+    ipc,
+    server,
+    label: config.label || os.hostname(),
+    get connected() {
+      return ipc.ready;
+    },
+    get activity() {
+      return currentActivity;
+    },
+    get unmatchedPairing() {
+      return unmatchedPairing;
+    },
+    get state() {
+      return {
+        connected: ipc.ready,
+        activity: currentActivity,
+        discordError,
+        configError,
+        unmatchedPairing
+      };
+    },
+    refresh,
+    reportStatus,
+    /** Apply an activity locally (used by tests and the CLI). */
+    setActivity(activity) {
+      lastActivityJson = JSON.stringify(activity);
+      currentActivity = activity;
+      if (ipc.ready) ipc.setActivity(activity);
+      return activity;
+    },
+    async stop({ clear = true } = {}) {
+      if (stopping && !pollTimer && !heartbeatTimer) return;
+      stopping = true;
+      clearInterval(pollTimer);
+      clearInterval(heartbeatTimer);
+      pollTimer = null;
+      heartbeatTimer = null;
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+      if (clear) {
+        try {
+          ipc.setActivity(null);
+        } catch {
+          /* ignore */
         }
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
-    })();
-  }, POLL_INTERVAL_MS);
-  pollTimer.unref?.();
-
-  const heartbeatTimer = setInterval(() => {
-    if (!stopping) void reportStatus();
-  }, HEARTBEAT_INTERVAL_MS);
-  heartbeatTimer.unref?.();
-  void reportStatus();
-
-  // --- shutdown ------------------------------------------------------------
-  const shutdown = (signal) => {
-    if (stopping) return;
-    stopping = true;
-    clearInterval(pollTimer);
-    clearInterval(heartbeatTimer);
-    log(`${signal} received - clearing presence and exiting.`);
-    try {
-      ipc.setActivity(null);
-    } catch {
-      /* ignore */
-    }
-    setTimeout(() => {
       ipc.close();
-      process.exit(0);
-    }, 150);
+    }
   };
 
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  say(connected ? "Syncing this profile with the dashboard." : "Waiting for Discord to start.");
+
+  return handle;
+}
+
+/** CLI entry point: start syncing and stay alive until interrupted. */
+async function run(config = {}) {
+  const handle = await start(config, { cli: true });
+  say_log_banner(handle);
+
+  let shuttingDown = false;
+  const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[${new Date().toLocaleTimeString()}] ${signal} received - clearing presence and exiting.`);
+    await handle.stop();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("unhandledRejection", (reason) => warn("Unhandled rejection:", reason?.message || reason));
 
   // Keep the process alive even though the timers are unref'd.
   await new Promise(() => {});
+  return handle;
+}
+
+function say_log_banner(handle) {
+  log(
+    `Ready. This window must stay open; activity for "${handle.label}" syncs every ${Math.round(
+      POLL_INTERVAL_MS / 1000
+    )}s. Press Ctrl+C to stop.`
+  );
 }
 
 /** Print what the companion would send, without touching Discord. */
@@ -537,6 +626,7 @@ const exported = {
   ipcDirectories,
   DiscordIpc,
   requestJson,
+  start,
   run,
   dryRun
 };

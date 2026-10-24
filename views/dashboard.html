@@ -270,19 +270,42 @@
               <button class="btn primary" type="button" id="pair-btn">Pair this computer</button>
             </div>
 
-            <div id="pair-result" hidden>
-              <label class="field">
-                <span>Run this</span>
-                <div class="copy-row">
-                  <input id="pair-command" type="text" readonly />
-                  <button class="btn ghost small" type="button" id="copy-command">Copy</button>
-                </div>
-              </label>
+            <div id="pair-result" class="pair-result" hidden>
+              <h3 class="pair-title">This computer is paired</h3>
+              <div class="launcher-row">
+                <a class="btn primary" id="pair-mac" href="#" download>
+                  <span class="launcher-icon" aria-hidden="true">􀆔</span> Download for macOS
+                </a>
+                <a class="btn primary" id="pair-win" href="#" download>
+                  <span class="launcher-icon" aria-hidden="true">⊞</span> Download for Windows
+                </a>
+                <a class="btn ghost" id="pair-linux" href="#" download>Linux (.sh)</a>
+              </div>
               <p class="hint">
-                Windows (PowerShell): <code>curl.exe -fsSL "…" | node</code> ·
-                macOS/Linux: <code>curl -fsSL "…" | node</code>.
-                Prefer a file? <a id="pair-download" href="#" download>Download the script</a>.
-                <strong>Keep the link private — it contains this device's pairing token.</strong>
+                Double-click the downloaded file and leave the window open — that is the whole
+                install. It runs a tiny Node script (needs
+                <a href="https://nodejs.org" target="_blank" rel="noreferrer">Node.js 18+</a>) and
+                needs the Discord <strong>desktop</strong> app running.
+              </p>
+
+              <details class="advanced">
+                <summary>Or run one line in a terminal</summary>
+                <label class="field">
+                  <span>Command</span>
+                  <div class="copy-row">
+                    <input id="pair-command" type="text" readonly />
+                    <button class="btn ghost small" type="button" id="copy-command">Copy</button>
+                  </div>
+                </label>
+                <p class="hint">
+                  Windows PowerShell: <code>curl.exe -fsSL "…" | node</code> ·
+                  macOS/Linux: <code>curl -fsSL "…" | node</code>
+                </p>
+              </details>
+
+              <p class="hint">
+                These files contain this device's pairing token — keep them private, and use
+                <strong>Remove</strong> below if one leaks.
               </p>
             </div>
 

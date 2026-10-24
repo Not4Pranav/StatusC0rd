@@ -3,7 +3,7 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-78%20passing-3ddc97)
+![status: tested](https://img.shields.io/badge/tests-81%20passing-3ddc97)
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
@@ -94,14 +94,24 @@ Consequences worth knowing:
 
 ## Put it on your own profile (companion)
 
-Dashboard → **My profile** → *Pair this computer* → run the command it gives you:
+Dashboard → **My profile** → *Pair this computer*.
+
+**No terminal needed:** download the launcher for your OS and double-click it
+(`StatusC0rd.command` on macOS, `StatusC0rd.bat` on Windows, a `.sh` elsewhere).
+Each launcher is generated for that one paired device and simply fetches and runs
+the companion, keeping a window open with live status.
+
+Prefer a terminal:
 
 ```sh
 curl -fsSL "https://your-host/companion.js?pair=<token>" | node      # macOS / Linux
 curl.exe -fsSL "https://your-host/companion.js?pair=<token>" | node  # Windows PowerShell
 ```
 
-That is the whole install. The script:
+The launchers are personalized: anyone holding one can push presence to that
+pairing, so treat the file like a password and **Remove** the device if it leaks.
+
+The script:
 
 - finds your local Discord client (`discord-ipc-0…9`, including Flatpak/Snap
   paths on Linux and named pipes on Windows),
@@ -266,8 +276,16 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ```sh
 npm run dev    # node --watch
 npm run check  # parse every source file
-npm test       # 78 unit + HTTP integration tests (node:test only)
+npm test       # 81 tests (node:test only)
 ```
+
+`test/companion-e2e.test.js` is the proof for the headline flow: it boots a real
+dashboard, uploads a real PNG, sets text + photo + two buttons, pairs a device,
+then runs the **actual companion** against a temporary UNIX socket that emulates
+the Discord client. It asserts the exact `SET_ACTIVITY` frame Discord receives
+(photo URL, hover text, both buttons, `metadata.button_urls`, timer), that a
+dashboard edit arrives without reloading, and that clearing/stopping removes the
+presence.
 
 ```
 index.js               boot, banner, graceful shutdown

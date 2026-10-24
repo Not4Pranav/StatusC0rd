@@ -639,7 +639,11 @@
       const result = await api("/api/companion/pairings", "POST", { label });
       $("#pair-result").hidden = false;
       $("#pair-command").value = result.command;
-      $("#pair-download").href = result.scriptUrl;
+      if (result.launchers) {
+        $("#pair-mac").href = result.launchers.mac;
+        $("#pair-win").href = result.launchers.windows;
+        $("#pair-linux").href = result.launchers.linux;
+      }
       state.pairings = [...(state.pairings || []), result.pairing];
       renderPairings(state.pairings);
       renderProfilePill(state.pairings);
