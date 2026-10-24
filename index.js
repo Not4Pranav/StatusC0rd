@@ -10,6 +10,12 @@ const { exchangeCode, fetchMe } = require("./rpc/discordApi");
 
 const CONFIG_PATH = path.join(__dirname, "data", "config.json");
 const PORT = process.env.PORT || 3000;
+const REQUIRED_ENV = ["CLIENT_ID", "DISCORD_TOKEN", "CLIENT_SECRET", "SESSION_SECRET", "DASHBOARD_KEY", "REDIRECT_URI"];
+const missingEnv = REQUIRED_ENV.filter(key => !process.env[key]?.trim());
+
+if (missingEnv.length) {
+  throw new Error(`Missing required environment variables: ${missingEnv.join(", ")}`);
+}
 
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")); } catch { return {}; }
@@ -75,7 +81,7 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-  secret: process.env.SESSION_SECRET || "dev-secret",
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: { httpOnly: true, sameSite: "lax", maxAge: 1000 * 60 * 60 * 8 }
