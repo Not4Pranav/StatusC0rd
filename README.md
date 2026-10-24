@@ -3,7 +3,7 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-83%20passing-3ddc97)
+![status: tested](https://img.shields.io/badge/tests-91%20passing-3ddc97)
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
@@ -51,12 +51,15 @@ Open <http://localhost:3000>. On first run you land on the **setup wizard**:
 1. **Account** — create the dashboard key (there is a “generate a strong key”
    button). Optionally add an OAuth2 client secret + allowed Discord user IDs to
    enable “Continue with Discord”.
-2. **Bot** — paste the bot token from
-   [Developer Portal](https://discord.com/developers/applications) → your app →
-   Bot → Reset Token. “Test connection” verifies it before saving. You can skip
-   this and run the dashboard without a bot.
+2. **Bot** — the **Application (client) ID** (Developer Portal → General
+   Information) plus the bot token (Developer Portal → Bot → Reset Token).
+   “Test connection” verifies the token before saving. The ID is required: it is
+   what Discord attributes your activity to, and the companion cannot connect
+   without it. You can still skip the bot and run dashboard-only.
 3. **Presence** — name, type, two lines of text, and **upload photos** (square
-   cropped automatically). “Finish setup” saves everything and signs you in.
+   cropped automatically), plus the **public URL** Discord should fetch those
+   photos from (pre-filled with the address you are using). “Finish setup” saves
+   everything and signs you in.
 
 Requirements: Node.js 20+ (22 LTS recommended), and for photos a **public HTTPS
 URL** (see below).
@@ -133,7 +136,7 @@ The script:
 
 Notes:
 
-- Needs Node.js 18+ on that machine. No packages, no build step, no Discord
+- Needs Node.js 20+ on that machine. No packages, no build step, no Discord
   password, no token — it only talks to your own Discord client.
 - Pairing tokens are stored **hashed**; revoke a device any time in
   **My profile → Paired devices**.
@@ -213,9 +216,9 @@ hosts. A completely unconfigured instance still boots and serves the wizard.
 | Variable | Purpose |
 | --- | --- |
 | `PORT` | HTTP port (default `3000`) |
-| `NODE_ENV` | `production` enables secure cookies + strict framing |
+| `NODE_ENV` | `production` tightens framing rules (`frame-ancestors 'self'`) |
 | `DATA_DIR` | Where `settings.json`, `assets/` and the setup token live (default `./data`) |
-| `CLIENT_ID` | Discord application ID (defaults to the VanC0rd app) |
+| `CLIENT_ID` | Discord application ID (unset by default; the wizard stores it) |
 | `DISCORD_TOKEN` | Bot token; overrides the stored one |
 | `BOT_ENABLED` | `false` runs the dashboard without a gateway connection |
 | `SESSION_SECRET` | Cookie signing key (auto-generated when unset) |
@@ -226,6 +229,7 @@ hosts. A completely unconfigured instance still boots and serves the wizard.
 | `PUBLIC_URL` | Public HTTPS origin used for photo URLs and keep-alive |
 | `KEEP_ALIVE` / `KEEP_ALIVE_INTERVAL_MINUTES` | Force keep-alive on/off and interval |
 | `REDIRECT_URI` | Override the OAuth callback (defaults to `<PUBLIC_URL>/auth/discord/callback`) |
+| `TRUST_PROXY` | Which hops may set `X-Forwarded-*` (`false`, a hop count, or a proxy list; defaults to loopback + private ranges) |
 
 Secrets are stored in `data/settings.json` with mode `0600`, never in the
 browser, and the dashboard key is only kept as a scrypt hash.
@@ -292,7 +296,7 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ```sh
 npm run dev    # node --watch
 npm run check  # parse every source file
-npm test       # 83 tests (node:test only)
+npm test       # 91 tests (node:test only)
 ```
 
 `test/companion-e2e.test.js` is the proof for the headline flow: it boots a real

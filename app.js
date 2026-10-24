@@ -80,7 +80,7 @@ const MAC_ZIP_README = [
   "   that window keeps your profile updated while it runs.",
   "3. If macOS blocks the first launch, right-click the file and choose Open.",
   "",
-  "Node.js 18 or newer is required (https://nodejs.org).",
+  "Node.js 20 or newer is required (https://nodejs.org).",
   "",
   "Keep this folder private: StatusC0rd.command contains a pairing token for",
   "this computer. If it leaks, remove the device in the StatusC0rd dashboard and",
@@ -174,6 +174,10 @@ function createApp({
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "same-origin");
+    if (isProduction && req.secure) {
+      // Only meaningful (and only harmless) on a real HTTPS deployment.
+      res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+    }
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     res.setHeader(
@@ -207,6 +211,8 @@ function createApp({
     })
   );
 
+  app.get("/favicon.ico", (req, res) => res.redirect(302, "/favicon.svg"));
+
   // Uploaded artwork is intentionally public: Discord's image proxy fetches it.
   app.get("/assets/:file", (req, res) => {
     const match = /^([a-f0-9]{6,32})\.(png|jpg|jpeg|webp|gif)$/.exec(req.params.file);
@@ -238,6 +244,13 @@ function createApp({
       overwrite: true
     })
   );
+
+  // Mark the session cookie Secure as soon as the request arrived over HTTPS,
+  // while keeping plain http://localhost (the default install) working.
+  app.use((req, res, next) => {
+    if (req.session && req.secure) req.sessionOptions.secure = true;
+    next();
+  });
 
   app.use((req, res, next) => {
     if (req.path.startsWith("/api/") || req.path === "/login" || req.path === "/setup" || req.path === "/") {
@@ -451,7 +464,11 @@ function createApp({
     const adminKey = String(body.adminKey || "");
     const discord = body.discord && typeof body.discord === "object" ? body.discord : {};
 
-    const patch = { publicUrl: String(body.publicUrl || originOf(req)).replace(/\/+$/, "") };
+    const publicUrl = String(body.publicUrl || originOf(req)).trim().replace(/\/+$/, "");
+    if (publicUrl && !/^https?:\/\/[^\s]+$/i.test(publicUrl)) {
+      return res.status(400).json({ ok: false, error: "The public URL must start with https:// or http://." });
+    }
+    const patch = { publicUrl };
     if (!settings.data.admin.keyHash && !settings.keyFromEnv) {
       if (adminKey.length < MIN_KEY_LENGTH) {
         return res.status(400).json({
@@ -646,7 +663,17 @@ function createApp({
 
   app.get("/api/presence", requireAuthApi, (req, res) => {
     const presence = settings.get().presence || DEFAULT_CONFIG;
-    res.json({ ok: true, presence, activity: buildActivity(presence, { target: "companion" }) });
+    const origin = publicOrigin(req);
+    const resolveAsset = (id) => {
+      const asset = settings.findAsset(id);
+      return asset ? assets.url(asset, origin) : "";
+    };
+    res.json({
+      ok: true,
+      presence,
+      activity: buildActivity(presence, { target: "companion", publicUrl: origin, resolveAsset }),
+      botActivity: buildActivity(presence, { target: "bot", publicUrl: origin, resolveAsset })
+    });
   });
 
   app.post("/api/presence", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
@@ -870,7 +897,6 @@ function createApp({
       .readFileSync(AGENT_PATH, "utf8")
       .replace(/^#!.*\n/, "")
       .replace(/^"use strict";\n\n?/, "");
-    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Disposition", `inline; filename="statusc0rd-companion.js"`);
     res.type("text/plain").send(prelude + source);

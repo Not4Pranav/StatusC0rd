@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   sessionSecret: "",
   admin: { keyHash: "", keySalt: "", updatedAt: null },
   discord: {
-    clientId: "1554342719923560518",
+    clientId: "",
     clientSecret: "",
     allowedIds: [],
     botToken: "",
@@ -256,17 +256,6 @@ class SettingsStore {
     this.data.setupComplete = true;
     this._write();
     this._forgetSetupToken();
-  }
-
-  /**
-   * Re-open setup (used by "run the wizard again" in settings). The caller must
-   * already be an authenticated admin.
-   */
-  reopenSetup() {
-    this.data.setupComplete = false;
-    this._write();
-    this._ensureSetupToken();
-    return this.setupToken;
   }
 
   // ---------------------------------------------------------------- runtime

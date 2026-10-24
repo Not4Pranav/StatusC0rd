@@ -114,14 +114,14 @@ const csrfFrom = (html) => {
 
 /**
  * Boot the app against a temporary data directory.
- * @param {{env?: object, completeSetup?: boolean, publicUrl?: string}} [options]
+ * @param {{env?: object, completeSetup?: boolean, publicUrl?: string, isProduction?: boolean}} [options]
  */
-async function startApp({ env = {}, completeSetup = true, publicUrl = PUBLIC_URL } = {}) {
+async function startApp({ env = {}, completeSetup = true, publicUrl = PUBLIC_URL, isProduction = false } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "statusc0rd-test-"));
   const settings = new SettingsStore(path.join(dataDir, "settings.json"), { env, logger: silent });
   const assets = new AssetStore(path.join(dataDir, "assets"), settings);
   const bot = new FakeBot();
-  const app = createApp({ settings, assets, bot, logger: silent, version: "2.1.0" });
+  const app = createApp({ settings, assets, bot, logger: silent, version: "2.1.0", isProduction });
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 

@@ -113,7 +113,11 @@
   // ------------------------------------------------------------------- tabs
 
   function showTab(name) {
-    for (const tab of $$(".tab")) tab.classList.toggle("is-active", tab.dataset.tab === name);
+    for (const tab of $$(".tab")) {
+      const active = tab.dataset.tab === name;
+      tab.classList.toggle("is-active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    }
     for (const pane of $$(".pane")) pane.classList.toggle("is-active", pane.dataset.pane === name);
     if (location.hash.slice(1) !== name) history.replaceState(null, "", `#${name}`);
   }
@@ -346,8 +350,22 @@
         try {
           await api(`/api/assets/${asset.id}`, "DELETE");
           state.assets = state.assets.filter((item) => item.id !== asset.id);
+          // If this image was staged in the editor, drop the dangling reference.
+          const ref = `asset:${asset.id}`;
+          let cleared = false;
+          for (const key of ["largeImage", "smallImage"]) {
+            if (draft[key] === ref) {
+              draft[key] = "";
+              cleared = true;
+            }
+          }
           renderAssets(state.assets);
-          toast("Image deleted");
+          if (cleared) {
+            syncSlotImages();
+            renderPreview(readForm());
+            setDirty(true);
+          }
+          toast(cleared ? "Image deleted — pick another one and apply" : "Image deleted");
         } catch (error) {
           toast(error.message, true);
         }
@@ -437,9 +455,14 @@
 
     if (settings) {
       const form = $("#keepalive-form");
-      form.elements.publicUrl.value = settings.publicUrl || "";
-      form.elements.enabled.checked = Boolean(settings.keepAlive?.enabled);
-      form.elements.intervalMinutes.value = settings.keepAlive?.intervalMinutes || 10;
+      // Never overwrite a field the user is in the middle of typing into: state
+      // updates (SSE, 20s poll) must not fight with the keyboard.
+      const editing = form.contains(document.activeElement);
+      if (!editing) {
+        form.elements.publicUrl.value = settings.publicUrl || "";
+        form.elements.enabled.checked = Boolean(settings.keepAlive?.enabled);
+        form.elements.intervalMinutes.value = settings.keepAlive?.intervalMinutes || 10;
+      }
       form.elements.publicUrl.disabled = Boolean(settings.managed?.publicUrl);
     }
 
@@ -447,8 +470,14 @@
     warning.hidden = Boolean(meta?.publicUrlIsHttps);
   }
 
+  function renderAppIdWarning(meta) {
+    const box = $("#appid-warning");
+    if (box) box.hidden = Boolean(meta?.clientId);
+  }
+
   function applyState(next, { fill = true } = {}) {
     state = next;
+    renderAppIdWarning(next.meta);
     renderBot(next.bot);
     renderProfilePill(next.pairings);
     renderAssets(next.assets || []);
@@ -588,7 +617,18 @@
 
   for (const slot of $$(".upload-slot")) {
     const input = slot.querySelector("input[type=file]");
-    slot.addEventListener("click", () => input.click());
+    const open = () => input.click();
+    slot.addEventListener("click", (event) => {
+      // The synthetic click on the hidden input bubbles back up here; ignoring it
+      // stops the file picker from being requested twice.
+      if (event.target === input) return;
+      open();
+    });
+    slot.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      open();
+    });
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
       if (!file) return;
@@ -729,10 +769,6 @@
     } catch (error) {
       toast(error.message, true);
     }
-  });
-
-  $("#rerun-setup")?.addEventListener("click", () => {
-    location.href = "/setup";
   });
 
   // ------------------------------------------------------------------- boot

@@ -14,7 +14,8 @@ const {
   ipcCandidates,
   ipcDirectories,
   DiscordIpc,
-  OPCODES
+  OPCODES,
+  start
 } = require("../src/companion/agent");
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,7 +88,8 @@ test("looks for the socket in the usual places", () => {
 
   const windows = ipcCandidates({}, "win32");
   assert.equal(windows[0], "\\\\?\\pipe\\discord-ipc-0");
-  assert.equal(windows.length, 10);
+  assert.equal(windows[1], "\\\\.\\pipe\\discord-ipc-0", "fallback spelling of the named pipe");
+  assert.equal(windows.length, 20);
 });
 
 test("handshakes over a real unix socket and sends SET_ACTIVITY", async (t) => {
@@ -168,4 +170,15 @@ test("fails with a helpful error when Discord is not running", async () => {
   const ipc = new DiscordIpc({ appId: "1", env: { XDG_RUNTIME_DIR: dir }, platform: "linux" });
   await assert.rejects(ipc.connect(), /Discord desktop app running/);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("a pairing without an application id fails with an actionable message", async () => {
+  await assert.rejects(
+    () =>
+      start(
+        { server: "https://status.example.com", token: "token", appId: "", label: "no app id" },
+        { env: {}, platform: "linux", logger: { log() {}, warn() {} } }
+      ),
+    /Settings.*Application \(client\) ID|application ID/i
+  );
 });

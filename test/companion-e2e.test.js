@@ -340,3 +340,51 @@ test("launchers are generated per pairing and stay private", async (t) => {
 
   assert.equal((await ctx.request("/companion/start.sh?pair=nope")).status, 404);
 });
+
+test("the companion puts the presence back after the Discord client restarts", async (t) => {
+  const ctx = await startApp({ publicUrl: "http://127.0.0.1:1" });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "statusc0rd-restart-"));
+  let discord = await new FakeDiscord(dir).listen();
+  t.after(async () => {
+    await discord.close();
+    await ctx.close();
+  });
+
+  ctx.settings.update({ publicUrl: ctx.base });
+  const { pair } = await setupDashboard(ctx);
+
+  const handle = await start(
+    { server: ctx.base, token: pair.token, appId: "1554342719923560518", label: "Restart laptop" },
+    {
+      env: { XDG_RUNTIME_DIR: dir },
+      platform: "linux",
+      pollIntervalMs: 80,
+      heartbeatIntervalMs: 200,
+      logger: { log() {}, warn() {} }
+    }
+  );
+  t.after(() => handle.stop());
+
+  const first = await waitFor(() => discord.lastActivity, { label: "the first SET_ACTIVITY" });
+  assert.equal(first.name, "Building StatusC0rd");
+
+  // The user quits Discord and opens it again: same socket path, new process.
+  await discord.close();
+  fs.mkdirSync(dir, { recursive: true });
+  discord = await new FakeDiscord(dir).listen();
+
+  const replayed = await waitFor(
+    () => {
+      const activity = discord.lastActivity;
+      return activity && activity.name === "Building StatusC0rd" ? activity : null;
+    },
+    { timeout: 8_000, label: "the presence to come back after the restart" }
+  );
+
+  // Nothing was edited in the dashboard - the companion remembered the payload
+  // and re-sent it, photos and buttons included.
+  assert.equal(replayed.details, "Shipping photo-rich presence");
+  assert.deepEqual(replayed.buttons, ["GitHub", "Website"]);
+  assert.match(replayed.assets.large_image, /\/assets\/[a-f0-9]+\.png$/);
+  assert.equal(handle.connected, true);
+});

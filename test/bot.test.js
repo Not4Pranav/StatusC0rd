@@ -140,3 +140,69 @@ test("dashboard-only mode never connects", async () => {
   assert.equal(created, 0);
   await bot.stop();
 });
+
+test("a gateway blip re-applies the presence once the shard resumes", async (t) => {
+  const client = new FakeClient();
+  const bot = new DiscordBot({
+    token: "token",
+    enabled: true,
+    logger: silent,
+    clientFactory: () => client,
+    presenceIntervalMs: 5
+  });
+  t.after(() => bot.stop());
+
+  await bot.start();
+  await wait(10);
+  bot.setPresence({ enabled: true, name: "Always on", type: 0, status: "online" });
+  await wait(25);
+  const sentBefore = client.presences.length;
+  assert.ok(sentBefore >= 1);
+
+  // Discord drops the websocket, then resumes it: the bot must go back online
+  // and push the current activity again without the dashboard doing anything.
+  client.emit("shardDisconnect");
+  assert.equal(bot.getState().connected, false);
+  assert.equal(bot.getState().status, "reconnecting");
+
+  client.emit("shardResume");
+  await wait(25);
+
+  assert.equal(bot.getState().connected, true);
+  assert.equal(bot.getState().status, "online");
+  assert.ok(client.presences.length > sentBefore, "presence re-sent after resume");
+  assert.equal(client.presences.at(-1).activities[0].name, "Always on");
+});
+
+test("a client replaced by a token swap cannot overwrite the live state", async (t) => {
+  const clients = [];
+  const bot = new DiscordBot({
+    token: "first-token",
+    enabled: true,
+    logger: silent,
+    clientFactory: () => {
+      const client = new FakeClient();
+      clients.push(client);
+      return client;
+    },
+    presenceIntervalMs: 5
+  });
+  t.after(() => bot.stop());
+
+  await bot.start();
+  await wait(10);
+  assert.equal(clients.length, 1);
+
+  await bot.reconfigure({ token: "second-token" });
+  await wait(10);
+  assert.equal(clients.length, 2, "a new client was created for the new token");
+  assert.equal(bot.getState().status, "online");
+
+  // The discarded client still emits an error; it must not mark the bot failed.
+  clients[0].emit("shardError", new Error("old client blew up"));
+  clients[0].emit("shardDisconnect");
+  await wait(10);
+  assert.equal(bot.getState().status, "online");
+  assert.equal(bot.getState().error, null);
+  assert.equal(bot.getState().connected, true);
+});

@@ -64,7 +64,7 @@ Browser ──HTTPS──▶ your host (this repo, Node 20+)
   it speaks Discord's IPC protocol directly (no extra dependencies).
 - `data/` holds `settings.json` (mode `0600`), `assets/`, `setup-token.txt`.
   `DATA_DIR` moves it. That directory **is** the deployment's state.
-- `npm test` = 83 tests, including `test/companion-e2e.test.js`, which drives a
+- `npm test` = 91 tests, including `test/companion-e2e.test.js`, which drives a
   real dashboard (upload → pair) and runs the real companion against a fake
   Discord socket, asserting the exact `SET_ACTIVITY` frame.
 - `npm run check` = syntax/parse check across every source file.

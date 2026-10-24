@@ -162,7 +162,19 @@
 
   $("#bot-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    state.clientId = $("#client-id").value.trim().replace(/[^0-9]/g, "") || state.clientId;
+    const field = $("#client-id");
+    const typed = field.value.trim().replace(/[^0-9]/g, "");
+    if (!field.disabled) {
+      if (!typed) {
+        return alertBox(
+          "Paste the Application (client) ID as well - Discord uses it to attribute the activity and to accept the companion. Developer Portal -> General Information."
+        );
+      }
+      if (!/^\d{5,25}$/.test(typed)) {
+        return alertBox("That application ID does not look right - it is a long number, not a name.");
+      }
+    }
+    state.clientId = typed || state.clientId;
     state.botToken = $("#bot-token").value.trim();
     alertBox("");
     showStep(3);
@@ -235,6 +247,12 @@
     if (!state.adminKey) return alertBox("Go back and set a dashboard key.");
     if (!name) return alertBox("Give the activity a name.");
 
+    const publicUrl = ($("#public-url")?.value || "").trim() || location.origin;
+    if (!/^https?:\/\/[^\s]+$/i.test(publicUrl)) {
+      // Validate before touching the button, otherwise a typo would leave it stuck.
+      return alertBox("The public URL must start with https:// (or http:// for local testing).");
+    }
+
     button.disabled = true;
     button.textContent = "Saving…";
     alertBox("");
@@ -242,7 +260,7 @@
       const payload = {
         setupToken: state.setupToken,
         adminKey: state.adminKey,
-        publicUrl: location.origin,
+        publicUrl,
         keepAlive: $("#keep-alive").checked,
         keepAliveIntervalMinutes: 10,
         discord: {
@@ -280,6 +298,7 @@
   // -------------------------------------------------------------------- init
 
   renderPreview();
+  if ($("#public-url")) $("#public-url").value = location.origin;
   if (!needsToken) $("#admin-key").focus();
   else $("#setup-token").focus();
 })();

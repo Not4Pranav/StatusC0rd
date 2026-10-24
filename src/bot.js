@@ -149,19 +149,30 @@ class DiscordBot extends EventEmitter {
 
     const client = this.clientFactory();
     this.client = client;
+    // A token swap destroys the old client but its event listeners can still
+    // fire afterwards; ignore anything that does not belong to the live client.
+    const isCurrent = () => this.client === client;
     this._setState({ status: this.state.connected ? "reconnecting" : "connecting", error: null });
 
-    client.once("clientReady", () => this._onReady());
-    client.on("error", (error) => this._onClientError(error));
-    client.on("shardError", (error) => this._onClientError(error));
+    client.once("clientReady", () => {
+      if (isCurrent()) this._onReady();
+    });
+    client.on("error", (error) => {
+      if (isCurrent()) this._onClientError(error);
+    });
+    client.on("shardError", (error) => {
+      if (isCurrent()) this._onClientError(error);
+    });
     client.on("shardDisconnect", () => {
-      this._setState({ connected: false, status: "reconnecting" });
+      if (isCurrent()) this._setState({ connected: false, status: "reconnecting" });
     });
     client.on("shardResume", () => {
+      if (!isCurrent()) return;
       this._setState({ connected: true, status: "online", error: null });
       this._applyDesired();
     });
     client.on("invalidated", () => {
+      if (!isCurrent()) return;
       this._setState({ connected: false, status: "error", error: "Discord invalidated the session." });
       this._scheduleRetry();
     });
@@ -169,8 +180,10 @@ class DiscordBot extends EventEmitter {
     try {
       await client.login(this.token);
     } catch (error) {
-      this._onClientError(error);
-      this._scheduleRetry();
+      if (isCurrent()) {
+        this._onClientError(error);
+        this._scheduleRetry();
+      }
     } finally {
       this.connecting = false;
     }

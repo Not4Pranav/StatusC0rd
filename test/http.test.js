@@ -517,3 +517,77 @@ test("login lockout cannot be dodged with a forged X-Forwarded-For", async (t) =
   assert.equal(forged.status, 303);
   assert.match(forged.headers.get("location"), /error=locked/, "one shared bucket per socket, not per spoofed header");
 });
+
+test("the wizard rejects a public URL that is not a URL", async (t) => {
+  const ctx = await startApp({ completeSetup: false });
+  t.after(() => ctx.close());
+
+  const res = await ctx.request("/api/setup/complete", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-setup-token": ctx.setupToken },
+    body: JSON.stringify({ adminKey: "a-long-dashboard-key", publicUrl: "status.example.com" })
+  });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /must start with https/);
+  assert.equal((await ctx.request("/health")).status, 200);
+  assert.equal((await (await ctx.request("/health")).json()).setup, "required", "setup stays open");
+});
+
+test("uploaded photos resolve to public URLs in every presence payload", async (t) => {
+  const ctx = await startApp();
+  t.after(() => ctx.close());
+  const csrf = await ctx.signIn();
+
+  const upload = await ctx.request("/api/assets", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-csrf-token": csrf },
+    body: JSON.stringify({ dataUrl: PNG_DATA_URL, name: "avatar.png" })
+  });
+  const asset = (await upload.json()).asset;
+
+  const saved = await ctx.request("/api/presence", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-csrf-token": csrf },
+    body: JSON.stringify({ name: "Photo test", largeImage: `asset:${asset.id}`, type: 0 })
+  });
+  assert.equal(saved.status, 200);
+
+  const read = await (await ctx.request("/api/presence")).json();
+  const expected = `${PUBLIC_URL}/assets/${asset.id}.png`;
+  assert.equal(read.activity.assets.large_image, expected, "GET /api/presence resolves the upload");
+  assert.equal(read.botActivity.assets.large_image, expected);
+
+  const state = await (await ctx.request("/api/state")).json();
+  assert.equal(state.activity.assets.large_image, expected);
+});
+
+test("favicon requests are redirected to the svg", async (t) => {
+  const ctx = await startApp();
+  t.after(() => ctx.close());
+
+  const res = await ctx.request("/favicon.ico");
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get("location"), "/favicon.svg");
+});
+
+test("HTTPS gets a secure session cookie and HSTS, plain http still works", async (t) => {
+  const ctx = await startApp({ isProduction: true });
+  t.after(() => ctx.close());
+
+  const page = await (await ctx.request("/login")).text();
+  const secureLogin = await ctx.request("/login", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "x-forwarded-proto": "https"
+    },
+    body: new URLSearchParams({ key: ADMIN_KEY, _csrf: csrfFrom(page) })
+  });
+  const setCookie = (secureLogin.headers.getSetCookie?.() || []).join("\n");
+  assert.match(setCookie, /statusc0rd\.sid=/, "session cookie issued");
+  assert.match(setCookie, /secure/i, "cookie is marked Secure behind HTTPS");
+  assert.match(secureLogin.headers.get("strict-transport-security") || "", /max-age=/, "HSTS sent");
+
+  const plain = await ctx.request("/login");
+  assert.equal(plain.headers.get("strict-transport-security"), null, "no HSTS on plain http");
+});

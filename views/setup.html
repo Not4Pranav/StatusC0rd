@@ -105,7 +105,11 @@
         <form id="bot-form" class="stack">
           <label class="field">
             <span>Application (client) ID</span>
-            <input id="client-id" type="text" inputmode="numeric" autocomplete="off" value="{{CLIENT_ID}}" />
+            <input id="client-id" type="text" inputmode="numeric" autocomplete="off" value="{{CLIENT_ID}}" placeholder="e.g. 123456789012345678" />
+            <small>
+              Developer Portal → General Information → Application ID. Required: Discord attributes
+              the activity (and the companion connection) to this application.
+            </small>
           </label>
           <label class="field">
             <span>Bot token</span>
@@ -182,6 +186,15 @@
             <label class="check" style="margin-top: 16px">
               <input type="checkbox" id="keep-alive" checked />
               <span>Keep this server awake so the bot stays online 24/7</span>
+            </label>
+
+            <label class="field" style="margin-top: 16px">
+              <span>Public URL of this dashboard</span>
+              <input id="public-url" type="url" placeholder="https://status.example.com" />
+              <small>
+                Discord downloads your images from this address, so it must be reachable over the
+                internet. Keep the address you are using now if it is already public.
+              </small>
             </label>
           </div>
 

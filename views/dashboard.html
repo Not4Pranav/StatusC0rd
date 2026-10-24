@@ -38,17 +38,17 @@
     </header>
 
     <nav class="tabs" role="tablist">
-      <button role="tab" class="tab is-active" data-tab="presence">Presence</button>
-      <button role="tab" class="tab" data-tab="photos">Photos</button>
-      <button role="tab" class="tab" data-tab="profile">My profile</button>
-      <button role="tab" class="tab" data-tab="bot">Bot &amp; 24/7</button>
-      <button role="tab" class="tab" data-tab="settings">Settings</button>
+      <button role="tab" class="tab is-active" data-tab="presence" aria-controls="pane-presence" aria-selected="true">Presence</button>
+      <button role="tab" class="tab" data-tab="photos" aria-controls="pane-photos" aria-selected="false">Photos</button>
+      <button role="tab" class="tab" data-tab="profile" aria-controls="pane-profile" aria-selected="false">My profile</button>
+      <button role="tab" class="tab" data-tab="bot" aria-controls="pane-bot" aria-selected="false">Bot &amp; 24/7</button>
+      <button role="tab" class="tab" data-tab="settings" aria-controls="pane-settings" aria-selected="false">Settings</button>
     </nav>
 
     <main class="layout">
       <section class="col">
         <!-- ============================================= presence ========== -->
-        <div class="pane is-active" data-pane="presence">
+        <div class="pane is-active" data-pane="presence" id="pane-presence" role="tabpanel">
           <div class="card">
             <div class="card-head">
               <h2>Live preview</h2>
@@ -193,7 +193,7 @@
         </div>
 
         <!-- =============================================== photos ========== -->
-        <div class="pane" data-pane="photos">
+        <div class="pane" data-pane="photos" id="pane-photos" role="tabpanel">
           <div class="card">
             <div class="card-head"><h2>Presence photos</h2></div>
             <p class="hint">
@@ -208,7 +208,7 @@
             <div class="row photo-row">
               <div class="field">
                 <span>Large image</span>
-                <div class="upload-slot" id="slot-large" data-size="large">
+                <div class="upload-slot" id="slot-large" data-size="large" role="button" tabindex="0" aria-label="Upload large image">
                   <img alt="" hidden />
                   <span>Choose image</span>
                   <input type="file" accept="image/*" hidden />
@@ -217,7 +217,7 @@
               </div>
               <div class="field">
                 <span>Small image</span>
-                <div class="upload-slot" id="slot-small" data-size="small">
+                <div class="upload-slot" id="slot-small" data-size="small" role="button" tabindex="0" aria-label="Upload small image">
                   <img alt="" hidden />
                   <span>Choose image</span>
                   <input type="file" accept="image/*" hidden />
@@ -248,7 +248,7 @@
         </div>
 
         <!-- =============================================== profile ========= -->
-        <div class="pane" data-pane="profile">
+        <div class="pane" data-pane="profile" id="pane-profile" role="tabpanel">
           <div class="card">
             <div class="card-head">
               <h2>Put this presence on your own Discord profile</h2>
@@ -259,9 +259,15 @@
               it then follows whatever you set in this dashboard.
             </p>
 
+            <div class="alert is-warn" id="appid-warning" hidden>
+              No Discord application ID is configured, so the companion cannot connect yet.
+              Add it under <a href="#" data-goto="settings">Settings → Application &amp; bot</a>
+              (Developer Portal → General Information → Application ID).
+            </div>
+
             <ol class="notes numbered">
               <li>Click <strong>Pair this computer</strong>.</li>
-              <li>Copy the command and run it in a terminal (Node.js 18+).</li>
+              <li>Copy the command and run it in a terminal (Node.js 20+).</li>
               <li>Keep it running — it reconnects automatically if Discord restarts.</li>
             </ol>
 
@@ -284,8 +290,8 @@
               <p class="hint">
                 Double-click the downloaded file and leave the window open — that is the whole
                 install. macOS: unzip the download (Safari does it for you) and open
-                <code>StatusC0rd.command</code>. Needs
-                <a href="https://nodejs.org" target="_blank" rel="noreferrer">Node.js 18+</a> and the
+                <code>StatusC0rd.command</code>; on Linux run <code>chmod +x statusc0rd.sh</code> once. Needs
+                <a href="https://nodejs.org" target="_blank" rel="noreferrer">Node.js 20+</a> and the
                 Discord <strong>desktop</strong> app running.
               </p>
 
@@ -317,7 +323,7 @@
         </div>
 
         <!-- =============================================== bot ============= -->
-        <div class="pane" data-pane="bot">
+        <div class="pane" data-pane="bot" id="pane-bot" role="tabpanel">
           <div class="card">
             <div class="card-head"><h2>Bot status</h2></div>
             <dl class="facts">
@@ -369,7 +375,7 @@
         </div>
 
         <!-- =============================================== settings ======== -->
-        <div class="pane" data-pane="settings">
+        <div class="pane" data-pane="settings" id="pane-settings" role="tabpanel">
           <div class="card">
             <div class="card-head"><h2>Application &amp; bot</h2></div>
             <form id="app-form" class="stack">
@@ -430,12 +436,6 @@
             Discord restricts user-account rich presence to software running on the user's own
             computer, which is why the companion exists.
           </p>
-        </div>
-
-        <div class="card" id="setup-card" hidden>
-          <div class="card-head"><h2>Guided setup</h2></div>
-          <p class="hint">Re-run the wizard to change the key, bot token and first presence.</p>
-          <button class="btn ghost" type="button" id="rerun-setup">Open setup wizard</button>
         </div>
 
         <div class="card">

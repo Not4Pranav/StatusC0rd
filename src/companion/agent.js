@@ -14,7 +14,7 @@
  * socket - nothing is written to your Discord account and no token is used.
  *
  * Setup: open the StatusC0rd dashboard -> "My profile" -> pair this computer,
- * then run the command it shows. Requires Node.js 18 or newer.
+ * then run the command it shows. Requires Node.js 20 or newer.
  */
 
 const net = require("node:net");
@@ -58,7 +58,10 @@ function ipcCandidates(env = process.env, platform = process.platform) {
   const candidates = [];
   for (let i = 0; i < 10; i += 1) {
     if (platform === "win32") {
+      // Discord documents the NT namespace form; `\\.\pipe\...` works on every
+      // Node version, so try both rather than depending on one spelling.
       candidates.push(`\\\\?\\pipe\\discord-ipc-${i}`);
+      candidates.push(`\\\\.\\pipe\\discord-ipc-${i}`);
       continue;
     }
     for (const dir of ipcDirectories(env)) candidates.push(path.join(dir, `discord-ipc-${i}`));
@@ -367,6 +370,12 @@ async function start(config = {}, options = {}) {
       "Missing configuration. Pair this computer from the StatusC0rd dashboard and run the command it shows."
     );
   }
+  if (!appId) {
+    throw new Error(
+      "This pairing has no Discord application ID yet. Open the StatusC0rd dashboard -> Settings, " +
+        "paste the Application (client) ID from the Developer Portal, then run this launcher again."
+    );
+  }
 
   say(`StatusC0rd companion starting (${config.label || os.hostname()})`);
   say(`Server: ${server}`);
@@ -429,8 +438,13 @@ async function start(config = {}, options = {}) {
       reconnectDelay = RECONNECT_MIN_MS;
       discordError = null;
       say("Connected to Discord.");
-      lastActivityJson = ""; // force a re-send after a reconnect
+      // Force both sides to re-send: the socket lost everything, and the
+      // dashboard may have changed while we were disconnected.
+      lastActivityJson = "";
+      etag = null;
       if (currentActivity) ipc.setActivity(currentActivity);
+      const payload = await fetchConfig({ force: true });
+      if (payload) await applyFromServer(payload);
       await reportStatus();
       return true;
     } catch (error) {
@@ -448,8 +462,8 @@ async function start(config = {}, options = {}) {
   ipc.onClose = () => {
     if (stopping) return;
     sayWarn("Discord closed the connection (did it quit?). Reconnecting…");
+    // Keep currentActivity: it is re-sent as soon as Discord comes back.
     lastActivityJson = "";
-    currentActivity = null;
     discordError = "disconnected";
     scheduleReconnect();
   };
@@ -504,7 +518,9 @@ async function start(config = {}, options = {}) {
   }
 
   const connected = await connectDiscord();
-  await applyFromServer(await fetchConfig({ force: true }));
+  // When Discord is not running yet we still need the config so the presence is
+  // ready the moment it starts.
+  if (!connected) await applyFromServer(await fetchConfig({ force: true }));
 
   if (!stopping) {
     pollTimer = setInterval(() => {
@@ -594,6 +610,20 @@ async function run(config = {}) {
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("unhandledRejection", (reason) => warn("Unhandled rejection:", reason?.message || reason));
+
+  // The dashboard can revoke this device while we are running; polling notices it
+  // within a few seconds, so close the window instead of idling forever.
+  const revokedWatch = setInterval(() => {
+    if (!handle.unmatchedPairing || shuttingDown) return;
+    clearInterval(revokedWatch);
+    shuttingDown = true;
+    warn("This computer was unpaired in the dashboard. Pair it again to keep syncing.");
+    void handle
+      .stop({ clear: false })
+      .catch(() => {})
+      .then(() => process.exit(2));
+  }, 1_000);
+  revokedWatch.unref?.();
 
   // Keep the process alive even though the timers are unref'd.
   await new Promise(() => {});
