@@ -480,3 +480,40 @@ test("logout clears the session", async (t) => {
   assert.equal(res.status, 303);
   assert.equal((await ctx.request("/api/state")).status, 401);
 });
+
+test("login lockout cannot be dodged with a forged X-Forwarded-For", async (t) => {
+  const previous = process.env.TRUST_PROXY;
+  process.env.TRUST_PROXY = "false";
+  const ctx = await startApp();
+  t.after(() => {
+    if (previous === undefined) delete process.env.TRUST_PROXY;
+    else process.env.TRUST_PROXY = previous;
+    return ctx.close();
+  });
+
+  // A successful sign-in clears the failure counter for this client, so start clean.
+  await ctx.signIn();
+  const page = await (await ctx.request("/")).text();
+  const csrf = csrfFrom(page);
+  const attempt = (ip) =>
+    ctx.request("/login", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-forwarded-for": ip
+      },
+      body: new URLSearchParams({ key: "definitely-wrong", _csrf: csrf })
+    });
+
+  // Four failures stay under the limit (the fifth trips it); each one arrives
+  // with a different forged header.
+  for (let i = 0; i < 4; i += 1) {
+    const res = await attempt(`203.0.113.${i}`);
+    assert.equal(res.status, 303);
+    assert.match(res.headers.get("location"), /error=invalid/);
+  }
+
+  const forged = await attempt("203.0.113.200");
+  assert.equal(forged.status, 303);
+  assert.match(forged.headers.get("location"), /error=locked/, "one shared bucket per socket, not per spoofed header");
+});

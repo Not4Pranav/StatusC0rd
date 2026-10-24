@@ -3,7 +3,7 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-81%20passing-3ddc97)
+![status: tested](https://img.shields.io/badge/tests-82%20passing-3ddc97)
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
@@ -284,7 +284,7 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ```sh
 npm run dev    # node --watch
 npm run check  # parse every source file
-npm test       # 81 tests (node:test only)
+npm test       # 82 tests (node:test only)
 ```
 
 `test/companion-e2e.test.js` is the proof for the headline flow: it boots a real

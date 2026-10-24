@@ -323,6 +323,9 @@ test("launchers are generated per pairing and stay private", async (t) => {
   assert.ok(centralOffset > 0, "central directory entry found");
   const mode = (zip.readUInt32LE(centralOffset + 38) >>> 16) & 0o777;
   assert.equal(mode, 0o755, "launcher is stored executable");
+  assert.ok(zip.includes(Buffer.from("READ ME FIRST.txt")), "zip ships a short readme");
+  assert.ok(zip.includes(Buffer.from("Double-click")), "readme explains the double-click flow");
+
   const dataLength = zip.readUInt32LE(18);
   const content = zip.subarray(30 + nameLength, 30 + nameLength + dataLength).toString("utf8");
   assert.match(content, /^#!\/bin\/bash/);

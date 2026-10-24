@@ -72,6 +72,24 @@ function launcherScript({ platform, server, token, label }) {
   ].join("\n");
 }
 
+const MAC_ZIP_README = [
+  "StatusC0rd companion for macOS",
+  "",
+  "1. Unzip this archive if it did not unzip itself (double-click it).",
+  '2. Double-click "StatusC0rd.command". A Terminal window opens and stays open;',
+  "   that window keeps your profile updated while it runs.",
+  "3. If macOS blocks the first launch, right-click the file and choose Open.",
+  "",
+  "Node.js 18 or newer is required (https://nodejs.org).",
+  "",
+  "Keep this folder private: StatusC0rd.command contains a pairing token for",
+  "this computer. If it leaks, remove the device in the StatusC0rd dashboard and",
+  "download a new launcher.",
+  "",
+  "Prefer a terminal? curl -fsSL \"<your dashboard>/companion.js?pair=<token>\" | node",
+  ""
+].join("\r\n");
+
 const VIEWS_DIR = path.join(__dirname, "views");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const AGENT_PATH = path.join(__dirname, "src", "companion", "agent.js");
@@ -91,6 +109,23 @@ function isLoopback(req) {
 }
 
 /** Absolute origin of the current request, used for asset URLs. */
+/**
+ * Proxy handling. Trusting every hop (Express' `true`) lets any direct client
+ * forge `X-Forwarded-For` to dodge the login rate limiter and `X-Forwarded-Proto`
+ * to downgrade the URLs we hand to Discord. Instead we trust only private and
+ * loopback hops, which is what Render/Fly/nginx-on-localhost look like.
+ *
+ * Override with TRUST_PROXY: `false`, a hop count (`1`), or a proxy-addr list.
+ */
+function trustProxySetting() {
+  const raw = (process.env.TRUST_PROXY || "").trim();
+  if (!raw) return "loopback, linklocal, uniquelocal";
+  if (/^(false|no|off|0)$/i.test(raw)) return false;
+  if (/^(true|yes|on)$/i.test(raw)) return "loopback, linklocal, uniquelocal";
+  if (/^\d+$/.test(raw)) return Number(raw);
+  return raw;
+}
+
 function originOf(req) {
   return `${req.protocol}://${req.get("host")}`;
 }
@@ -132,7 +167,7 @@ function createApp({
   const streams = new Set();
 
   app.disable("x-powered-by");
-  app.set("trust proxy", true);
+  app.set("trust proxy", trustProxySetting());
 
   // ------------------------------------------------------------ middleware
 
@@ -855,7 +890,10 @@ function createApp({
     }
     const origin = settings.effective().publicUrl || originOf(req);
     const script = launcherScript({ platform: "mac", server: origin, token: String(req.query.pair), label: pairing.label });
-    const zip = createZip([{ name: "StatusC0rd.command", data: script, mode: 0o755 }]);
+    const zip = createZip([
+      { name: "StatusC0rd.command", data: script, mode: 0o755 },
+      { name: "READ ME FIRST.txt", data: MAC_ZIP_README, mode: 0o644 }
+    ]);
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", 'attachment; filename="StatusC0rd-mac.zip"');
     res.setHeader("Cache-Control", "no-store");
