@@ -1,13 +1,16 @@
 {
-  "name": "Customizing my presence...",
+  "enabled": true,
+  "name": "StatusC0rd",
   "type": 0,
-  "state": "",
-  "details": "",
   "status": "online",
+  "details": "",
+  "state": "",
   "url": "",
-  "appId": "",
   "largeImage": "",
+  "largeText": "",
   "smallImage": "",
+  "smallText": "",
   "startedAt": false,
-  "buttons": []
+  "startTimestamp": null,
+  "updatedAt": null
 }

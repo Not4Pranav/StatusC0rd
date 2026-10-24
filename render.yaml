@@ -3,24 +3,32 @@ services:
     name: StatusC0rd
     runtime: node
     plan: free
-    buildCommand: npm install
+    region: oregon
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: "18"
+        value: "22"
+      - key: NODE_ENV
+        value: production
       - key: CLIENT_ID
         value: "1554342719923560518"
       - key: APPLICATION_ID
         value: "1554342719923560518"
       - key: PUBLIC_KEY
         value: "cd1c10dd26d6f42bf638c40bb2d556077df764ebade5f23cf09cbaec4b8d14cc"
+      - key: BOT_ENABLED
+        value: "true"
       - key: DISCORD_TOKEN
         sync: false
       - key: CLIENT_SECRET
         sync: false
-      - key: SESSION_SECRET
+      - key: ALLOWED_DISCORD_IDS
         sync: false
+      - key: SESSION_SECRET
+        generateValue: true
       - key: DASHBOARD_KEY
         sync: false
       - key: REDIRECT_URI

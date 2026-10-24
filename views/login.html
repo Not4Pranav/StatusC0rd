@@ -1,15 +1,61 @@
-<!doctype html><html><head><meta charset="utf-8"><title>StatusC0rd Login</title>
-<style>
-body{font-family:system-ui;background:#1e1f22;color:#dbdee1;display:flex;height:100vh;align-items:center;justify-content:center;margin:0}
-form{background:#2b2d31;padding:32px;border-radius:12px;width:320px;display:flex;flex-direction:column;gap:12px}
-h2{margin:0 0 8px}input,button{padding:10px;border-radius:8px;border:1px solid #1e1f22;font-size:14px}
-button{background:#5865f2;color:#fff;border:none;cursor:pointer;font-weight:600}
-.err{color:#fa777c;font-size:13px}
-</style></head><body>
-<form method="post" action="/login">
-  <h2>StatusC0rd Dashboard</h2>
-  <input name="key" type="password" placeholder="Dashboard key" autofocus>
-  <button type="submit">Sign in</button>
-</form>
-<script>if(location.search.includes('error'))document.querySelector('form').insertAdjacentHTML('beforeend','<div class="err">Wrong key.</div>');</script>
-</body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="csrf-token" content="{{CSRF}}" />
+    <title>Sign in · StatusC0rd</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/login.js" defer></script>
+  </head>
+  <body class="auth" data-key-enabled="{{KEY_ENABLED}}" data-discord-enabled="{{DISCORD_ENABLED}}">
+    <main class="auth-card">
+      <div class="brand brand-lg">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span>StatusC<strong>0</strong>rd</span>
+      </div>
+      <p class="auth-sub">Control your Discord bot's rich presence.</p>
+
+      <div id="alert" class="alert" role="alert" hidden></div>
+
+      <form id="key-form" class="stack" method="post" action="/login">
+        <input type="hidden" name="_csrf" value="{{CSRF}}" />
+        <label class="field">
+          <span>Dashboard key</span>
+          <input
+            id="key"
+            name="key"
+            type="password"
+            autocomplete="current-password"
+            spellcheck="false"
+            required
+          />
+        </label>
+        <button class="btn primary block" type="submit">Sign in</button>
+      </form>
+
+      <div id="divider" class="divider"><span>or</span></div>
+
+      <a id="discord-btn" class="btn discord block" href="/auth/discord">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+          <path
+            fill="currentColor"
+            d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.2.4c1.7.4 2.5 1 2.5 1a12.3 12.3 0 0 0-7.4 0s.8-.6 2.5-1L12.6 3a19.8 19.8 0 0 0-4.9 1.4C4.4 9 3.5 13.4 3.8 17.8A19.7 19.7 0 0 0 9.8 21l.7-1.1c-.8-.3-1.5-.7-2.2-1.1l.5-.4a14.1 14.1 0 0 0 12.4 0l.5.4c-.7.4-1.4.8-2.2 1.1l.7 1.1a19.7 19.7 0 0 0 6-3.2c.4-5.1-.7-9.5-3.5-13.4ZM9.7 15.3c-1 0-1.9-1-1.9-2.2 0-1.2.8-2.2 1.9-2.2s1.9 1 1.9 2.2c0 1.2-.9 2.2-1.9 2.2Zm4.6 0c-1 0-1.9-1-1.9-2.2 0-1.2.8-2.2 1.9-2.2s1.9 1 1.9 2.2c0 1.2-.8 2.2-1.9 2.2Z"
+          />
+        </svg>
+        Continue with Discord
+      </a>
+
+      <p id="discord-help" class="fineprint">
+        Discord sign-in is limited to accounts listed in <code>ALLOWED_DISCORD_IDS</code>.
+      </p>
+      <p id="key-help" class="fineprint" hidden>
+        Key sign-in is disabled. Ask the owner for access or use Discord sign-in.
+      </p>
+
+      <footer class="auth-footer">StatusC0rd v{{VERSION}}</footer>
+    </main>
+  </body>
+</html>

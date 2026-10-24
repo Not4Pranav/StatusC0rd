@@ -2,5 +2,15 @@ node_modules/
 .env
 .env.*
 !.env.example
+
+# Runtime state
 data/users.json
-npm-debug.log
+data/*.tmp
+data/*.corrupt-*
+data/session*
+
+# Logs and OS noise
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+coverage/
