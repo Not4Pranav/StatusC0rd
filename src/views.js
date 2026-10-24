@@ -32,11 +32,22 @@ function createRenderer(viewsDir, { cache = true } = {}) {
     return text;
   }
 
+  /**
+   * `{{TOKEN}}` is HTML-escaped, `{{{TOKEN}}}` is inserted verbatim.
+   *
+   * Only pass already-safe HTML (for example the rendered guide) to the triple
+   * form: everything else in the templates comes from server-side scalars.
+   */
   return function render(name, vars = {}) {
-    return load(name).replace(/\{\{([A-Z0-9_]+)\}\}/g, (match, key) => {
-      if (!(key in vars)) return "";
-      return escapeHtml(vars[key]);
+    const raw = [];
+    let output = load(name).replace(/\{\{\{\s*([A-Z0-9_]+)\s*\}\}\}/g, (match, key) => {
+      const index = raw.push(key in vars ? String(vars[key] ?? "") : "") - 1;
+      return `\u0000raw-${index}\u0000`;
     });
+
+    output = output.replace(/\{\{([A-Z0-9_]+)\}\}/g, (match, key) => (key in vars ? escapeHtml(vars[key]) : ""));
+
+    return output.replace(/\u0000raw-(\d+)\u0000/g, (match, index) => raw[Number(index)]);
   };
 }
 

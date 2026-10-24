@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="StatusC0rd puts text, photos and buttons on your Discord profile and keeps a bot online 24/7. Everything is configured from the browser." />
+    <title>StatusC0rd · Rich presence from your browser</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="site">
+    <header class="site-header">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span>StatusC<strong>0</strong>rd</span>
+        <span class="version">v{{VERSION}}</span>
+      </div>
+      <nav class="site-nav">
+        <a href="/guide">Free setup guide</a>
+        <a href="https://github.com/Not4Pranav/StatusC0rd" target="_blank" rel="noreferrer noopener">GitHub</a>
+      </nav>
+    </header>
+
+    <main class="welcome">
+      <section class="hero">
+        <p class="eyebrow">Discord rich presence, self-hosted</p>
+        <h1>Your Discord presence, <span class="accent-text">set up in the browser</span>.</h1>
+        <p class="lede">
+          Text on a bot card that stays online 24/7. Photos, details and clickable buttons on your
+          own profile. One dashboard drives both, and nobody has to open a config file.
+        </p>
+        <div class="hero-actions">
+          <a class="btn primary lg" href="{{PRIMARY_HREF}}">{{PRIMARY_LABEL}}</a>
+          <a class="btn ghost lg" href="/guide">Free hosting guide</a>
+        </div>
+        <p class="fineprint">
+          Costs nothing to run: one Discord application plus a free host. The guide walks through
+          all three free options, start to finish.
+        </p>
+      </section>
+
+      <section class="feature-grid" aria-label="What it does">
+        <article class="feature">
+          <h2>Photos and buttons on your profile</h2>
+          <p>
+            Upload an image, type your lines, add up to two buttons. The companion on your computer
+            pushes it to your real profile — the only way Discord allows it.
+          </p>
+        </article>
+        <article class="feature">
+          <h2>A bot that never sleeps</h2>
+          <p>
+            The bot lives on your server, reconnects after network blips and keeps itself awake on
+            free hosts, so the presence is there while you are not.
+          </p>
+        </article>
+        <article class="feature">
+          <h2>Everything from the website</h2>
+          <p>
+            First boot serves a three-step wizard: dashboard key, bot token, first presence with a
+            photo. Keys are stored server-side and applied without a restart.
+          </p>
+        </article>
+        <article class="feature">
+          <h2>Edits land in seconds</h2>
+          <p>
+            Change the text, swap the picture, add a button — the dashboard preview matches Discord,
+            and the paired computer picks the change up in about five seconds.
+          </p>
+        </article>
+      </section>
+
+      <section class="how" aria-label="How it works">
+        <h2>How it works</h2>
+        <ol class="steps-flow">
+          <li>
+            <strong>Create a Discord application</strong>
+            <span>Copy the application ID and a bot token. Five minutes, no coding.</span>
+          </li>
+          <li>
+            <strong>Run it on a free host</strong>
+            <span>Render takes ten minutes; an Oracle Always Free VM makes it permanent.</span>
+          </li>
+          <li>
+            <strong>Pair your computer once</strong>
+            <span>Download the launcher, double-click it, keep the window open.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="honest" aria-label="Limits">
+        <h2>What Discord does not allow</h2>
+        <p>
+          Bots can only broadcast a name, an activity type and a line of text — images and buttons
+          are impossible on a bot account. That is why rich presence comes from the companion
+          running on the same machine as your Discord client, and why it is a small local app rather
+          than a cloud service.
+        </p>
+      </section>
+
+      <footer class="site-footer">
+        <span>StatusC0rd v{{VERSION}}</span>
+        <a href="/guide">Setup guide</a>
+        <a href="https://github.com/Not4Pranav/StatusC0rd" target="_blank" rel="noreferrer noopener">Source</a>
+      </footer>
+    </main>
+  </body>
+</html>
