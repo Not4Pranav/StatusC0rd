@@ -18,85 +18,13 @@ const {
   publicUser
 } = require("./src/auth");
 const oauth = require("./src/oauth");
-const { createZip } = require("./src/zip");
-const { loadGuide, guideNav, findDoc } = require("./src/guide");
 const { createActivityService, ActivityError, FRAME_ANCESTORS } = require("./src/activity");
 const { ADMIN_USER_ID } = require("./src/settings");
 const { templateList, applyTemplate } = require("./src/templates");
 
 
-/** Personalized double-click launchers for people who never open a terminal. */
-function launcherScript({ platform, server, token, label }) {
-  const scriptUrl = `${server}/companion.js?pair=${token}`;
-  const safeLabel = String(label || "this computer").replace(/["&<>|^]/g, "");
-  if (platform === "windows") {
-    return [
-      "@echo off",
-      `title StatusC0rd companion - ${safeLabel}`,
-      "setlocal",
-      "where node >nul 2>nul",
-      "if errorlevel 1 (",
-      "  echo Node.js is required. Install the LTS version from https://nodejs.org and run this file again.",
-      "  pause",
-      "  exit /b 1",
-      ")",
-      "set \"TARGET=%TEMP%\\statusc0rd-companion.js\"",
-      `powershell -NoProfile -Command "iwr -UseBasicParsing '${scriptUrl}' -OutFile '%TARGET%'"`,
-      "if errorlevel 1 (",
-      "  echo Could not download the companion. Check your connection and that the dashboard URL is reachable.",
-      "  pause",
-      "  exit /b 1",
-      ")",
-      "node \"%TARGET%\"",
-      "echo.",
-      "echo The companion stopped. Closing in 10 seconds...",
-      "timeout /t 10 >nul",
-      "endlocal",
-      ""
-    ].join("\r\n");
-  }
-  return [
-    "#!/bin/bash",
-    `# StatusC0rd companion launcher for ${safeLabel}`,
-    `# Keep this file private - it contains this computer's pairing token.`,
-    'if ! command -v node >/dev/null 2>&1; then',
-    '  echo "Node.js is required. Install the LTS version from https://nodejs.org"',
-    '  echo "then run this file again."',
-    '  read -r -p "Press Enter to close..." _',
-    "  exit 1",
-    "fi",
-    'TARGET="${TMPDIR:-/tmp}/statusc0rd-companion.js"',
-    `if ! curl -fsSL "${scriptUrl}" -o "$TARGET"; then`,
-    '  echo "Could not download the companion. Check your connection and the dashboard URL."',
-    '  read -r -p "Press Enter to close..." _',
-    "  exit 1",
-    "fi",
-    'exec node "$TARGET"',
-    ""
-  ].join("\n");
-}
-
-const MAC_ZIP_README = [
-  "StatusC0rd companion for macOS",
-  "",
-  "1. Unzip this archive if it did not unzip itself (double-click it).",
-  '2. Double-click "StatusC0rd.command". A Terminal window opens and stays open;',
-  "   that window keeps your profile updated while it runs.",
-  "3. If macOS blocks the first launch, right-click the file and choose Open.",
-  "",
-  "Node.js 20 or newer is required (https://nodejs.org).",
-  "",
-  "Keep this folder private: StatusC0rd.command contains a pairing token for",
-  "this computer. If it leaks, remove the device in the StatusC0rd dashboard and",
-  "download a new launcher.",
-  "",
-  "Prefer a terminal? curl -fsSL \"<your dashboard>/companion.js?pair=<token>\" | node",
-  ""
-].join("\r\n");
-
 const VIEWS_DIR = path.join(__dirname, "views");
 const PUBLIC_DIR = path.join(__dirname, "public");
-const AGENT_PATH = path.join(__dirname, "src", "companion", "agent.js");
 const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const SETUP_GRANT_TTL_MS = 30 * 60 * 1000;
@@ -169,7 +97,6 @@ function createApp({
   const loginLimiter = new LoginLimiter();
   const writeLimiter = new RateLimiter({ windowMs: 60_000, max: 60 });
   const setupLimiter = new RateLimiter({ windowMs: 5 * 60_000, max: 20 });
-  const companionLimiter = new RateLimiter({ windowMs: 60_000, max: 120, now });
   const activityLimiter = new RateLimiter({ windowMs: 60_000, max: 180, now });
   const activityService = createActivityService({ settings, assets, logger, now });
 
@@ -349,17 +276,6 @@ function createApp({
     return req.session?.user?.role === "admin";
   }
 
-  /** Public card details for this person, or null when sharing is off. */
-  function shareInfo(req) {
-    const share = settings.shareFor(ownerId(req));
-    if (!share?.slug) return null;
-    return {
-      slug: share.slug,
-      url: `${publicOrigin(req)}/c/${share.slug}`,
-      createdAt: share.createdAt || null
-    };
-  }
-
   function snapshotFor(req) {
     const userId = ownerId(req);
     const admin = isAdminSession(req);
@@ -372,7 +288,7 @@ function createApp({
     const activitySession = activityService.snapshot();
     return {
       presence,
-      activity: buildActivity(presence, { target: "companion", publicUrl: origin, resolveAsset }),
+      activity: buildActivity(presence, { target: "profile", publicUrl: origin, resolveAsset }),
       // One bot, one card: only the owner's presence can reach it.
       botActivity: admin ? buildActivity(presence, { target: "bot", publicUrl: origin, resolveAsset }) : null,
       bot: bot.getState(),
@@ -381,9 +297,7 @@ function createApp({
         url: assets.url(asset, origin)
       })),
       draft: settings.draftFor(userId),
-      share: shareInfo(req),
       templates: templateList(),
-      pairings: settings.listPairings(userId),
       keepAlive: keepAlive ? keepAlive.getState() : null,
       activitySession: admin || activitySession.userId === userId ? activitySession : { ...activitySession, userId: null },
       meta: {
@@ -556,180 +470,6 @@ function createApp({
       keepAlive: keepAlive ? keepAlive.getState() : null,
       activity: activityService.snapshot()
     });
-  });
-
-  // ------------------------------------------------------------- share card
-  // An opt-in, read-only rendering of the presence for posting elsewhere. The
-  // slug is random and can be rotated or switched off at any time.
-
-  app.post("/api/share", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const presence = settings.presenceFor(ownerId(req));
-    if (!presence?.enabled || !presence.name) {
-      return res.status(400).json({ ok: false, error: "Apply a presence first - there is nothing to share." });
-    }
-
-    const requested = String(req.body?.slug || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
-    const slug = requested || randomToken(5);
-    if (!/^[a-z0-9]{6,32}$/.test(slug)) {
-      return res.status(400).json({ ok: false, error: "A share link needs 6-32 letters and numbers." });
-    }
-
-    const userId = ownerId(req);
-    // A slug is a public address, so it has to be unique across every account.
-    const clash = settings.findShareBySlug(slug);
-    if (clash && clash.userId !== userId) {
-      return res.status(400).json({ ok: false, error: "That link is already taken. Try another." });
-    }
-    const existing = settings.shareFor(userId);
-    settings.setShare(userId, {
-      slug,
-      createdAt: existing?.createdAt && existing.slug === slug ? existing.createdAt : new Date(now()).toISOString()
-    });
-    broadcastState();
-    res.json({ ok: true, share: shareInfo(req) });
-  });
-
-  app.delete("/api/share", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    settings.setShare(ownerId(req), null);
-    broadcastState();
-    res.json({ ok: true, share: null });
-  });
-
-  /**
-   * The public card. No session, no JS: a crawler or a phone camera gets the
-   * whole thing from the HTML, including the Open Graph tags.
-   */
-  app.get("/c/:slug", (req, res) => {
-    const found = settings.findShareBySlug(req.params.slug);
-    if (!found) {
-      return sendErrorPage(res, 404, "Card not found", "This card does not exist or its owner turned sharing off.");
-    }
-    const { userId, share } = found;
-
-    const presence = settings.presenceFor(userId) || DEFAULT_CONFIG;
-    if (!presence.enabled || !presence.name) {
-      return sendErrorPage(res, 404, "Card not found", "This card is not being shared right now.");
-    }
-
-    const origin = publicOrigin(req);
-    const resolveAsset = (id) => {
-      const asset = settings.findAsset(id);
-      return asset ? assets.url(asset, origin) : "";
-    };
-    const activity = buildActivity(presence, { target: "companion", publicUrl: origin, resolveAsset });
-    const large = activity?.assets?.large_image || "";
-    const buttons = (activity?.buttons || [])
-      .map((label, index) => {
-        const url = activity?.metadata?.button_urls?.[index];
-        if (!url) return "";
-        return `<a class="card-btn" href="${escapeHtml(url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(label)}</a>`;
-      })
-      .join("");
-    const lines = [presence.details, presence.state].filter(Boolean).join(" · ");
-    // Social tags are assembled here: an empty og:image would be worse than none.
-    const imageTags = large
-      ? `<meta property="og:image" content="${escapeHtml(large)}" />\n    ` +
-        `<meta property="og:image:alt" content="${escapeHtml(presence.largeText || presence.name)}" />\n    ` +
-        `<meta name="twitter:image" content="${escapeHtml(large)}" />`
-      : "";
-    const artHtml = large
-      ? `<img src="${escapeHtml(large)}" alt="" />`
-      : `<span class="discord-art-fallback" aria-hidden="true">S</span>`;
-
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("X-Robots-Tag", "all");
-    res.type("html").send(
-      render("card.html", {
-        VERSION: version,
-        CARD_NAME: presence.name,
-        CARD_TYPE: String(ACTIVITY_TYPES[Number(presence.type)] || "Playing").toUpperCase(),
-        CARD_DETAILS: presence.details || "",
-        CARD_STATE: presence.state || "",
-        CARD_DESCRIPTION: lines || "A custom Discord rich presence, built in the browser.",
-        CARD_URL: `${origin}/c/${share.slug}`,
-        CARD_ART_HTML: artHtml,
-        OG_IMAGE_TAGS: imageTags,
-        TWITTER_CARD: large ? "summary_large_image" : "summary",
-        BUTTONS_HTML: buttons
-      })
-    );
-  });
-
-  // -------------------------------------------------------------- public site
-
-  /** Where the "main" call to action should take the visitor. */
-  function primaryAction(req) {
-    if (req.session?.user) return { href: "/", label: "Open dashboard" };
-    if (settings.needsSetup()) return { href: "/setup", label: "Start setup" };
-    return { href: "/login", label: "Sign in" };
-  }
-
-  app.get("/welcome", (req, res) => {
-    const action = primaryAction(req);
-    res.setHeader("Cache-Control", "no-store");
-    res.type("html").send(
-      render("welcome.html", {
-        VERSION: version,
-        PRIMARY_HREF: action.href,
-        PRIMARY_LABEL: action.label
-      })
-    );
-  });
-
-  /**
-   * The setup documentation, rendered from `docs/*.md` so the website and the
-   * repository can never disagree. One page per deployment path:
-   * `/guide` (shared steps), `/guide/local`, `/guide/cloud`, `/guide/free-cloud`.
-   */
-  function sendGuide(req, res, doc) {
-    const guide = loadGuide(doc.slug);
-    const action = primaryAction(req);
-    const toc = guide.headings
-      .filter((heading) => heading.level === 2)
-      .map((heading) => `<a href="#${heading.id}">${escapeHtml(heading.text)}</a>`)
-      .join("");
-    const nav = guideNav(doc.slug)
-      .map((item) =>
-        item.active
-          ? `<a class="guide-tab is-active" href="${item.href}" aria-current="page">${escapeHtml(item.label)}</a>`
-          : `<a class="guide-tab" href="${item.href}">${escapeHtml(item.label)}</a>`
-      )
-      .join("");
-    const updated = guide.updatedAt
-      ? `Last updated ${new Date(guide.updatedAt).toISOString().slice(0, 10)}`
-      : "";
-    res.setHeader("Cache-Control", "public, max-age=300");
-    res.type("html").send(
-      render("guide.html", {
-        VERSION: version,
-        GUIDE_TITLE: guide.title,
-        GUIDE_HTML: guide.html,
-        GUIDE_NAV: nav,
-        GUIDE_FILE: `docs/${guide.file}`,
-        TOC_HTML: toc,
-        GUIDE_UPDATED: updated,
-        BACK_HREF: action.href,
-        BACK_LABEL: action.label
-      })
-    );
-  }
-
-  app.get("/guide", (req, res) => sendGuide(req, res, findDoc("")));
-
-  app.get("/guide/:slug", (req, res) => {
-    const doc = findDoc(req.params.slug);
-    if (!doc) {
-      return sendErrorPage(
-        res,
-        404,
-        "No such guide",
-        "That setup document does not exist. Start at /guide to see every path."
-      );
-    }
-    return sendGuide(req, res, doc);
   });
 
   // ------------------------------------------------------------------- setup
@@ -1167,7 +907,7 @@ function createApp({
     const current = settings.presenceFor(userId) || DEFAULT_CONFIG;
     const payload = isAdminSession(req)
       ? body
-      : { ...(body || {}), targets: { bot: false, companion: true } };
+      : { ...(body || {}), targets: { bot: false, profile: true } };
     const result = sanitizePresence(payload, { current, now: now() });
     return { ...result, userId };
   }
@@ -1188,7 +928,7 @@ function createApp({
     res.json({
       ok: true,
       presence,
-      activity: buildActivity(presence, { target: "companion", publicUrl: origin, resolveAsset }),
+      activity: buildActivity(presence, { target: "profile", publicUrl: origin, resolveAsset }),
       botActivity: isAdminSession(req)
         ? buildActivity(presence, { target: "bot", publicUrl: origin, resolveAsset })
         : null
@@ -1347,7 +1087,6 @@ function createApp({
         keyFromEnv: settings.keyFromEnv,
         allowSignup: settings.allowSignup,
         memberCount: settings.countUsers(),
-        pairings: settings.listPairings(),
         updatedAt: stored.updatedAt
       }
     });
@@ -1434,8 +1173,6 @@ function createApp({
     return {
       ...user,
       presenceName: settings.presenceFor(user.id)?.name || null,
-      shareSlug: settings.shareFor(user.id)?.slug || null,
-      devices: settings.listPairings(user.id).filter((pairing) => !pairing.revokedAt).length,
       photos: settings.listAssets(user.id).length
     };
   }
@@ -1509,147 +1246,6 @@ function createApp({
     // the files no surviving account points at (identical uploads are shared).
     if (result.assetIds.length) assets.prune();
     logger.log?.(`[admin] removed account ${id}`);
-    broadcastState();
-    res.json({ ok: true });
-  });
-
-  // -------------------------------------------------------------- companion
-
-  app.get("/api/companion/pairings", requireAuthApi, (req, res) => {
-    res.json({ ok: true, pairings: settings.listPairings(ownerId(req)) });
-  });
-
-  app.post("/api/companion/pairings", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const existing = settings.listPairings(ownerId(req)).filter((pairing) => !pairing.revokedAt);
-    if (existing.length >= 10) {
-      return res.status(400).json({ ok: false, error: "You already have 10 paired devices. Remove one first." });
-    }
-    const { pairing, token } = settings.createPairing(req.body?.label, ownerId(req));
-    const origin = settings.effective().publicUrl || originOf(req);
-    const command = `curl -fsSL "${origin}/companion.js?pair=${token}" | node`;
-    broadcastState();
-    res.json({
-      ok: true,
-      pairing,
-      token,
-      command,
-      scriptUrl: `${origin}/companion.js?pair=${token}`,
-      launchers: {
-        mac: `${origin}/companion/start-mac.zip?pair=${token}`,
-        linux: `${origin}/companion/start.sh?pair=${token}`,
-        windows: `${origin}/companion/start.bat?pair=${token}`
-      }
-    });
-  });
-
-  app.delete("/api/companion/pairings/:id", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const removed = settings.revokePairing(String(req.params.id || ""), ownerId(req));
-    if (!removed) return res.status(404).json({ ok: false, error: "No such device." });
-    broadcastState();
-    res.json({ ok: true });
-  });
-
-  /** Personalized companion script: `curl ... | node`, no install step. */
-  app.get("/companion.js", companionLimiter.middleware(), (req, res) => {
-    const pairing = settings.findPairingByToken(String(req.query.pair || ""));
-    if (!pairing) {
-      return res
-        .status(404)
-        .type("text/plain")
-        .send("This pairing link is invalid or was revoked. Create a new one in the StatusC0rd dashboard.");
-    }
-    const effective = settings.effective();
-    const config = {
-      server: effective.publicUrl || originOf(req),
-      token: String(req.query.pair),
-      appId: effective.clientId,
-      label: pairing.label
-    };
-    const prelude = `#!/usr/bin/env node\n// StatusC0rd companion - generated for "${pairing.label}". Keep this file private: it contains a pairing token.\nglobalThis.__STATUSC0RD__ = Object.freeze(${JSON.stringify(config)});\n`;
-    const source = fs
-      .readFileSync(AGENT_PATH, "utf8")
-      .replace(/^#!.*\n/, "")
-      .replace(/^"use strict";\n\n?/, "");
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Content-Disposition", `inline; filename="statusc0rd-companion.js"`);
-    res.type("text/plain").send(prelude + source);
-  });
-
-  /**
-   * macOS download: a zip so Archive Utility restores the 0755 mode. A bare
-   * `.command` download loses its execute bit and cannot be double-clicked.
-   */
-  app.get("/companion/start-mac.zip", companionLimiter.middleware(), (req, res) => {
-    const pairing = settings.findPairingByToken(String(req.query.pair || ""));
-    if (!pairing) {
-      return res
-        .status(404)
-        .type("text")
-        .send("This pairing link is invalid or was revoked. Create a new one in the StatusC0rd dashboard.");
-    }
-    const origin = settings.effective().publicUrl || originOf(req);
-    const script = launcherScript({ platform: "mac", server: origin, token: String(req.query.pair), label: pairing.label });
-    const zip = createZip([
-      { name: "StatusC0rd.command", data: script, mode: 0o755 },
-      { name: "READ ME FIRST.txt", data: MAC_ZIP_README, mode: 0o644 }
-    ]);
-    res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", 'attachment; filename="StatusC0rd-mac.zip"');
-    res.setHeader("Cache-Control", "no-store");
-    res.send(zip);
-  });
-
-  /** Double-click launchers (.command / .sh / .bat) built per pairing. */
-  app.get("/companion/start.:ext", companionLimiter.middleware(), (req, res) => {
-    const pairing = settings.findPairingByToken(String(req.query.pair || ""));
-    if (!pairing) {
-      return res
-        .status(404)
-        .type("text")
-        .send("This pairing link is invalid or was revoked. Create a new one in the StatusC0rd dashboard.");
-    }
-    const platform = req.params.ext === "bat" ? "windows" : req.params.ext === "command" ? "mac" : "linux";
-    const origin = settings.effective().publicUrl || originOf(req);
-    const body = launcherScript({ platform, server: origin, token: String(req.query.pair), label: pairing.label });
-    const filename = platform === "windows" ? "StatusC0rd.bat" : platform === "mac" ? "StatusC0rd.command" : "statusc0rd.sh";
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.setHeader("Cache-Control", "no-store");
-    res.send(body);
-  });
-
-  app.get("/api/companion/config", companionLimiter.middleware(), (req, res) => {
-    const pairing = settings.findPairingByToken(req.get("authorization")?.replace(/^Bearer\s+/i, "") || req.query.token);
-    if (!pairing) return res.status(401).json({ ok: false, error: "Not paired." });
-
-    // A device pushes the card of the account that paired it.
-    const presence = settings.presenceFor(pairing.owner) || DEFAULT_CONFIG;
-    const origin = settings.effective().publicUrl || originOf(req);
-    const resolveAsset = (id) => {
-      const asset = settings.findAsset(id);
-      return asset ? assets.url(asset, origin) : "";
-    };
-    const activity = buildActivity(presence, { target: "companion", publicUrl: origin, resolveAsset });
-    const body = {
-      ok: true,
-      label: pairing.label,
-      appId: settings.effective().clientId,
-      activity,
-      updatedAt: presence.updatedAt,
-      status: presence.enabled && activity ? "active" : "cleared"
-    };
-    // Cheap conditional requests keep the 5s poll light.
-    const etag = `"${Buffer.from(`${presence.updatedAt || ""}:${body.status}:${origin}`).toString("base64url")}"`;
-    res.setHeader("ETag", etag);
-    res.setHeader("Cache-Control", "no-store");
-    if (req.get("if-none-match") === etag) return res.status(304).end();
-    res.json(body);
-  });
-
-  app.post("/api/companion/heartbeat", companionLimiter.middleware(), (req, res) => {
-    const pairing = settings.findPairingByToken(req.get("authorization")?.replace(/^Bearer\s+/i, "") || req.body?.token);
-    if (!pairing) return res.status(401).json({ ok: false, error: "Not paired." });
-    settings.touchPairing(pairing.id, req.body?.discordConnected ? "connected" : req.body?.error || "offline");
     broadcastState();
     res.json({ ok: true });
   });

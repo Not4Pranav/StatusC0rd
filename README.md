@@ -1,268 +1,163 @@
 # StatusC0rd
 
-Set up a Discord rich presence from your browser: text, photos, buttons and a
-live timer — then keep it online 24/7.
+Set your own Discord rich presence from a web page: text, photos, buttons and a
+live timer — and a bot that keeps a card online 24/7.
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
-                     ├─▶ Discord gateway   → the bot card, always online
                      ├─▶ /assets/<id>.png  → photos Discord can fetch
-                     └─▶ Discord Activity  → your own profile, photos + buttons
-                          (and, optionally, the companion on your PC)
+                     ├─▶ Discord Activity  → your own profile (photos + buttons)
+                     └─▶ Discord gateway   → the bot card, always online
 ```
 
-Everything is configured from the website. There is no config file to edit and
-no restart needed after the first launch.
+Two things, nothing else: **a website to build the card**, and **a bot to keep a
+card online**.
 
 ---
 
-## Two places a presence can appear
+## What it does
 
-| | Bot card | **Your profile** — in-Discord app | **Your profile** — companion |
-| --- | --- | --- | --- |
-| Who shows it | the bot account | your own Discord account | your own Discord account |
-| Text (name, type, state) | ✅ | ✅ | ✅ |
-| Details / second line | ⚠️ gateway is limited | ✅ | ✅ |
-| **Photos** | ❌ Discord drops images for bots | ✅ | ✅ |
-| Buttons | ❌ | ✅ where the client renders them | ✅ |
-| Elapsed timer | ✅ (status text only) | ✅ | ✅ |
-| How long it stays | 24/7, no browser needed | while the Activity panel is open | while the companion runs |
-| Extra download | none | **none** | one launcher file |
+| | Bot card | Your profile — in-Discord app |
+| --- | --- | --- |
+| Who shows it | the bot account | your own Discord account |
+| Name, type, state | ✅ | ✅ |
+| Details / second line | ⚠️ gateway is limited | ✅ |
+| **Photos** | ❌ Discord drops images for bots | ✅ |
+| Buttons | ❌ | ✅ |
+| Elapsed timer | ✅ | ✅ |
+| How long it stays | 24/7, no browser needed | while the panel is open |
+| Extra download | none | **none** |
 
-Discord renders **only `name`, `type` and `state`** for bot accounts — images and
-buttons are stripped by the gateway. That is a Discord restriction, not a bug
-here. So photos and buttons are delivered by the **in-Discord app**: a Discord
-Activity, i.e. a web page Discord loads inside the client and lets talk to the
-local user. Nothing to install, nothing to keep running beyond the window itself.
-
-The dashboard can target the bot card, your own profile, or both. The companion
-under *Advanced* does the same job from your own machine for people who would
-rather not open the Activity.
+Discord renders **only name, type and state** for bot accounts, so photos and
+buttons can only reach a *user's* profile — that is what the in-Discord app is
+for. Nothing is installed: Discord opens the page, the page talks to the local
+client, and your card appears.
 
 ---
 
-## Setup
+## Accounts
 
-> **Four files, one product.** Every setup step lives in `docs/`, split by *where
-> the server runs* — the only part that actually differs.
->
-> | File | Covers |
-> | --- | --- |
-> | [`docs/setup.md`](docs/setup.md) | the shared steps: the Discord application, the wizard, the dashboard tab by tab, the editor, your profile, the 24/7 bot, verification, security, environment variables, troubleshooting, and an appendix covering every route |
-> | [`docs/setup-local.md`](docs/setup-local.md) | your own PC, Mac or Raspberry Pi, start to finish — including the tunnel that gives you a public HTTPS URL |
-> | [`docs/setup-cloud.md`](docs/setup-cloud.md) | a VPS or managed platform you pay for: DNS, firewall, systemd, Caddy, Docker, backups |
-> | [`docs/setup-free-cloud.md`](docs/setup-free-cloud.md) | Render free tier, Oracle Always Free, GCP free tier — with the catch of each |
->
-> Any running instance serves these same files at **`/guide`**, **`/guide/local`**,
-> **`/guide/cloud`** and **`/guide/free-cloud`**, so the repository, GitHub and
-> the website can never disagree.
+One instance, many people, one card each.
 
-| You want to… | Read |
-| --- | --- |
-| understand what the thing does | [`§1`](docs/setup.md#1-what-the-user-gets) · [`§2`](docs/setup.md#2-what-the-developer-gets) |
-| choose where it will run | [`§3`](docs/setup.md#3-pick-where-it-runs) |
-| create the Discord application (ID, secret, bot token, Activities, URL mapping) | [`§4`](docs/setup.md#4-step-1-the-discord-application) |
-| run it on your own computer, Mac or Pi | [`local §1`](docs/setup-local.md#1-what-you-need) |
-| get a public HTTPS URL from a home machine | [`local §4`](docs/setup-local.md#4-a-public-https-url) |
-| keep it alive after logout / reboot | [`local §7`](docs/setup-local.md#7-keep-it-running-after-logout-and-reboot) |
-| deploy on a VPS with your own domain | [`cloud §2`](docs/setup-cloud.md#2-create-the-server) |
-| deploy on Render free (fastest, no card) | [`free §2`](docs/setup-free-cloud.md#2-path-a-render-free) |
-| deploy on Oracle Always Free (permanent) | [`free §3`](docs/setup-free-cloud.md#3-path-b-oracle-always-free) |
-| deploy on GCP Always Free | [`free §4`](docs/setup-free-cloud.md#4-path-c-gcp-always-free-e2-micro) |
-| finish the first boot and the wizard | [`§6`](docs/setup.md#6-step-3-first-boot-and-the-wizard) |
-| set up the dashboard itself (every tab, field and pill) | [`§7`](docs/setup.md#7-the-dashboard-tab-by-tab) |
-| design the card and publish it | [`§8`](docs/setup.md#8-step-4-design-and-publish-the-card) |
-| put it on your own profile (no install) | [`§9`](docs/setup.md#9-step-5-on-your-own-profile-no-install) |
-| keep the bot online 24/7 | [`§10`](docs/setup.md#10-step-6-the-bot-card-always-online) |
-| publish a share card | [`§11`](docs/setup.md#11-step-7-the-share-card-optional) |
-| use the optional companion instead | [`§12`](docs/setup.md#12-step-8-the-optional-companion) |
-| verify the install | [`§13`](docs/setup.md#13-step-9-verify-the-whole-install) |
-| update, back up, move hosts | [`§14`](docs/setup.md#14-step-10-updates-and-backups) |
-| rotate keys and lock down access | [`§15`](docs/setup.md#15-step-11-security-and-rotation) |
-| look up an environment variable | [`§16`](docs/setup.md#16-environment-variables) |
-| check a limit (devices, photos, rate limits) | [`§18`](docs/setup.md#18-limits-worth-knowing) |
-| fix a problem | [`§19`](docs/setup.md#19-troubleshooting) |
-| look up any URL, response or status code | [`§21`](docs/setup.md#21-appendix-every-url-and-every-response) |
+- **The owner** holds the dashboard key. That key opens the admin panel: the
+  Discord application, the bot, and the member list.
+- **Everyone else** signs up at `/register` with an email and a password, builds
+  their own card, and connects their Discord account once. Their card goes to
+  their profile; it can never touch the bot or anyone else's card.
+- Sign-ups can be closed from **Members**, and accounts can be created by hand.
 
-Just want it on localhost to poke at it?
+No email is sent by this build: the address is a login, not a mailbox. The owner
+resets passwords and hands them over.
+
+---
+
+## Run it
+
+Needs Node 20+.
 
 ```sh
 npm ci
-npm start          # http://localhost:3000 → the setup wizard
+npm start          # http://localhost:3000/setup
 ```
 
-Requirements: Node.js 20+ (22 LTS recommended). Photos need a public HTTPS URL
-(Discord refuses `http://` and `localhost`), which matters even locally — see
-[`local §4`](docs/setup-local.md#4-a-public-https-url).
+The first visit serves a three-step wizard: dashboard key, Discord application,
+first card. Afterwards everything is configured from the dashboard.
+
+### Discord side, once
+
+1. <https://discord.com/developers/applications> → **New Application**.
+2. Copy the **Application ID** and the **OAuth2 client secret**; optionally reset
+   a **bot token** for the 24/7 card.
+3. **Activities → Enable Activities**.
+4. **Activities → URL Mappings** → prefix `/`, target `https://YOUR-HOST/activity/`.
+5. Invite the app to a server with the `bot applications.commands` scopes.
+6. **Activities → Publish**, then open it from the App Launcher.
+
+### Free hosting
+
+**Render free tier** is the shortest path:
+
+1. Fork this repo, then <https://dashboard.render.com> → **New +** → **Blueprint**.
+   `render.yaml` sets Node 22, `npm ci`, `npm start`, health check `/health`.
+2. Set `PUBLIC_URL`, `CLIENT_ID`, `CLIENT_SECRET` and (optionally) `DISCORD_TOKEN`
+   and `DASHBOARD_KEY` in the environment — they survive a restart, the disk does
+   not.
+3. Keep the keep-alive under 15 minutes so the free service does not spin down.
+
+Oracle Always Free and a paid VPS work the same way: any host that runs Node and
+serves HTTPS.
 
 ---
 
-## The editor
+## Environment
 
-Everything that reaches Discord is edited on one screen:
+Everything is optional; the wizard writes the same values to `data/settings.json`
+and the environment wins when both exist.
 
-- **Templates** — ten starting points (“Focus mode”, “Listening”, “Building” …).
-  A click fills the form; the photo and target choices you already made survive.
-- **Photos inline** — drag a file onto a slot, paste a screenshot with `Ctrl`/`Cmd`
-  `+ V`, pick a file, or press **Reuse** to pull one from the library. The photo
-  slots sit in the same form as the text and the buttons.
-- **Draft → Publish** — every edit is staged and autosaved as a *draft*, and
-  nothing reaches Discord until you press **Publish**. **Discard draft** puts the
-  live card back. A half-typed line never appears on your profile.
-- **Faithful preview** — dark and light theme, full and compact card, because
-  Discord renders both and they do not look the same.
-- **Share card** — one button publishes `/c/<slug>`, a read-only page with
-  `Open Graph` tags, so the card unfurls with its photo when posted anywhere.
-  Rotate the slug or switch it off whenever you like.
-
----
-
-## 24/7 online
-
-The bot lives on the server, so its card is online as long as the server is. It
-reconnects with exponential backoff after network blips and Discord restarts, and
-the built-in keep-alive makes a sleeping free instance look busy so it is not
-spun down. How to turn that on — and how to keep the process running on each kind
-of host — is [`§10`](docs/setup.md#10-step-6-the-bot-card-always-online).
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `PORT` | `3000` | HTTP port |
+| `DATA_DIR` | `./data` | `settings.json`, `assets/`, setup token |
+| `PUBLIC_URL` | unset | public origin for photo URLs and the keep-alive |
+| `CLIENT_ID` | unset | Discord application ID (public) |
+| `CLIENT_SECRET` | unset | OAuth2 secret; the in-Discord app needs it |
+| `DISCORD_TOKEN` | unset | bot token for the 24/7 card |
+| `DASHBOARD_KEY` | unset | the owner's key; setting it skips the wizard |
+| `SESSION_SECRET` | generated | cookie signing key, 32+ characters |
+| `ALLOWED_DISCORD_IDS` | unset | who may launch the app / sign in with Discord |
+| `KEEP_ALIVE` | `true` | keep this host awake (`PUBLIC_URL` required) |
+| `KEEP_ALIVE_INTERVAL_MINUTES` | `10` | ping interval, 5–60 |
+| `BOT_ENABLED` | on with a token | `false` runs without a gateway |
+| `LOG_REQUESTS` | on | one line per page/API request; `0` silences it |
 
 ---
 
 ## Routes
 
-| Route | Who it is for |
-| --- | --- |
-| `/activity/` | the in-Discord app — Discord loads this inside the client (no install) |
-| `/welcome` | anyone — what StatusC0rd does |
-| `/guide` | anyone — the setup docs, rendered from `docs/*.md` (`/guide/local`, `/guide/cloud`, `/guide/free-cloud`) |
-| `/setup` | the operator, on first boot, for the three-step wizard |
-| `/` | the signed-in dashboard |
-| `/c/<slug>` | the optional public share card |
-
----
-
-## HTTP API
-
-Session cookie + `x-csrf-token` for mutations. Companion endpoints use a
-`Authorization: Bearer <pairing token>` header instead. The in-app copy of this
-table — with every status code, error shape and rate limit — is
-[`§21`](docs/setup.md#21-appendix-every-url-and-every-response).
-
-| Method | Route | Description |
+| Method | Route | What |
 | --- | --- | --- |
-| `GET` | `/health` | Public liveness only (`status`, `uptimeSeconds`) |
-| `GET` | `/api/health` | Full operator report (version, storage, bot, activity) — session required |
-| `GET` | `/setup` | Setup wizard |
-| `POST` | `/api/setup/verify` | Unlock setup with the setup token |
-| `POST` | `/api/setup/asset` | Upload a photo during setup |
-| `POST` | `/api/setup/test-bot` | Validate a bot token |
-| `POST` | `/api/setup/complete` | Save key + bot + first presence, sign in |
-| `GET` | `/login`, `POST /login`, `POST /logout` | Sign in — email + password for a member, the dashboard key for the owner |
-| `GET`/`POST` | `/register` | Self-serve member sign-up (the owner can close it) |
-| `GET` | `/auth/discord`, `/auth/discord/callback` | Optional Discord sign-in |
-| `GET` | `/auth/discord/link` | Claim a Discord account for the signed-in member |
-| `GET` | `/` | Dashboard |
-| `GET` | `/welcome` | Marketing page (no session) |
-| `GET` | `/guide`, `/guide/:slug` | The setup docs, rendered from `docs/*.md` (`local`, `cloud`, `free-cloud`) |
-| `GET` | `/activity` | Redirects to the in-Discord app shell at `/activity/` |
-| `GET` | `/api/setup/status` | What the wizard should show (needs setup, token required, managed values) |
-| `GET` | `/api/state` | Presence, bot, photos, devices, keep-alive, meta |
-| `GET` | `/api/presence` | Fully resolved presence, with photo URLs |
-| `POST` | `/api/presence` | Validate + save + apply (bot and/or companion) |
-| `POST` | `/api/presence/draft` | Stage edits without publishing |
-| `POST` | `/api/presence/publish` | Publish the stored draft (or the posted body) |
-| `DELETE` | `/api/presence/draft` | Discard the draft |
-| `POST` | `/api/templates/:id` | Merge a template into the current config |
-| `POST` | `/api/share` | Create or rotate the public card slug (optional `slug` body field) |
-| `DELETE` | `/api/share` | Switch the public card off |
-| `GET` | `/c/:slug` | Public read-only card with Open Graph tags |
-| `POST` | `/api/presence/clear` | Clear everywhere |
-| `GET` | `/api/events` | SSE stream of state changes |
-| `GET`/`POST` | `/api/assets` | List / upload photos |
-| `DELETE` | `/api/assets/:id` | Delete a photo |
-| `GET`/`POST` | `/api/settings` | Read / update settings, rotate the key — owner only |
-| `GET`/`POST` | `/api/admin/users`, `PATCH`/`DELETE` `/api/admin/users/:id` | Member accounts — owner only |
-| `POST` | `/api/companion/pairings` | Create a device pairing (returns the command) |
-| `DELETE` | `/api/companion/pairings/:id` | Revoke a device |
-| `GET` | `/companion.js?pair=…` | Personalized companion script |
-| `GET` | `/companion/start.:ext` | `.command` / `.sh` / `.bat` launcher for a pairing |
-| `GET` | `/companion/start-mac.zip` | The macOS launcher, zipped so it stays executable |
-| `GET` | `/api/companion/config` | Presence payload for the companion (ETag) |
-| `POST` | `/api/companion/heartbeat` | Device status + presence confirmation |
-| `GET` | `/assets/:hash.:ext` | Public photo, `Access-Control-Allow-Origin: *` (used by Discord) |
+| `GET` | `/` | dashboard: build the card, publish it |
+| `GET` | `/setup` | first-run wizard |
+| `GET`/`POST` | `/login`, `/register`, `POST /logout` | sign in and sign up |
+| `GET` | `/auth/discord`, `/auth/discord/link`, `/auth/discord/callback` | Discord sign-in and account linking |
+| `GET` | `/activity/` | the in-Discord app (photos + buttons) |
+| `GET` | `/assets/:hash.:ext` | uploaded photos, cached for a year |
+| `GET` | `/health` | `{"status":"ok"}` and nothing else |
+| `POST` | `/api/presence`, `/api/presence/publish`, `/api/presence/draft`, `/api/presence/clear` | the card |
+| `GET`/`POST`/`DELETE` | `/api/assets` | the photo library |
+| `GET`/`POST` | `/api/settings` | instance configuration (owner) |
+| `GET`/`POST`/`PATCH`/`DELETE` | `/api/admin/users` | member accounts (owner) |
+| `GET` | `/api/state`, `/api/events` | the dashboard's state and its SSE stream |
 
-`GET /favicon.ico` redirects to the SVG icon. Presence payload: `name`, `type`
-(0–5), `status`, `details`, `state`, `url`,
-`largeImage`, `smallImage`, `largeText`, `smallText`, `buttons[{label,url}]`,
-`startedAt`, `restartTimer`, `targets{bot,companion}`. Images accept an uploaded
-photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
+Everything except `GET /health`, `/assets/*`, `/activity/*` and the auth pages
+needs a session; every write also needs the CSRF token from `/api/state`.
 
 ---
 
 ## Security
 
-- Signed `HttpOnly`, `SameSite=Lax` session cookies; `Secure` in production.
-- Dashboard key stored as a **scrypt** hash, compared in constant time; member
-  passwords use the same scrypt + per-user salt and a 10-character minimum; 5
-  failed attempts per IP → 15-minute lockout.
-- Two separate doors: the key is the admin panel, members sign in with email and
-  password. Each member owns one card, cannot touch another's photos, share link
-  or devices, and can never write the bot's presence — that is enforced on the
-  server, not only hidden in the UI. Removing an account or resetting its password
-  retires every session opened before it.
-- CSRF double-submit tokens on every mutation; OAuth state is random, single-use
-  and expires.
-- CSP without inline scripts, `nosniff`, `Referrer-Policy`, `Permissions-Policy`,
-  `COOP`/`CORP`, HSTS in production, no framing of the dashboard in production
-  (the Activity page alone allows Discord as its frame ancestor).
+- scrypt-hashed dashboard key and member passwords; both compared in constant
+  time, five failures per IP locks sign-in for 15 minutes.
+- Signed `HttpOnly`, `SameSite=Lax` cookies, `Secure` in production; CSRF
+  double-submit on every write; OAuth state is random, single-use, 10 minutes.
+- Each member's card, photos and Discord link are isolated on the server: a
+  member cannot write the bot's presence or read another account's data, whether
+  or not the UI shows the button.
+- Uploads are sniffed by magic bytes, capped at 2 MB, and re-served from
+  content-hashed filenames.
 - Setup cannot be claimed remotely without the one-time setup token.
-- Uploads are sniffed by magic bytes, size-capped (2 MB) and re-served from
-  content-hashed filenames; only the image types Discord accepts are stored.
-- Pairing tokens are hashed at rest and revocable; each device is independent.
-- `/health` answers `{"status":"ok"}` to anyone and nothing more — version,
-  storage state, bot status and the Activity session stay behind the session at
-  `/api/health`.
-- The public card `/c/<slug>` is opt-in, carries a random slug, exposes only the
-  presence fields, and dies the moment sharing is switched off.
-- Atomic `0600` writes with corrupt-file recovery; presence updates are coalesced
-  to respect Discord's rate limits.
 
 ---
 
-## Development
-
-```sh
-npm ci         # once
-npm start      # http://localhost:3000
-```
-
-No build step, no transpiler, no test harness to install: the whole app is plain
-CommonJS plus a browser script. `node --watch index.js` if you want a reload on
-save.
+## Layout
 
 ```
-index.js               boot, banner, graceful shutdown
-app.js                 Express app (wizard, dashboard, API, companion endpoints)
-src/settings.js        persistent settings + scrypt key + pairings
-src/assets.js          image validation, hashed storage, public URLs
-src/presence.js        presence model, validation, activity builder per target
-src/bot.js             gateway connection, backoff, rate-limited presence queue
-src/keepalive.js       self-ping loop for 24/7 hosting
-src/activity.js        the in-Discord app's server half (code exchange, payload)
-src/oauth.js           Discord OAuth2 (identify) with timeouts
-src/auth.js            constant-time compare, CSRF, rate limiters
-src/views.js           tiny auto-escaping `{{TOKEN}}` renderer
-src/guide.js           serves docs/*.md at /guide, /guide/local, /guide/cloud,
-                       /guide/free-cloud
-src/markdown.js        the small Markdown subset those files are written in
-src/companion/agent.js the companion (also served as a personalized script)
-views/                 setup, dashboard, login, welcome, guide, card, activity
-public/                styles, dashboard JS, setup JS, upload helper, activity app
-docs/                  the four guides (also served at /guide, /guide/local,
-                       /guide/cloud, /guide/free-cloud)
+app.js              routes and middleware
+src/presence.js     the card model, validation, Discord payloads
+src/settings.js     accounts, per-user cards, photos, the store
+src/bot.js          the 24/7 gateway presence
+src/activity.js     the in-Discord app's auth and config
+src/assets.js       uploads
+views/              server-rendered pages
+public/             dashboard, login, register, setup, activity assets
 ```
-
----
-
-## License
-
-No license file is included; all rights reserved by the repository owner.

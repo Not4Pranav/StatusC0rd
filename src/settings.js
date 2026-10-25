@@ -15,15 +15,15 @@ const path = require("node:path");
  * starts in "setup needed" mode and serves the wizard.
  */
 
-const SETTINGS_VERSION = 4;
+const SETTINGS_VERSION = 5;
 
 /**
  * The account the dashboard key signs in as.
  *
  * It is a principal, not a row in `users`: the key is the owner's way back in
  * even if every member account is gone, and it must never be editable from the
- * member list. Everything per-user (presence, draft, share card, photos,
- * devices) is keyed by a user id, and the admin key uses this one.
+ * member list. Everything per-user (presence, draft, photos) is keyed by a
+ * user id, and the admin key uses this one.
  */
 const ADMIN_USER_ID = "admin";
 
@@ -52,12 +52,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   // every member's card goes to their own profile through the in-Discord app.
   presences: {},
   drafts: {},
-  shares: {},
   // discord user id -> StatusC0rd user id, written by "Connect Discord".
   discordLinks: {},
   keepAlive: { enabled: true, intervalMinutes: 10 },
-  assets: [],
-  pairings: []
+  assets: []
 });
 
 const SCRYPT_KEYLEN = 32;
@@ -71,9 +69,6 @@ function normalizeEmail(value) {
   const email = String(value ?? "").trim().toLowerCase();
   return EMAIL_RE.test(email) && email.length <= 254 ? email : "";
 }
-
-/** Share slugs appear in URLs, so keep them boringly safe. */
-const SHARE_SLUG_RE = /^[a-z0-9]{6,32}$/;
 
 function hashKey(key, salt = crypto.randomBytes(16).toString("hex")) {
   const hash = crypto.scryptSync(String(key), salt, SCRYPT_KEYLEN).toString("hex");
@@ -105,20 +100,15 @@ function migrate(raw) {
   const migrated = merge(DEFAULT_SETTINGS, source);
   migrated.version = SETTINGS_VERSION;
   migrated.assets = Array.isArray(migrated.assets) ? migrated.assets.filter(isPlainObject) : [];
-  migrated.pairings = Array.isArray(migrated.pairings) ? migrated.pairings.filter(isPlainObject) : [];
   migrated.discord.allowedIds = Array.isArray(migrated.discord.allowedIds)
     ? migrated.discord.allowedIds.filter((id) => /^\d{5,25}$/.test(String(id)))
     : [];
 
   // v3 -> v4: one presence per instance became one per user. The instance's
-  // existing card, draft, share link, photos and devices belong to the admin
-  // key's principal, so nobody loses anything on upgrade.
+  // existing card, draft and photos belong to the admin key's principal, so
+  // nobody loses anything on upgrade.
   const legacyPresence = isPlainObject(source.presence) ? source.presence : null;
   const legacyDraft = isPlainObject(source.draft) ? source.draft : null;
-  const legacyShare =
-    isPlainObject(source.share) && SHARE_SLUG_RE.test(String(source.share.slug || ""))
-      ? { slug: String(source.share.slug), createdAt: source.share.createdAt || null }
-      : null;
 
   migrated.presences = isPlainObject(migrated.presences) ? migrated.presences : {};
   if (legacyPresence && !isPlainObject(migrated.presences[ADMIN_USER_ID])) {
@@ -129,26 +119,20 @@ function migrate(raw) {
     migrated.drafts[ADMIN_USER_ID] = legacyDraft;
   }
 
-  // Cards are opt-in per user and the slug has to stay unique, so keep the first
-  // valid one and drop everything that would collide or 404.
-  const shares = {};
-  const sourceShares = isPlainObject(migrated.shares) ? migrated.shares : {};
-  if (legacyShare && !isPlainObject(sourceShares[ADMIN_USER_ID])) {
-    sourceShares[ADMIN_USER_ID] = legacyShare;
-  }
-  for (const [userId, share] of Object.entries(sourceShares)) {
-    if (!isPlainObject(share)) continue;
-    const slug = String(share.slug || "");
-    if (!SHARE_SLUG_RE.test(slug)) continue;
-    if (Object.values(shares).some((kept) => kept.slug === slug)) continue;
-    shares[userId] = { slug, createdAt: share.createdAt || null };
-  }
-  migrated.shares = shares;
-
   // Everything a person can own carries an owner; pre-v4 data is the admin's.
   const withOwner = (item) => ({ ...item, owner: String(item.owner || ADMIN_USER_ID) });
   migrated.assets = migrated.assets.map(withOwner);
-  migrated.pairings = migrated.pairings.map(withOwner);
+
+  // v4 -> v5: the companion is gone, so the card's second target is simply the
+  // person's own profile. Stored cards keep their setting under the new name.
+  for (const presence of Object.values(migrated.presences)) {
+    if (!isPlainObject(presence)) continue;
+    if (!isPlainObject(presence.targets)) presence.targets = { bot: true, profile: true };
+    if (presence.targets.profile === undefined) {
+      presence.targets.profile = presence.targets.companion !== false;
+    }
+    delete presence.targets.companion;
+  }
 
   migrated.users = (Array.isArray(migrated.users) ? migrated.users : [])
     .filter(
@@ -183,6 +167,8 @@ function migrate(raw) {
   delete migrated.presence;
   delete migrated.draft;
   delete migrated.share;
+  delete migrated.shares;
+  delete migrated.pairings;
   return migrated;
 }
 
@@ -536,10 +522,8 @@ class SettingsStore {
 
     const assetIds = this.data.assets.filter((asset) => asset.owner === id).map((asset) => asset.id);
     this.data.assets = this.data.assets.filter((asset) => asset.owner !== id);
-    this.data.pairings = this.data.pairings.filter((pairing) => pairing.owner !== id);
     delete this.data.presences[id];
     delete this.data.drafts[id];
-    delete this.data.shares[id];
     for (const [discordId, userId] of Object.entries(this.data.discordLinks)) {
       if (userId === id) delete this.data.discordLinks[discordId];
     }
@@ -622,26 +606,6 @@ class SettingsStore {
     else delete this.data.drafts[userId];
     this._commit();
     return this.draftFor(userId);
-  }
-
-  shareFor(userId = ADMIN_USER_ID) {
-    return this.data.shares[userId] ?? null;
-  }
-
-  setShare(userId, share) {
-    if (share) this.data.shares[userId] = share;
-    else delete this.data.shares[userId];
-    this._commit();
-    return this.shareFor(userId);
-  }
-
-  /** Public card lookup: a slug belongs to exactly one account. */
-  findShareBySlug(slug) {
-    const wanted = String(slug || "");
-    for (const [userId, share] of Object.entries(this.data.shares)) {
-      if (share.slug === wanted) return { userId, share };
-    }
-    return null;
   }
 
   // ---------------------------------------------------------------- runtime
@@ -730,72 +694,6 @@ class SettingsStore {
     this._commit();
     const fileUnused = !this.data.assets.some((asset) => asset.id === id);
     return { removed: true, fileUnused };
-  }
-
-  // --------------------------------------------------------------- pairings
-
-  hashPairingToken(token) {
-    return crypto.createHash("sha256").update(String(token)).digest("hex");
-  }
-
-  /** Create a device pairing; the plaintext token is returned exactly once. */
-  createPairing(label, owner = ADMIN_USER_ID) {
-    const token = crypto.randomBytes(24).toString("hex");
-    const pairing = {
-      id: crypto.randomBytes(6).toString("hex"),
-      label: String(label || "My computer").slice(0, 60),
-      owner,
-      tokenHash: this.hashPairingToken(token),
-      createdAt: new Date(this.now()).toISOString(),
-      lastSeenAt: null,
-      lastStatus: null,
-      revokedAt: null
-    };
-    this.data.pairings = [...this.data.pairings, pairing];
-    this._commit();
-    return { pairing: { ...pairing, tokenHash: undefined }, token };
-  }
-
-  /** One person's devices, or every device on the instance. */
-  listPairings(owner = null) {
-    const pairings = owner ? this.data.pairings.filter((pairing) => pairing.owner === owner) : this.data.pairings;
-    return pairings.map(({ tokenHash, ...pairing }) => pairing);
-  }
-
-  findPairingByToken(token) {
-    if (!token) return null;
-    const hash = this.hashPairingToken(token);
-    return (
-      this.data.pairings.find(
-        (pairing) => !pairing.revokedAt && pairing.tokenHash === hash
-      ) ?? null
-    );
-  }
-
-  touchPairing(id, status) {
-    this.data.pairings = this.data.pairings.map((pairing) =>
-      pairing.id === id
-        ? {
-            ...pairing,
-            lastSeenAt: new Date(this.now()).toISOString(),
-            lastStatus: status ? String(status).slice(0, 40) : pairing.lastStatus
-          }
-        : pairing
-    );
-    this._commit();
-  }
-
-  /** Revoke one device, and only if it belongs to that account. */
-  revokePairing(id, owner = null) {
-    let changed = false;
-    this.data.pairings = this.data.pairings.map((pairing) => {
-      if (pairing.id !== id) return pairing;
-      if (owner && pairing.owner !== owner) return pairing;
-      changed = true;
-      return { ...pairing, revokedAt: new Date(this.now()).toISOString() };
-    });
-    if (changed) this._commit();
-    return changed;
   }
 }
 
