@@ -13,8 +13,6 @@ COPY index.js app.js ./
 COPY src ./src
 COPY views ./views
 COPY public ./public
-# The website renders the deployment guide straight from this file.
-COPY docs ./docs
 
 RUN mkdir -p /app/data && chown -R node:node /app
 USER node

@@ -12,7 +12,7 @@ const { ADMIN_USER_ID } = require("./settings");
  * Discord cannot host arbitrary images for a bot presence, and external URLs
  * must be publicly reachable over HTTPS. So uploads are stored on this server
  * and served from `<publicUrl>/assets/<id>.<ext>`, which both Discord's media
- * proxy and the local companion client can fetch.
+ * proxy and Discord's own servers can fetch.
  */
 
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB after decoding

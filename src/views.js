@@ -35,7 +35,7 @@ function createRenderer(viewsDir, { cache = true } = {}) {
   /**
    * `{{TOKEN}}` is HTML-escaped, `{{{TOKEN}}}` is inserted verbatim.
    *
-   * Only pass already-safe HTML (for example the rendered guide) to the triple
+   * Only pass already-safe HTML (for example a rendered snippet) to the triple
    * form: everything else in the templates comes from server-side scalars.
    */
   return function render(name, vars = {}) {

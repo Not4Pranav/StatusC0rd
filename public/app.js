@@ -210,11 +210,11 @@
   }
 
   function renderTargetHint(config) {
-    const targets = config.targets || { bot: true, companion: true };
+    const targets = config.targets || { bot: true, profile: true };
     const hint = $("#target-hint");
     const parts = [];
     if (targets.bot) parts.push("the bot card (text only, 24/7)");
-    if (targets.companion) parts.push("your profile via the companion (photos + buttons)");
+    if (targets.profile) parts.push("your profile (photos + buttons)");
     hint.textContent = `Showing on ${parts.join(" and ") || "nothing yet"}.`;
   }
 
@@ -338,7 +338,7 @@
       buttons,
       targets: {
         bot: field("targetBot").checked,
-        companion: field("targetCompanion").checked
+        profile: field("targetProfile").checked
       }
     };
   }
@@ -368,7 +368,7 @@
     field("startedAt").checked = Boolean(presence.startedAt);
     field("restartTimer").checked = false;
     field("targetBot").checked = presence.targets?.bot !== false;
-    field("targetCompanion").checked = presence.targets?.companion !== false;
+    field("targetProfile").checked = presence.targets?.profile !== false;
     updateVisibility();
   }
 
@@ -468,25 +468,12 @@
     );
   }
 
-  function renderProfilePill(pairings) {
-    const active = (pairings || []).filter((pairing) => !pairing.revokedAt);
-    const online = active.filter(
-      (pairing) => pairing.lastSeenAt && Date.now() - new Date(pairing.lastSeenAt).getTime() < 3 * 60_000
-    );
+  /** The top-bar profile pill: is the in-Discord app pushing this card? */
+  function renderProfilePill() {
     const pill = $("#profile-pill");
-    if (activityIsLive(state?.activitySession)) {
-      pill.className = "pill is-online";
-      $("#profile-pill-text").textContent = "Profile live (Discord)";
-    } else if (online.length > 0) {
-      pill.className = "pill is-online";
-      $("#profile-pill-text").textContent = "Profile live";
-    } else if (active.length > 0) {
-      pill.className = "pill is-idle";
-      $("#profile-pill-text").textContent = "Profile idle";
-    } else {
-      pill.className = "pill is-muted";
-      $("#profile-pill-text").textContent = "Profile not live";
-    }
+    const live = activityIsLive(state?.activitySession);
+    pill.className = live ? "pill is-online" : "pill is-muted";
+    $("#profile-pill-text").textContent = live ? "Profile live (Discord)" : "Profile not live";
   }
 
   /** The in-Discord app card: launch link, live status and the one-time setup. */
@@ -639,41 +626,6 @@
     }
   }
 
-  function renderPairings(pairings) {
-    const list = $("#pairing-list");
-    list.textContent = "";
-    const active = (pairings || []).filter((pairing) => !pairing.revokedAt);
-    $("#pairing-empty").hidden = active.length > 0;
-    for (const pairing of active) {
-      const row = document.createElement("div");
-      row.className = "device";
-
-      const info = document.createElement("div");
-      const name = document.createElement("strong");
-      name.textContent = pairing.label;
-      const meta = document.createElement("div");
-      meta.className = "hint";
-      const stale = !pairing.lastSeenAt || Date.now() - new Date(pairing.lastSeenAt).getTime() > 3 * 60_000;
-      meta.textContent = `${pairing.lastStatus || "not started"} · last seen ${timeAgo(pairing.lastSeenAt)}`;
-      info.append(name, meta);
-
-      const remove = document.createElement("button");
-      remove.className = "btn ghost small";
-      remove.textContent = "Remove";
-      remove.addEventListener("click", async () => {
-        if (!confirm(`Stop syncing to ${pairing.label}?`)) return;
-        await api(`/api/companion/pairings/${pairing.id}`, "DELETE").catch((error) => toast(error.message, true));
-        state.pairings = state.pairings.filter((item) => item.id !== pairing.id);
-        renderPairings(state.pairings);
-        renderProfilePill(state.pairings);
-        toast("Device removed");
-      });
-
-      row.className = `device${stale ? " is-stale" : ""}`;
-      row.append(info, remove);
-      list.append(row);
-    }
-  }
 
   function renderKeepAlive(keepAlive, meta, settings) {
     const tag = $("#keepalive-tag");
@@ -707,19 +659,12 @@
     warning.hidden = Boolean(meta?.publicUrlIsHttps);
   }
 
-  function renderAppIdWarning(meta) {
-    const box = $("#appid-warning");
-    if (box) box.hidden = Boolean(meta?.clientId);
-  }
-
   function applyState(next, { fill = true } = {}) {
     state = next;
-    renderAppIdWarning(next.meta);
     renderActivity(next.meta, next.activitySession);
     renderBot(next.bot);
-    renderProfilePill(next.pairings);
+    renderProfilePill();
     renderAssets(next.assets || []);
-    renderPairings(next.pairings || []);
     renderKeepAlive(next.keepAlive, next.meta);
     if (fill && !dirty) {
       // A staged draft is what the person was last editing, on any device.
@@ -736,7 +681,6 @@
       }
     }
     renderTemplates(next.templates);
-    renderShare(next.share);
     renderPreviewNote(next.presence);
     renderUser(next.user);
     const redirect = $("#redirect-hint");
@@ -748,7 +692,7 @@
     if (!presence?.enabled) {
       note.textContent = "Cleared";
       note.className = "tag";
-    } else if ((state?.pairings || []).some((p) => p.lastStatus === "connected")) {
+    } else if (activityIsLive(state?.activitySession)) {
       note.textContent = "Live";
       note.className = "tag is-live";
     } else if (state?.bot?.connected) {
@@ -825,7 +769,7 @@
 
     if (!payload.name.trim()) return showErrors(new Error("Activity name is required."));
     if (payload.type === 1 && !payload.url.trim()) return showErrors(new Error("A Streaming activity needs a URL."));
-    if (!payload.targets.bot && !payload.targets.companion) {
+    if (!payload.targets.bot && !payload.targets.profile) {
       return showErrors(new Error("Pick at least one place to show the presence."));
     }
 
@@ -1049,35 +993,6 @@
 
   // ----------------------------------------------------------------- profile
 
-  $("#pair-btn").addEventListener("click", async () => {
-    const button = $("#pair-btn");
-    button.disabled = true;
-    try {
-      const label = $("#pair-label").value.trim() || "My computer";
-      const result = await api("/api/companion/pairings", "POST", { label });
-      $("#pair-result").hidden = false;
-      $("#pair-command").value = result.command;
-      if (result.launchers) {
-        $("#pair-mac").href = result.launchers.mac;
-        $("#pair-win").href = result.launchers.windows;
-        $("#pair-linux").href = result.launchers.linux;
-      }
-      state.pairings = [...(state.pairings || []), result.pairing];
-      renderPairings(state.pairings);
-      renderProfilePill(state.pairings);
-      toast("Computer paired — run the command to go live");
-    } catch (error) {
-      toast(error.message, true);
-    } finally {
-      button.disabled = false;
-    }
-  });
-
-  $("#copy-command").addEventListener("click", async () => {
-    const ok = await copyText($("#pair-command").value);
-    toast(ok ? "Command copied" : "Copy failed — select the text manually", !ok);
-  });
-
   // With no application id there is no invite link to give out: hide the empty
   // input instead of handing over a discord.com URL that only errors.
   const inviteValue = $("#invite-url").value.trim();
@@ -1103,69 +1018,6 @@
     }
     const ok = await copyText(href);
     toast(ok ? "Activity link copied" : "Copy failed", !ok);
-  });
-
-  // ------------------------------------------------------------- share card
-
-  function renderShare(share) {
-    const live = $("#share-live");
-    const empty = $("#share-empty");
-    const tag = $("#share-tag");
-    if (!live || !empty) return;
-
-    if (share?.url) {
-      live.hidden = false;
-      empty.hidden = true;
-      tag.hidden = false;
-      tag.textContent = "Public";
-      $("#share-url").value = share.url;
-      $("#share-open").href = share.url;
-    } else {
-      live.hidden = true;
-      empty.hidden = false;
-      tag.hidden = true;
-      $("#share-url").value = "";
-    }
-  }
-
-  $("#share-create")?.addEventListener("click", async () => {
-    try {
-      const result = await api("/api/share", "POST", {});
-      renderShare(result.share);
-      state.share = result.share;
-      const ok = await copyText(result.share.url);
-      toast(ok ? "Share link created and copied" : "Share link created");
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-
-  $("#share-rotate")?.addEventListener("click", async () => {
-    try {
-      const result = await api("/api/share", "POST", {});
-      renderShare(result.share);
-      state.share = result.share;
-      toast("New link — the old one stopped working");
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-
-  $("#share-off")?.addEventListener("click", async () => {
-    if (!confirm("Switch sharing off? The link stops working immediately.")) return;
-    try {
-      await api("/api/share", "DELETE");
-      renderShare(null);
-      state.share = null;
-      toast("Sharing switched off");
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-
-  $("#share-copy")?.addEventListener("click", async () => {
-    const ok = await copyText($("#share-url").value);
-    toast(ok ? "Share link copied" : "Copy failed", !ok);
   });
 
   // ---------------------------------------------------------------- settings
@@ -1329,7 +1181,6 @@
       else bits.push("no Discord yet");
       bits.push(user.presenceName ? `card: ${user.presenceName}` : "no card");
       if (user.photos) bits.push(`${user.photos} photo${user.photos === 1 ? "" : "s"}`);
-      if (user.devices) bits.push(`${user.devices} device${user.devices === 1 ? "" : "s"}`);
       bits.push(`added ${timeAgo(user.createdAt)}`);
       meta.textContent = bits.join(" · ");
       meta.title = meta.textContent;
@@ -1377,7 +1228,7 @@
       remove.textContent = "Remove";
       remove.addEventListener("click", async () => {
         const ok = window.confirm(
-          `Delete ${user.email}?\nTheir card, photos, share link and paired devices go with it. This cannot be undone.`
+          `Delete ${user.email}?\nTheir card and photos go with it. This cannot be undone.`
         );
         if (!ok) return;
         try {
@@ -1455,10 +1306,8 @@
     await refresh();
     connectEvents();
     setInterval(tickTimer, 1000);
-    setInterval(() => {
-      renderProfilePill(state?.pairings);
-      renderPairings(state?.pairings);
-    }, 30_000);
+    // The session's last-seen time ages out, so the pill needs a nudge.
+    setInterval(renderProfilePill, 30_000);
   })();
 
   window.addEventListener("beforeunload", (event) => {

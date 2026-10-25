@@ -10,10 +10,9 @@
  *  - `bot`       - the hosted gateway bot. Discord only renders name, type and
  *                  state for bot accounts, so images/buttons cannot appear on
  *                  the bot's card.
- *  - `companion` - the small agent the user runs on their own computer, which
- *                  pushes the full activity (photos, buttons, timer) to their
- *                  local Discord client. This is the only supported way to put
- *                  rich presence on a *user's* profile.
+ *  - `profile`   - the person's own Discord profile, written by the in-Discord
+ *                  app. This is the only way to get photos and buttons on a
+ *                  *user's* card, because Discord strips them for bots.
  */
 
 const ACTIVITY_TYPES = Object.freeze({
@@ -52,7 +51,7 @@ const DEFAULT_CONFIG = Object.freeze({
   startedAt: false,
   startTimestamp: null,
   buttons: [],
-  targets: { bot: true, companion: true },
+  targets: { bot: true, profile: true },
   updatedAt: null
 });
 
@@ -194,9 +193,10 @@ function sanitizePresence(input, options = {}) {
   const targetsInput = body.targets && typeof body.targets === "object" ? body.targets : current.targets || {};
   const targets = {
     bot: toBoolean(targetsInput.bot, true),
-    companion: toBoolean(targetsInput.companion, true)
+    // `companion` is the pre-v5 name of this flag; old clients still send it.
+    profile: toBoolean(targetsInput.profile ?? targetsInput.companion, true)
   };
-  if (!targets.bot && !targets.companion) {
+  if (!targets.bot && !targets.profile) {
     errors.push("Pick at least one place to show the presence (bot, your profile, or both).");
   }
 
@@ -255,11 +255,11 @@ function resolveImage(value, options = {}) {
  * Build the activity object for a target.
  *
  * @param {object} config stored presence config
- * @param {{target?: "bot"|"companion", publicUrl?: string, resolveAsset?: (id: string) => string}} [options]
+ * @param {{target?: "bot"|"profile", publicUrl?: string, resolveAsset?: (id: string) => string}} [options]
  */
 function buildActivity(config, options = {}) {
   if (!config || !config.enabled || !config.name) return null;
-  const target = options.target === "companion" ? "companion" : "bot";
+  const target = options.target === "profile" ? "profile" : "bot";
   if (config.targets && config.targets[target] === false) return null;
 
   const type = Number(config.type) || 0;
@@ -290,7 +290,7 @@ function buildActivity(config, options = {}) {
   }
   if (Object.keys(assets).length > 0) activity.assets = assets;
 
-  if (target === "companion") {
+  if (target === "profile") {
     // RPC renders buttons (the gateway does not do this for bots). The wire
     // format is `buttons: [label]` plus `metadata.button_urls: [url]`.
     const buttons = Array.isArray(config.buttons) ? config.buttons.slice(0, 2) : [];

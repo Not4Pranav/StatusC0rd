@@ -7,9 +7,8 @@
  *
  *   - a bot may only broadcast `name`, `type` and `state`, so photos and
  *     buttons are invisible on a bot card;
- *   - the only client-side ways to set a *user's* presence are the local RPC
- *     socket (the companion agent) or an Activity - a web app that Discord
- *     itself hosts in an iframe and lets talk to the local client.
+ *   - the only client-side way to set a *user's* presence is an Activity - a web
+ *     app Discord hosts in an iframe and lets talk to the local client.
  *
  * An Activity is a real web experience: the user clicks "Open in Discord", the
  * page loads inside the Discord client, and `setActivity()` puts the photo,
@@ -155,9 +154,9 @@ function createActivityService({ settings, assets, logger = console, now = Date.
       return asset ? assets.url(asset, publicUrl) : "";
     };
 
-    // `companion` is the target that carries images and buttons.
+    // `profile` is the target that carries images and buttons.
     const activity = buildActivity(presenceConfig, {
-      target: "companion",
+      target: "profile",
       publicUrl,
       resolveAsset
     });
@@ -168,7 +167,7 @@ function createActivityService({ settings, assets, logger = console, now = Date.
     if (!activity) {
       if (!presenceConfig || !presenceConfig.enabled || !presenceConfig.name) {
         reason = "No presence is live yet - save one on the Presence tab and press Publish.";
-      } else if (presenceConfig.targets && presenceConfig.targets.companion === false) {
+      } else if (presenceConfig.targets && presenceConfig.targets.profile === false) {
         reason = "Your presence is live, but \u201cMy own profile\u201d is switched off on the Presence tab.";
       } else {
         reason = "This presence cannot be shown on your profile - check the activity type and images.";

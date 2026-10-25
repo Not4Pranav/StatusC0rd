@@ -30,7 +30,6 @@
           <span class="avatar" id="user-avatar" aria-hidden="true">?</span>
           <span id="user-name">{{USER_NAME}}</span>
         </span>
-        <a class="btn ghost small" href="/guide" target="_blank" rel="noreferrer noopener">Setup guide</a>
         <form method="post" action="/logout">
           <input type="hidden" name="_csrf" value="{{CSRF}}" />
           <button class="btn ghost small" type="submit">Sign out</button>
@@ -41,7 +40,7 @@
     <nav class="tabs" role="tablist">
       <button role="tab" class="tab is-active" data-tab="presence" aria-controls="pane-presence" aria-selected="true">Presence</button>
       <button role="tab" class="tab" data-tab="photos" aria-controls="pane-photos" aria-selected="false">Photos</button>
-      <button role="tab" class="tab" data-tab="profile" aria-controls="pane-profile" aria-selected="false">My profile</button>
+      <button role="tab" class="tab" data-tab="profile" aria-controls="pane-profile" aria-selected="false">Discord</button>
       <button role="tab" class="tab admin-only" data-tab="bot" aria-controls="pane-bot" aria-selected="false">Bot &amp; 24/7</button>
       <button role="tab" class="tab admin-only" data-tab="members" aria-controls="pane-members" aria-selected="false">Members</button>
       <button role="tab" class="tab admin-only" data-tab="settings" aria-controls="pane-settings" aria-selected="false">Settings</button>
@@ -189,7 +188,7 @@
                 <span>The bot <small>— text only, online 24/7, owner's card</small></span>
               </label>
               <label class="check">
-                <input type="checkbox" name="targetCompanion" checked />
+                <input type="checkbox" name="targetProfile" checked />
                 <span>My own profile <small>— photos + buttons, in the Discord app</small></span>
               </label>
             </fieldset>
@@ -269,24 +268,23 @@
           </div>
         </div>
 
-        <!-- =============================================== profile ========= -->
+        <!-- =============================================== discord ========= -->
         <div class="pane" data-pane="profile" id="pane-profile" role="tabpanel">
           <div class="card">
             <div class="card-head">
-              <h2>Your own profile — no download</h2>
+              <h2>Put it on your profile</h2>
               <span class="tag" id="activity-tag">In Discord</span>
             </div>
             <p class="hint">
-              Photos, the two lines of text, the timer and the buttons live on <strong>your</strong>
-              profile, and Discord only lets a Discord client set them. The zero-install way is the
-              built-in StatusC0rd app: it opens inside Discord, like a game, and pushes whatever you
-              saved here — every five seconds, no rejoin.
+              Discord only lets a Discord client set <strong>your</strong> presence, so photos and
+              buttons reach your profile through the StatusC0rd app inside Discord. Open it once,
+              leave it open, and it re-reads the card you saved here every five seconds. Nothing is
+              installed.
             </p>
 
             <div class="alert is-warn" id="activity-warning" hidden>
-              The in-Discord app needs an application ID and a client secret.
-              The instance owner adds both under
-              <a href="#" data-goto="settings">Settings → Application &amp; bot</a>.
+              The in-Discord app needs an application ID and a client secret. The instance owner
+              adds both under <a href="#" data-goto="settings">Settings → Application &amp; bot</a>.
             </div>
 
             <div class="link-row" id="discord-link-row">
@@ -298,9 +296,9 @@
             </div>
 
             <ol class="notes numbered">
-              <li>Make sure the app is installed on your server (invite it with the <code>applications.commands</code> scope).</li>
-              <li>Join any voice channel and open the <strong>App Launcher</strong>, or run the app's <code>Launch</code> command.</li>
-              <li>Leave the window open — it shows exactly what your friends see.</li>
+              <li>Connect your Discord account above — that is how the app knows this card is yours.</li>
+              <li>Press <strong>Open in Discord</strong> and leave the window open.</li>
+              <li>Your profile updates within a few seconds of every publish.</li>
             </ol>
 
             <div class="actions">
@@ -317,111 +315,15 @@
                 <li><strong>Activities → Settings</strong> → tick <strong>Enable Activities</strong>.</li>
                 <li><strong>Activities → URL Mappings</strong> → prefix <code>/</code>, target
                   <code id="activity-mapping">your-public-url/activity/</code>.</li>
-                <li>Keep <code>PUBLIC_URL</code> in this dashboard pointing at the same HTTPS host —
+                <li>Keep the public URL in <strong>Settings</strong> pointing at the same HTTPS host —
                   Discord fetches your photos from there.</li>
               </ol>
               <p class="hint">
-                Anyone who can install the app can launch it. Limit launch access with
-                <code>ALLOWED_DISCORD_IDS</code> if this instance is not just for you.
+                Anyone who can install the app can launch it. Limit launch access with the allowed
+                Discord IDs in <strong>Settings</strong> if this instance is not just for you.
               </p>
             </details>
           </div>
-
-          <div class="card" id="share-card">
-            <div class="card-head">
-              <h2>Share card</h2>
-              <span class="tag" id="share-tag" hidden>Public</span>
-            </div>
-            <p class="hint">
-              A read-only page with the same card and proper link previews — handy for profiles,
-              servers and bios. The link is random, and you can rotate it or switch it off whenever
-              you want.
-            </p>
-            <div id="share-empty">
-              <button class="btn primary" type="button" id="share-create">Create share link</button>
-            </div>
-            <div id="share-live" hidden>
-              <div class="copy-row">
-                <input id="share-url" type="text" readonly aria-label="Share link" />
-                <button class="btn ghost small" type="button" id="share-copy">Copy</button>
-              </div>
-              <div class="actions">
-                <a class="btn ghost small" id="share-open" href="#" target="_blank" rel="noreferrer noopener">Open</a>
-                <button class="btn ghost small" type="button" id="share-rotate">New link</button>
-                <button class="btn ghost small danger" type="button" id="share-off">Switch off</button>
-              </div>
-            </div>
-          </div>
-
-          <details class="card advanced" id="companion-card">
-            <summary><strong>Advanced: run it on your computer instead</strong> (download, not needed for most people)</summary>
-            <p class="hint">
-              The local companion talks to the Discord desktop app over its local socket. It works
-              offline from this dashboard and keeps the presence while the window is open, but it
-              has to be installed and kept running — the in-Discord app above does not.
-            </p>
-
-            <div class="alert is-warn" id="appid-warning" hidden>
-              No Discord application ID is configured, so the companion cannot connect yet.
-              Add it under <a href="#" data-goto="settings">Settings → Application &amp; bot</a>
-              (Developer Portal → General Information → Application ID).
-            </div>
-
-            <ol class="notes numbered">
-              <li>Click <strong>Pair this computer</strong>.</li>
-              <li>Double-click the download (Node.js 20+ and the Discord desktop app are required).</li>
-              <li>Keep it running — it reconnects automatically if Discord restarts.</li>
-            </ol>
-
-            <div class="actions">
-              <input id="pair-label" class="inline-input" type="text" maxlength="60" value="My computer" aria-label="Device name" />
-              <button class="btn primary" type="button" id="pair-btn">Pair this computer</button>
-            </div>
-
-            <div id="pair-result" class="pair-result" hidden>
-              <h3 class="pair-title">This computer is paired</h3>
-              <div class="launcher-row">
-                <a class="btn primary" id="pair-mac" href="#" download>
-                  Download for macOS
-                </a>
-                <a class="btn primary" id="pair-win" href="#" download>
-                  <span class="launcher-icon" aria-hidden="true">⊞</span> Download for Windows
-                </a>
-                <a class="btn ghost" id="pair-linux" href="#" download>Linux (.sh)</a>
-              </div>
-              <p class="hint">
-                Double-click the downloaded file and leave the window open — that is the whole
-                install. macOS: unzip the download (Safari does it for you) and open
-                <code>StatusC0rd.command</code>; on Linux run <code>chmod +x statusc0rd.sh</code> once. Needs
-                <a href="https://nodejs.org" target="_blank" rel="noreferrer">Node.js 20+</a> and the
-                Discord <strong>desktop</strong> app running.
-              </p>
-
-              <details class="advanced">
-                <summary>Or run one line in a terminal</summary>
-                <label class="field">
-                  <span>Command</span>
-                  <div class="copy-row">
-                    <input id="pair-command" type="text" readonly />
-                    <button class="btn ghost small" type="button" id="copy-command">Copy</button>
-                  </div>
-                </label>
-                <p class="hint">
-                  Windows PowerShell: <code>curl.exe -fsSL "…" | node</code> ·
-                  macOS/Linux: <code>curl -fsSL "…" | node</code>
-                </p>
-              </details>
-
-              <p class="hint">
-                These files contain this device's pairing token — keep them private, and use
-                <strong>Remove</strong> below if one leaks.
-              </p>
-            </div>
-
-            <div class="card-head" style="margin-top: 22px"><h2>Paired devices</h2></div>
-            <div id="pairing-list"></div>
-            <p class="hint" id="pairing-empty">No devices paired yet.</p>
-          </details>
         </div>
 
         <!-- =============================================== bot ============= -->
@@ -530,9 +432,9 @@
           <div class="card">
             <div class="card-head"><h2>Removing someone</h2></div>
             <p class="hint">
-              <strong>Remove</strong> deletes the account together with its card, photos, share link and
-              paired devices. Their profile card disappears within a few seconds of the in-Discord app's
-              next poll. There is no undo.
+              <strong>Remove</strong> deletes the account together with its card and photos. Their
+              profile card disappears within a few seconds of the in-Discord app's next poll. There
+              is no undo.
             </p>
           </div>
         </div>
@@ -596,9 +498,9 @@
             <li><strong>Your profile</strong> — photos, buttons and the timer while the in-Discord app is open.</li>
           </ul>
           <p class="hint">
-            Discord only lets a client set a <em>user's</em> photos and buttons, so those come from
-            the in-Discord app (nothing to download) — or from the optional companion under
-            <a href="#" data-goto="profile">My profile</a> if you would rather run it locally.
+            Discord only lets a Discord client set a <em>user's</em> photos and buttons, so those
+            come from the in-Discord app — nothing to download, nothing to keep running beyond the
+            window.
           </p>
         </div>
 
