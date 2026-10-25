@@ -3,8 +3,6 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-138%20passing-3ddc97)
-
 ```
 Browser ──HTTPS──▶ StatusC0rd server
                      ├─▶ Discord gateway   → the bot card, always online
@@ -72,16 +70,17 @@ rather not open the Activity.
 | deploy on Oracle Always Free (permanent) | [`free §3`](docs/setup-free-cloud.md#3-path-b-oracle-always-free) |
 | deploy on GCP Always Free | [`free §4`](docs/setup-free-cloud.md#4-path-c-gcp-always-free-e2-micro) |
 | finish the first boot and the wizard | [`§6`](docs/setup.md#6-step-3-first-boot-and-the-wizard) |
-| design the card and publish it | [`§7`](docs/setup.md#7-step-4-design-and-publish-the-card) |
-| put it on your own profile (no install) | [`§8`](docs/setup.md#8-step-5-on-your-own-profile-no-install) |
-| keep the bot online 24/7 | [`§9`](docs/setup.md#9-step-6-the-bot-card-always-online) |
-| publish a share card | [`§10`](docs/setup.md#10-step-7-the-share-card-optional) |
-| use the optional companion instead | [`§11`](docs/setup.md#11-step-8-the-optional-companion) |
-| verify the install | [`§12`](docs/setup.md#12-step-9-verify-the-whole-install) |
-| update, back up, move hosts | [`§13`](docs/setup.md#13-step-10-updates-and-backups) |
-| rotate keys and lock down access | [`§14`](docs/setup.md#14-step-11-security-and-rotation) |
-| look up an environment variable | [`§15`](docs/setup.md#15-environment-variables) |
-| fix a problem | [`§18`](docs/setup.md#18-troubleshooting) |
+| set up the dashboard itself (every tab, field and pill) | [`§7`](docs/setup.md#7-the-dashboard-tab-by-tab) |
+| design the card and publish it | [`§8`](docs/setup.md#8-step-4-design-and-publish-the-card) |
+| put it on your own profile (no install) | [`§9`](docs/setup.md#9-step-5-on-your-own-profile-no-install) |
+| keep the bot online 24/7 | [`§10`](docs/setup.md#10-step-6-the-bot-card-always-online) |
+| publish a share card | [`§11`](docs/setup.md#11-step-7-the-share-card-optional) |
+| use the optional companion instead | [`§12`](docs/setup.md#12-step-8-the-optional-companion) |
+| verify the install | [`§13`](docs/setup.md#13-step-9-verify-the-whole-install) |
+| update, back up, move hosts | [`§14`](docs/setup.md#14-step-10-updates-and-backups) |
+| rotate keys and lock down access | [`§15`](docs/setup.md#15-step-11-security-and-rotation) |
+| look up an environment variable | [`§16`](docs/setup.md#16-environment-variables) |
+| fix a problem | [`§19`](docs/setup.md#19-troubleshooting) |
 
 Just want it on localhost to poke at it?
 
@@ -122,7 +121,7 @@ The bot lives on the server, so its card is online as long as the server is. It
 reconnects with exponential backoff after network blips and Discord restarts, and
 the built-in keep-alive makes a sleeping free instance look busy so it is not
 spun down. How to turn that on — and how to keep the process running on each kind
-of host — is [`§9`](docs/setup.md#9-step-6-the-bot-card-always-online).
+of host — is [`§10`](docs/setup.md#10-step-6-the-bot-card-always-online).
 
 ---
 
@@ -219,18 +218,13 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ## Development
 
 ```sh
-npm run dev    # node --watch
-npm run check  # parse every source file
-npm test       # 138 tests (node:test only)
+npm ci         # once
+npm start      # http://localhost:3000
 ```
 
-`test/companion-e2e.test.js` is the proof for the headline flow: it boots a real
-dashboard, uploads a real PNG, sets text + photo + two buttons, pairs a device,
-then runs the **actual companion** against a temporary UNIX socket that emulates
-the Discord client. It asserts the exact `SET_ACTIVITY` frame Discord receives
-(photo URL, hover text, both buttons, `metadata.button_urls`, timer), that a
-dashboard edit arrives without reloading, and that clearing/stopping removes the
-presence.
+No build step, no transpiler, no test harness to install: the whole app is plain
+CommonJS plus a browser script. `node --watch index.js` if you want a reload on
+save.
 
 ```
 index.js               boot, banner, graceful shutdown
@@ -250,14 +244,9 @@ src/markdown.js        the small Markdown subset those files are written in
 src/companion/agent.js the companion (also served as a personalized script)
 views/                 setup, dashboard, login, welcome, guide, card, activity
 public/                styles, dashboard JS, setup JS, upload helper, activity app
-docs/setup.md          shared steps; setup-local.md, setup-cloud.md,
-                       setup-free-cloud.md are the three host paths
-test/                  node:test suites (presence, settings, assets, bot,
-                       keepalive, companion IPC, HTTP integration)
+docs/                  the four guides (also served at /guide, /guide/local,
+                       /guide/cloud, /guide/free-cloud)
 ```
-
-The tests inject a fake bot and a temporary data directory, and the companion
-suite runs a real UNIX-socket server that emulates Discord's IPC handshake.
 
 ---
 

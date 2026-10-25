@@ -92,7 +92,8 @@ link:
    for** — the app trusts loopback connections.
 2. Choose a dashboard key (12+ characters), then fill in the Discord values you
    will collect in §5. You can skip them and add them later under **Settings**.
-3. Press **Finish setup**. You land on **My profile**, signed in.
+3. Press **Finish setup**. You land on **My profile**, signed in — the whole
+   dashboard is mapped in [the dashboard, tab by tab](setup.md#7-the-dashboard-tab-by-tab).
 
 Leave the terminal running. Closing it stops the server — §7 fixes that.
 
@@ -220,8 +221,8 @@ profile with nothing installed:
 
 That is the whole loop. Editing and publishing again updates the card within
 seconds, with no restart and no rejoin. Details for every field are in
-[design and publish](setup.md#7-step-4-design-and-publish-the-card) and
-[on your own profile](setup.md#8-step-5-on-your-own-profile-no-install).
+[design and publish](setup.md#8-step-4-design-and-publish-the-card) and
+[on your own profile](setup.md#9-step-5-on-your-own-profile-no-install).
 
 ---
 
@@ -362,7 +363,7 @@ Moving to a proper server later? The `data/` folder is portable: see
 
 Everything that is not host-specific — Discord errors, wizard locks, key
 recovery, buttons, the Activity — is in the
-[troubleshooting section](setup.md#18-troubleshooting) of the guide.
+[troubleshooting section](setup.md#19-troubleshooting) of the guide.
 
 ---
 

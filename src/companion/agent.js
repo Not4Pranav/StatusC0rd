@@ -647,22 +647,6 @@ async function dryRun(config = {}) {
 
 // ------------------------------------------------------------------- module
 
-const exported = {
-  OPCODES,
-  PacketDecoder,
-  encodePacket,
-  normalizeActivity,
-  ipcCandidates,
-  ipcDirectories,
-  DiscordIpc,
-  requestJson,
-  start,
-  run,
-  dryRun
-};
-
-if (typeof module !== "undefined" && module.exports) module.exports = exported;
-
 function bootstrap() {
   const injected = globalThis.__STATUSC0RD__;
   const config = injected || {
@@ -691,5 +675,3 @@ function bootstrap() {
 }
 
 if (require.main === module || globalThis.__STATUSC0RD__) bootstrap();
-
-module.exports.bootstrap = bootstrap;

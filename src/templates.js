@@ -185,4 +185,4 @@ function applyTemplate(id, current = {}) {
   };
 }
 
-module.exports = { TEMPLATES, templateList, applyTemplate };
+module.exports = { applyTemplate, templateList };

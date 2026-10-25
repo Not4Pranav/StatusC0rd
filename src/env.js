@@ -8,8 +8,6 @@
  * `data/settings.json`, which is what managed deployments (Render, Docker) want.
  */
 
-const TRUTHY = new Set(["1", "true", "yes", "on"]);
-
 /** Parse a comma/whitespace separated list of Discord snowflakes. */
 function parseIdList(value) {
   if (!value) return [];
@@ -21,11 +19,6 @@ function parseIdList(value) {
         .filter((id) => /^\d{5,25}$/.test(id))
     )
   ];
-}
-
-function parseBool(value, fallback = false) {
-  if (value === undefined || value === null || String(value).trim() === "") return fallback;
-  return TRUTHY.has(String(value).trim().toLowerCase());
 }
 
 function trim(value) {
@@ -105,4 +98,4 @@ function normalizeEnv(env = process.env) {
   return { env: normalized, problems, isProduction: nodeEnv === "production" };
 }
 
-module.exports = { normalizeEnv, parseIdList, parseBool };
+module.exports = { normalizeEnv };

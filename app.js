@@ -1368,4 +1368,4 @@ function createApp({
   return app;
 }
 
-module.exports = { createApp, SESSION_MAX_AGE_MS };
+module.exports = { createApp };

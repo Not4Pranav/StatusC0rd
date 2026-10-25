@@ -291,4 +291,4 @@ function renderMarkdown(source) {
   return { html: out.join("\n"), headings };
 }
 
-module.exports = { renderMarkdown, renderInline, slugify };
+module.exports = { renderMarkdown };

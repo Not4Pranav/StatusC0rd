@@ -404,12 +404,4 @@ class SettingsStore {
   }
 }
 
-module.exports = {
-  SettingsStore,
-  DEFAULT_SETTINGS,
-  SETTINGS_VERSION,
-  SHARE_SLUG_RE,
-  hashKey,
-  verifyKey,
-  migrate
-};
+module.exports = { SettingsStore };

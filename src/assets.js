@@ -202,4 +202,4 @@ class AssetStore {
   }
 }
 
-module.exports = { AssetStore, parseUpload, readDimensions, MAX_BYTES, ALLOWED };
+module.exports = { AssetStore };

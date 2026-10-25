@@ -102,4 +102,4 @@ function createZip(entries, now = new Date()) {
   return Buffer.concat([...locals, centralBuffer, end]);
 }
 
-module.exports = { createZip, crc32 };
+module.exports = { createZip };

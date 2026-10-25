@@ -317,4 +317,4 @@ class DiscordBot extends EventEmitter {
   }
 }
 
-module.exports = { DiscordBot, PresenceQueue, MIN_PRESENCE_INTERVAL_MS };
+module.exports = { DiscordBot };

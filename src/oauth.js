@@ -138,12 +138,4 @@ async function fetchMe(accessToken) {
   return me;
 }
 
-module.exports = {
-  DiscordApiError,
-  buildAuthorizeUrl,
-  exchangeCode,
-  exchangeActivityCode,
-  fetchMe,
-  API_BASE,
-  AUTHORIZE_URL
-};
+module.exports = { exchangeActivityCode, exchangeCode, fetchMe, buildAuthorizeUrl };

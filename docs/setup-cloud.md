@@ -238,14 +238,15 @@ set `TRUST_PROXY=false` only if you expose Node directly with no proxy.
    and use your own.
 3. Choose a dashboard key, paste the Application ID and Client Secret (§8), and
    optionally the bot token.
-4. Press **Finish setup**.
+4. Press **Finish setup**. The screen you land on is mapped in
+   [the dashboard, tab by tab](setup.md#7-the-dashboard-tab-by-tab).
 
 If you filled `DASHBOARD_KEY`, `CLIENT_ID` and `CLIENT_SECRET` in the env file
 already, the wizard never appears and `https://rpc.example.com/` asks for the key
 directly.
 
 The token is deleted when setup completes; if you ever lose the dashboard key,
-[the recovery steps](setup.md#14-1-the-dashboard-key) bring the wizard back.
+[the recovery steps](setup.md#15-1-the-dashboard-key) bring the wizard back.
 
 ---
 
@@ -264,8 +265,8 @@ photos and buttons possible:
 5. **My profile** → **Open in Discord**.
 
 Full detail: [the Discord application](setup.md#4-step-1-the-discord-application),
-[design and publish](setup.md#7-step-4-design-and-publish-the-card),
-[on your own profile](setup.md#8-step-5-on-your-own-profile-no-install).
+[design and publish](setup.md#8-step-4-design-and-publish-the-card),
+[on your own profile](setup.md#9-step-5-on-your-own-profile-no-install).
 
 ---
 
@@ -397,7 +398,7 @@ identical to §7–§8.
 - Keep `data/` at mode `0600` (the app does this) and out of any git repository.
 - `SESSION_SECRET` of 32+ characters, or let the app generate one.
 - Rotate the bot token and client secret if they ever appear in a log or a
-  screenshot — [security and rotation](setup.md#14-step-11-security-and-rotation).
+  screenshot — [security and rotation](setup.md#15-step-11-security-and-rotation).
 - `ALLOWED_DISCORD_IDS` is the only thing that stops a stranger who can install
   your app from using it. Set it if the instance is public.
 - Update the OS monthly: `sudo apt update && sudo apt upgrade -y`. Use
@@ -421,7 +422,7 @@ identical to §7–§8.
 | Activity opens blank | URL mapping wrong | `https://rpc.example.com/activity/` with the trailing slash |
 
 Host-independent problems — Discord, buttons, the Activity, key recovery — are in
-the [troubleshooting section](setup.md#18-troubleshooting) of the guide.
+the [troubleshooting section](setup.md#19-troubleshooting) of the guide.
 
 ---
 

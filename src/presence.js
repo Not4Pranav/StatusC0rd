@@ -308,24 +308,10 @@ function buildActivity(config, options = {}) {
   return activity;
 }
 
-function describeActivity(config) {
-  const activity = buildActivity(config, { target: "companion" });
-  if (!activity) return "no activity";
-  return `${ACTIVITY_TYPES[activity.type]} ${activity.name}`;
-}
-
 module.exports = {
   ACTIVITY_TYPES,
-  STATUSES,
-  LIMITS,
   DEFAULT_CONFIG,
-  toText,
-  toBoolean,
-  isStreamUrl,
-  imageKind,
-  imageError,
-  resolveImage,
-  sanitizePresence,
+  STATUSES,
   buildActivity,
-  describeActivity
+  sanitizePresence
 };

@@ -5,6 +5,4 @@ npm-debug.log*
 .env
 .env.*
 !.env.example
-test
-scripts
 data
