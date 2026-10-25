@@ -1855,3 +1855,168 @@ body.site {
     font-size: 0.72rem;
   }
 }
+
+/* ------------------------------------------------------- public card page */
+
+.card-stage {
+  width: min(720px, 100% - 32px);
+  margin: 0 auto;
+  padding: 32px 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card-owner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.card-handle {
+  font-weight: 650;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.card-public {
+  padding: 22px;
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 60px -32px rgba(0, 0, 0, 0.75);
+}
+
+.card-public .preview-art {
+  flex: 0 0 112px;
+  width: 112px;
+  height: 112px;
+}
+
+.card-public .preview-art img {
+  width: 100%;
+  height: 100%;
+  border-radius: 11px;
+  object-fit: cover;
+}
+
+.card-public .preview-name {
+  font-size: 1.2rem;
+  white-space: normal;
+}
+
+.card-public .preview-line {
+  white-space: normal;
+  margin-top: 2px;
+}
+
+.card-public .preview-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.card-public .preview-time:empty {
+  display: none;
+}
+
+.card-public .preview-button {
+  text-decoration: none;
+  padding: 7px 14px;
+}
+
+.card-public .preview-button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.card-note {
+  margin: 0;
+}
+
+.card-cta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.dot-sep {
+  opacity: 0.6;
+}
+
+@media (max-width: 620px) {
+  .card-public {
+    padding: 16px;
+  }
+
+  .card-public .preview-art {
+    flex: 0 0 84px;
+    width: 84px;
+    height: 84px;
+  }
+}
+
+/* --------------------------------------------------- public card settings */
+
+.share-card {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.share-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.share-card .card-head {
+  margin-bottom: 8px;
+}
+
+.field-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  max-width: 320px;
+}
+
+.handle-input {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.handle-input:focus-within {
+  border-color: var(--accent);
+}
+
+.handle-prefix {
+  padding: 8px 0 8px 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.handle-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 8px 10px 8px 2px;
+  outline: none;
+}
+
+.share-card .actions {
+  margin-top: 12px;
+}

@@ -322,6 +322,48 @@
             </div>
             <p class="hint" id="activity-status">Not connected yet.</p>
 
+            <div class="share-card" id="card-share">
+              <div class="card-head">
+                <h3>Your public card page</h3>
+                <span class="tag" id="card-tag">{{CARD_TAG}}</span>
+              </div>
+              <p class="hint">
+                A link you can paste anywhere. It shows the card as a visitor sees it: photo, both
+                lines, the timer and working buttons. Discord itself can only be updated from inside
+                Discord, so this page is the website half of the same card.
+              </p>
+              <form id="card-form" novalidate>
+                <label class="field-inline" for="card-handle">
+                  <span>Handle</span>
+                  <span class="handle-input">
+                    <span class="handle-prefix" aria-hidden="true">/c/</span>
+                    <input
+                      id="card-handle"
+                      name="handle"
+                      type="text"
+                      inputmode="latin"
+                      autocomplete="off"
+                      spellcheck="false"
+                      maxlength="24"
+                      value="{{CARD_HANDLE}}"
+                      aria-describedby="card-handle-hint"
+                    />
+                  </span>
+                </label>
+                <p class="hint" id="card-handle-hint">3–24 characters: lowercase letters, numbers and dashes.</p>
+                <label class="check">
+                  <input type="checkbox" id="card-public" {{CARD_CHECKED}} />
+                  Make this card page public
+                </label>
+                <div class="actions">
+                  <button class="btn primary small" type="submit" id="card-save">Save</button>
+                  <a class="btn ghost small" id="card-open" href="{{CARD_URL}}" target="_blank" rel="noreferrer noopener">View card</a>
+                  <button class="btn ghost small" type="button" id="card-copy">Copy link</button>
+                </div>
+              </form>
+              <p class="hint" id="card-status">{{CARD_STATUS}}</p>
+            </div>
+
             <details class="advanced" id="activity-setup">
               <summary>One-time setup in the Discord Developer Portal</summary>
               <ol class="notes numbered">

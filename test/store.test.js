@@ -390,3 +390,47 @@ test("changing the keep-alive target probes it immediately", async () => {
   keepAlive.stop();
   assert.deepEqual(pings, ["https://one.example/health", "https://two.example/health"]);
 });
+
+test("every account gets a handle derived from its name, private by default", () => {
+  const dir = tmpDir("card-handle");
+  const s = store(dir);
+  const jane = s.createUser({ email: "jane@example.com", name: "Jane Doe", password: "janepass1234" });
+  assert.deepEqual(s.cardFor(jane.id), { handle: "jane-doe", publicCard: false });
+  assert.equal(s.findCardByHandle("JANE-DOE").ownerId, jane.id, "lookups are case-insensitive");
+  assert.equal(s.findCardByHandle("nobody"), null);
+  assert.equal(s.cardFor("admin").handle, "owner", "the dashboard key gets a sane default");
+});
+
+test("handles are unique and validated", () => {
+  const dir = tmpDir("card-clash");
+  const s = store(dir);
+  const first = s.createUser({ email: "jane@example.com", name: "Jane", password: "janepass1234" });
+  const second = s.createUser({ email: "jane2@example.com", name: "Jane", password: "janepass1234" });
+  assert.equal(s.cardFor(first.id).handle, "jane");
+  assert.equal(s.cardFor(second.id).handle, "jane-2", "collisions are numbered");
+  assert.throws(() => s.setCard(second.id, { handle: "jane" }), /taken/);
+  for (const bad of ["ab", "No Spaces", "trailing-", "-leading", "x".repeat(25), "ünïcode"]) {
+    assert.throws(() => s.setCard(second.id, { handle: bad }), /Handles are 3-24/, bad);
+  }
+  assert.equal(s.setCard(second.id, { handle: "jane-two", publicCard: true }).publicCard, true);
+  assert.equal(s.findCardByHandle("jane-two").publicCard, true);
+});
+
+test("a deleted account takes its public card with it", () => {
+  const dir = tmpDir("card-delete");
+  const s = store(dir);
+  const user = s.createUser({ email: "gone@example.com", name: "Gone", password: "gonepass1234" });
+  s.setCard(user.id, { publicCard: true });
+  assert.equal(s.findCardByHandle("gone").ownerId, user.id);
+  s.deleteUser(user.id);
+  assert.equal(s.findCardByHandle("gone"), null);
+});
+
+test("cards are re-created for principals the upgrade did not know about", () => {
+  const dir = tmpDir("card-migrate");
+  const s = store(dir);
+  s.data.cards = { ghost: { handle: "ghost", publicCard: true } };
+  const user = s.createUser({ email: "late@example.com", name: "Late Arrival", password: "latepass1234" });
+  assert.equal(s.cardFor(user.id).handle, "late-arrival");
+  assert.equal(s.findCardByHandle("late-arrival").publicCard, false);
+});

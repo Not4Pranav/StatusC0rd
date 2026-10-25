@@ -122,6 +122,8 @@ The complete table — including `SETUP_TOKEN`, `SETUP_REQUIRE_TOKEN`,
 | `GET`/`POST` | `/login`, `/register`, `POST /logout` | sign in and sign up |
 | `GET` | `/auth/discord`, `/auth/discord/link`, `/auth/discord/callback` | Discord sign-in and account linking |
 | `GET` | `/activity/` | the in-Discord app (photos + buttons) |
+| `GET` | `/c/:handle` | a member's public card page — private until published |
+| `POST` | `/api/card` | handle and publish switch for that page |
 | `GET` | `/assets/:hash.:ext` | uploaded photos, cached for a year |
 | `GET` | `/health` | `{"status":"ok"}` and nothing else |
 | `POST` | `/api/presence`, `/api/presence/publish`, `/api/presence/draft`, `/api/presence/clear` | the card |
@@ -166,6 +168,9 @@ store, upload sniffing and limits, key hashing, rate limiters and the keep-alive
   30 MB with a 500 MB ceiling for the instance.
 - A card may only reference photos its own account uploaded, and deleting a
   photo clears it from the card that used it.
+- Each account can share its card at `/c/<handle>`; the page is private until
+  the owner switches it on, exposes nothing but the card itself, and disappears
+  with the account.
 - Setup cannot be claimed remotely without the one-time setup token, and it runs
   once — afterwards the endpoint refuses to run again.
 
