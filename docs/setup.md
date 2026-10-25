@@ -1077,6 +1077,7 @@ unconfigured instance still boots and serves `/setup`.
 | `KEEP_ALIVE_INTERVAL_MINUTES` | `10` | ping interval, clamped to 5–60 |
 | `REDIRECT_URI` | `<PUBLIC_URL>/auth/discord/callback` | override the OAuth callback |
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | which hops may set `X-Forwarded-*`; `false` when exposed directly, or a hop count / proxy list |
+| `LOG_REQUESTS` | on | one `[http] METHOD /path status bytes ms` line per page and API request; static files and the SSE stream are skipped. `0` silences it entirely |
 
 A copy-paste template lives in `.env.example`. Invalid values do not stop the
 server: it prints `[config] …` warnings at boot and carries on.
@@ -1179,6 +1180,9 @@ being silently deleted.
 | "This pairing link is invalid or was revoked" | the token was rotated, or the device was removed | pair again from **My profile** |
 | The dashboard says *Bot idle* | the gateway is connected but the presence is not on the bot | check that **The bot** is ticked on the Presence tab and publish |
 | `/api/health` says `degraded` | `data/` is not writable (permissions, full disk, read-only mount) | fix the mount or ownership; `/health` returns 503 until then |
+| A blank page **and no `[http]` line for it in the host's log** | the request never reached Node — the platform's proxy answered instead (service asleep, out of instance hours, crashed, or still deploying) | check `/health` from outside; wake or redeploy; on Render confirm the service is **Live**, not *Suspended* |
+| A blank page **and the log shows `GET / 200 27527b`** | the HTML was served, so the browser dropped the CSS/JS or the page was never rendered — an extension, a proxy, or an old cached bundle | hard reload (`Ctrl`/`Cmd`+`Shift`+`R`), then another browser or network; the log line proves the server's side is fine |
+| The log shows `GET / aborted by the client` | the browser hung up mid-response, usually a proxy timing out on a cold free instance | wait for the instance to be warm (one `/health` 200 first) and reload |
 | `/guide` answers "No such guide" | a typo in the path; only `local`, `cloud` and `free-cloud` exist | start at `/guide` |
 | Browser console: 429 or `EventSource` errors | a proxy is rate-limiting or buffering | the page falls back to polling on its own; a 429 on writes means the limit in §15.5 |
 | Keep-alive says **Waiting** | the server cannot reach `PUBLIC_URL` — DNS, TLS, or a sleeping host | open `https://YOUR-HOST/health` from outside; fix `PUBLIC_URL` |
@@ -1410,6 +1414,19 @@ curl -s -H "Cookie: statusc0rd.sid=$COOKIE" https://YOUR-HOST/api/health
 # Watch the dashboard's own event stream, exactly as the page does
 curl -N -H "Cookie: statusc0rd.sid=$COOKIE" https://YOUR-HOST/api/events
 ```
+
+What the server thinks happened, in the host's log (one line per page and API
+request, assets skipped):
+
+```
+[http] GET / 200 27527b 1ms
+[http] POST /login 303 27b 2ms
+[http] GET /api/state 200 2235b 2ms
+```
+
+A request that never produces one of these lines never reached the app — which
+is the difference between "the server is down or still starting" and "the server
+answered and the browser is the problem".
 
 The companion's view of the same state, without touching Discord:
 

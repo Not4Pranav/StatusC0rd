@@ -152,7 +152,10 @@ function createApp({
   logger = console,
   now = Date.now,
   version = require("./package.json").version,
-  isProduction = process.env.NODE_ENV === "production"
+  isProduction = process.env.NODE_ENV === "production",
+  logRequests = process.env.LOG_REQUESTS === undefined
+    ? true
+    : !["0", "false", "no", "off"].includes(String(process.env.LOG_REQUESTS).toLowerCase())
 }) {
   if (!settings) throw new Error("createApp requires a settings store");
   if (!assets) throw new Error("createApp requires an asset store");
@@ -280,6 +283,46 @@ function createApp({
     if (req.path.startsWith("/api/") || req.path === "/login" || req.path === "/setup" || req.path === "/") {
       res.setHeader("Cache-Control", "no-store");
     }
+    next();
+  });
+
+  /**
+   * One line per page and API request.
+   *
+   * On a managed host the log is the *only* debugging surface: "the dashboard was
+   * a blank page" is unanswerable without knowing whether `GET /` was served, at
+   * which status, and how many bytes went out. Static assets and the SSE stream
+   * are skipped (they would drown the log and `EventSource` reconnects on its
+   * own), and `LOG_REQUESTS=0` turns the whole thing off.
+   */
+  function requestLogging(req) {
+    if (logRequests === false) return false;
+    if (req.path === "/api/events") return false;
+    if (req.path.startsWith("/assets/") || req.path === "/favicon.ico") return false;
+    return !/\.[a-z0-9]{2,5}$/i.test(req.path);
+  }
+
+  app.use((req, res, next) => {
+    if (!requestLogging(req)) return next();
+    const startedAt = now();
+    let done = false;
+    const line = (status) => {
+      if (done) return;
+      done = true;
+      const bytes = res.getHeader("Content-Length");
+      const size = bytes ? ` ${bytes}b` : "";
+      const ms = `${now() - startedAt}ms`;
+      logger.log?.(`[http] ${req.method} ${req.originalUrl} ${status}${size} ${ms}`);
+    };
+    res.on("finish", () => line(res.statusCode));
+    // A client that hangs up mid-response is exactly the blank-page case, so it
+    // deserves its own line rather than silence.
+    res.on("close", () => {
+      if (res.writableEnded) return line(res.statusCode);
+      done = true;
+      const ms = `${now() - startedAt}ms`;
+      logger.warn?.(`[http] ${req.method} ${req.originalUrl} aborted by the client after ${ms}`);
+    });
     next();
   });
 
