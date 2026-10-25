@@ -278,10 +278,14 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 - **GCP free tier** — free while it stays inside the quota; the 1 GB egress cap
   is the one to watch, and it only applies to the three US regions listed.
 
-None of them is suitable for many users on one instance. StatusC0rd is
-single-tenant by design (one dashboard key, one presence); if several people
-should each have their own card on their own profile, that is one instance per
-person, or the paid [cloud server](setup-cloud.md) path.
+All three run StatusC0rd fine for a small group: one owner (the dashboard key) and
+up to 500 member accounts, each with their own card. What a free host will not
+survive is *load* — shared CPU, 512 MB of memory on Render, and one sleeping
+service mean a dozen active members at once is the honest ceiling. Photos also
+live on the ephemeral disk there, so a restart empties the library (the settings
+survive only if you keep the Discord values in environment variables). For a
+bigger group, the paid [cloud server](setup-cloud.md) path is the cheaper
+answer in time.
 
 ---
 
@@ -350,3 +354,9 @@ route and status code is in its
 - [ ] HTTPS via Caddy, `/health` returns `200`
 - [ ] Keep-alive **off** (egress), wizard finished, URL mapping set
 - [ ] Billing report checked after a week
+
+**Every free host**
+
+- [ ] Env vars set so a wiped disk re-boots into a working dashboard (`DASHBOARD_KEY`, `CLIENT_ID`, `CLIENT_SECRET`, `PUBLIC_URL`, and `DISCORD_TOKEN` if you run the bot)
+- [ ] Member accounts decided — sign-ups open or closed — and each member told to press **Connect Discord** ([accounts](setup.md#7-7-accounts-you-and-the-people-you-invite))
+- [ ] You accept that photos do not survive a restart here, and you have kept the original files

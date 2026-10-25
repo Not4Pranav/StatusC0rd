@@ -12,7 +12,7 @@
     <script src="/upload.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
-  <body class="app">
+  <body class="app" data-role="{{ROLE}}">
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">S</span>
@@ -26,9 +26,9 @@
         <span id="profile-pill" class="pill is-muted" title="Companion on your computer">
           <span class="dot"></span><span id="profile-pill-text">Profile</span>
         </span>
-        <span class="user-chip" id="user-chip">
+        <span class="user-chip" id="user-chip" title="{{USER_EMAIL}}">
           <span class="avatar" id="user-avatar" aria-hidden="true">?</span>
-          <span id="user-name">Signed in</span>
+          <span id="user-name">{{USER_NAME}}</span>
         </span>
         <a class="btn ghost small" href="/guide" target="_blank" rel="noreferrer noopener">Setup guide</a>
         <form method="post" action="/logout">
@@ -42,8 +42,9 @@
       <button role="tab" class="tab is-active" data-tab="presence" aria-controls="pane-presence" aria-selected="true">Presence</button>
       <button role="tab" class="tab" data-tab="photos" aria-controls="pane-photos" aria-selected="false">Photos</button>
       <button role="tab" class="tab" data-tab="profile" aria-controls="pane-profile" aria-selected="false">My profile</button>
-      <button role="tab" class="tab" data-tab="bot" aria-controls="pane-bot" aria-selected="false">Bot &amp; 24/7</button>
-      <button role="tab" class="tab" data-tab="settings" aria-controls="pane-settings" aria-selected="false">Settings</button>
+      <button role="tab" class="tab admin-only" data-tab="bot" aria-controls="pane-bot" aria-selected="false">Bot &amp; 24/7</button>
+      <button role="tab" class="tab admin-only" data-tab="members" aria-controls="pane-members" aria-selected="false">Members</button>
+      <button role="tab" class="tab admin-only" data-tab="settings" aria-controls="pane-settings" aria-selected="false">Settings</button>
     </nav>
 
     <main class="layout">
@@ -183,9 +184,9 @@
 
             <fieldset class="targets" data-when="targets">
               <legend>Show this presence on</legend>
-              <label class="check">
+              <label class="check admin-only">
                 <input type="checkbox" name="targetBot" checked />
-                <span>The bot <small>— text only, online 24/7</small></span>
+                <span>The bot <small>— text only, online 24/7, owner's card</small></span>
               </label>
               <label class="check">
                 <input type="checkbox" name="targetCompanion" checked />
@@ -284,7 +285,16 @@
 
             <div class="alert is-warn" id="activity-warning" hidden>
               The in-Discord app needs an application ID and a client secret.
-              Add both under <a href="#" data-goto="settings">Settings → Application &amp; bot</a>.
+              The instance owner adds both under
+              <a href="#" data-goto="settings">Settings → Application &amp; bot</a>.
+            </div>
+
+            <div class="link-row" id="discord-link-row">
+              <div>
+                <p class="link-title">Discord account</p>
+                <p class="hint" id="discord-link-status">Not connected yet.</p>
+              </div>
+              <a class="btn ghost small" id="discord-link-btn" href="/auth/discord/link">Connect Discord</a>
             </div>
 
             <ol class="notes numbered">
@@ -415,7 +425,7 @@
         </div>
 
         <!-- =============================================== bot ============= -->
-        <div class="pane" data-pane="bot" id="pane-bot" role="tabpanel">
+        <div class="pane admin-only" data-pane="bot" id="pane-bot" role="tabpanel">
           <div class="card">
             <div class="card-head"><h2>Bot status</h2></div>
             <dl class="facts">
@@ -470,8 +480,65 @@
           </div>
         </div>
 
+
+        <!-- =============================================== members ========= -->
+        <div class="pane admin-only" data-pane="members" id="pane-members" role="tabpanel">
+          <div class="card">
+            <div class="card-head">
+              <h2>Member accounts</h2>
+              <span class="tag" id="members-count">{{MEMBER_COUNT}}</span>
+            </div>
+            <p class="hint">
+              Everyone here signs in with their email and password and builds their <strong>own</strong>
+              card, which reaches their own Discord profile through the in-Discord app. The bot card
+              belongs to you: it is the only card on the server.
+            </p>
+
+            <label class="check-row">
+              <input type="checkbox" id="allow-signup" {{ALLOW_SIGNUP_CHECKED}} />
+              <span>Let anyone with the link create an account</span>
+            </label>
+
+            <div id="members-list" class="members-list"></div>
+            <p class="hint" id="members-empty">No members yet.</p>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Add someone by hand</h2></div>
+            <form id="member-create" class="stack">
+              <div class="row">
+                <label class="field">
+                  <span>Email</span>
+                  <input name="email" type="email" autocomplete="off" required />
+                </label>
+                <label class="field">
+                  <span>Name <small>(optional)</small></span>
+                  <input name="name" type="text" maxlength="60" autocomplete="off" />
+                </label>
+              </div>
+              <label class="field">
+                <span>Starting password <small>— 10+ characters, they can keep it</small></span>
+                <input name="password" type="text" minlength="10" autocomplete="off" required />
+              </label>
+              <div class="actions">
+                <button class="btn primary" type="submit">Create account</button>
+                <span class="hint">Send them the email and password yourself — this build sends no mail.</span>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Removing someone</h2></div>
+            <p class="hint">
+              <strong>Remove</strong> deletes the account together with its card, photos, share link and
+              paired devices. Their profile card disappears within a few seconds of the in-Discord app's
+              next poll. There is no undo.
+            </p>
+          </div>
+        </div>
+
         <!-- =============================================== settings ======== -->
-        <div class="pane" data-pane="settings" id="pane-settings" role="tabpanel">
+        <div class="pane admin-only" data-pane="settings" id="pane-settings" role="tabpanel">
           <div class="card">
             <div class="card-head"><h2>Application &amp; bot</h2></div>
             <form id="app-form" class="stack">

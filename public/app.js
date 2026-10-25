@@ -132,20 +132,28 @@
     if (location.hash.slice(1) !== name) history.replaceState(null, "", `#${name}`);
   }
 
-  for (const tab of $$(".tab")) tab.addEventListener("click", () => showTab(tab.dataset.tab));
+  const isAdmin = document.body.dataset.role === "admin";
+  // Panes only the owner may open; a member typing `#settings` must not land there.
+  const ADMIN_PANES = new Set(["bot", "members", "settings"]);
+  const allowed = (name) => Boolean(name) && (isAdmin || !ADMIN_PANES.has(name));
+
+  for (const tab of $$(".tab")) {
+    tab.addEventListener("click", () => showTab(allowed(tab.dataset.tab) ? tab.dataset.tab : "profile"));
+  }
   // `/?tab=profile` is where the setup wizard drops you, and it is linkable.
   const tabParam = new URLSearchParams(location.search).get("tab");
   for (const link of $$("[data-goto]")) {
     link.addEventListener("click", (event) => {
       event.preventDefault();
-      showTab(link.dataset.goto);
+      showTab(allowed(link.dataset.goto) ? link.dataset.goto : "profile");
     });
   }
   if (tabParam) {
-    showTab(tabParam);
-    history.replaceState(null, "", `${location.pathname}#${tabParam}`);
+    const name = allowed(tabParam) ? tabParam : "profile";
+    showTab(name);
+    history.replaceState(null, "", `${location.pathname}#${name}`);
   } else if (location.hash.length > 1) {
-    showTab(location.hash.slice(1));
+    showTab(allowed(location.hash.slice(1)) ? location.hash.slice(1) : "profile");
   }
 
   // ---------------------------------------------------------------- preview
@@ -506,6 +514,26 @@
 
     if (warning) warning.hidden = ready;
     if (mapping) mapping.textContent = `${publicUrl}/activity/`;
+
+    // Whose card is this? The in-Discord app matches the Discord account that
+    // opened it to an account here, so an unlinked member gets a plain
+    // instruction instead of a silent failure inside Discord.
+    const linkRow = $("#discord-link-row");
+    if (linkRow) {
+      const linked = Boolean(meta?.linkedDiscord);
+      const statusEl = $("#discord-link-status");
+      const button = $("#discord-link-btn");
+      if (statusEl) {
+        statusEl.textContent = linked
+          ? "Connected. The in-Discord app will push this card onto your Discord profile."
+          : "Not connected yet — link your Discord account so the app knows this card is yours.";
+        statusEl.className = linked ? "hint is-live" : "hint";
+      }
+      if (button) {
+        button.hidden = linked;
+        button.href = "/auth/discord/link";
+      }
+    }
 
     const live = activityIsLive(session);
     if (tag) {
@@ -1214,16 +1242,20 @@
     try {
       const next = await api("/api/state");
       applyState(next, { fill: !dirty });
-      const settings = await api("/api/settings");
-      renderKeepAlive(next.keepAlive, next.meta, settings.settings);
-      const appForm = $("#app-form");
-      if (!typingIn(appForm)) appForm.elements.clientId.value = settings.settings.discord.clientId || "";
-      $("#bot-token-hint").textContent = settings.settings.discord.hasBotToken
-        ? `Current token ${settings.settings.discord.botTokenPreview}`
-        : "No bot token saved yet";
-      const ssoForm = $("#sso-form");
-      if (!typingIn(ssoForm)) {
-        ssoForm.elements.allowedIds.value = (settings.settings.discord.allowedIds || []).join(", ");
+      // The settings forms are the owner's; a member must not ask for them
+      // (the server answers 403, which would surface as a red toast).
+      if (isAdmin) {
+        const { settings } = await api("/api/settings");
+        renderKeepAlive(next.keepAlive, next.meta, settings);
+        const appForm = $("#app-form");
+        if (!typingIn(appForm)) appForm.elements.clientId.value = settings.discord.clientId || "";
+        $("#bot-token-hint").textContent = settings.discord.hasBotToken
+          ? `Current token ${settings.discord.botTokenPreview}`
+          : "No bot token saved yet";
+        const ssoForm = $("#sso-form");
+        if (!typingIn(ssoForm)) {
+          ssoForm.elements.allowedIds.value = (settings.discord.allowedIds || []).join(", ");
+        }
       }
       return next;
     } catch (error) {
@@ -1259,6 +1291,164 @@
         startPolling();
       }
     });
+  }
+
+  // ----------------------------------------------------------------- members
+
+  /**
+   * The Members tab is the owner's only surface for accounts: nobody can be
+   * emailed an invite in this build, so accounts are made here (or at /register
+   * while sign-ups are open) and passwords are handed over out of band.
+   */
+  const membersPane = $("#pane-members");
+
+  function renderMembers(data) {
+    const list = $("#members-list");
+    const empty = $("#members-empty");
+    if (!list) return;
+    const users = data?.users || [];
+    list.innerHTML = "";
+    if (empty) empty.hidden = users.length > 0;
+
+    const count = $("#members-count");
+    if (count) count.textContent = String(users.length);
+
+    for (const user of users) {
+      const row = document.createElement("div");
+      row.className = "member-row";
+
+      const main = document.createElement("div");
+      main.className = "member-main";
+      const name = document.createElement("div");
+      name.className = "member-name";
+      name.textContent = user.name || user.email;
+      const meta = document.createElement("div");
+      meta.className = "member-meta";
+      const bits = [user.email];
+      if (user.linked) bits.push("Discord linked");
+      else bits.push("no Discord yet");
+      bits.push(user.presenceName ? `card: ${user.presenceName}` : "no card");
+      if (user.photos) bits.push(`${user.photos} photo${user.photos === 1 ? "" : "s"}`);
+      if (user.devices) bits.push(`${user.devices} device${user.devices === 1 ? "" : "s"}`);
+      bits.push(`added ${timeAgo(user.createdAt)}`);
+      meta.textContent = bits.join(" · ");
+      meta.title = meta.textContent;
+      main.append(name, meta);
+
+      const actions = document.createElement("div");
+      actions.className = "member-actions";
+
+      const reset = document.createElement("button");
+      reset.className = "btn ghost small";
+      reset.type = "button";
+      reset.textContent = "Reset password";
+      reset.addEventListener("click", async () => {
+        const password = window.prompt(
+          `New password for ${user.email}\nAt least 10 characters. Send it to them yourself.`
+        );
+        if (!password) return;
+        try {
+          await api(`/api/admin/users/${encodeURIComponent(user.id)}/password`, "POST", { password });
+          toast("Password changed. Pass it on to them.");
+        } catch (error) {
+          toast(error.message, true);
+        }
+      });
+
+      const unlink = document.createElement("button");
+      unlink.className = "btn ghost small";
+      unlink.type = "button";
+      unlink.textContent = user.linked ? "Unlink Discord" : "Unlink";
+      unlink.disabled = !user.linked;
+      unlink.addEventListener("click", async () => {
+        if (!window.confirm(`Disconnect ${user.email} from their Discord account?`)) return;
+        try {
+          await api(`/api/admin/users/${encodeURIComponent(user.id)}/unlink`, "POST", {});
+          toast("Discord account unlinked.");
+          await loadMembers();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      });
+
+      const remove = document.createElement("button");
+      remove.className = "btn ghost small danger";
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", async () => {
+        const ok = window.confirm(
+          `Delete ${user.email}?\nTheir card, photos, share link and paired devices go with it. This cannot be undone.`
+        );
+        if (!ok) return;
+        try {
+          await api(`/api/admin/users/${encodeURIComponent(user.id)}`, "DELETE");
+          toast("Account removed.");
+          await loadMembers();
+        } catch (error) {
+          toast(error.message, true);
+        }
+      });
+
+      actions.append(reset, unlink, remove);
+      row.append(main, actions);
+      list.append(row);
+    }
+  }
+
+  async function loadMembers() {
+    if (!isAdmin || !membersPane) return;
+    try {
+      renderMembers(await api("/api/admin/users"));
+    } catch (error) {
+      toast(error.message, true);
+    }
+  }
+
+  if (isAdmin && membersPane) {
+    const toggle = $("#allow-signup");
+    toggle?.addEventListener("change", async () => {
+      try {
+        await api("/api/settings", "POST", { allowSignup: toggle.checked });
+        toast(toggle.checked ? "Anyone with the link can sign up." : "Sign-ups closed.");
+      } catch (error) {
+        toggle.checked = !toggle.checked;
+        toast(error.message, true);
+      }
+    });
+
+    $("#member-create")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formEl = event.currentTarget;
+      const email = formEl.elements.namedItem("email").value.trim();
+      const name = formEl.elements.namedItem("name").value.trim();
+      const password = formEl.elements.namedItem("password").value;
+      try {
+        await api("/api/admin/users", "POST", { email, name, password });
+        formEl.reset();
+        toast("Account created. Send them the password.");
+        await loadMembers();
+      } catch (error) {
+        toast(error.message, true);
+      }
+    });
+
+    // Refetched on focus so a new sign-up shows up without a reload.
+    $('.tab[data-tab="members"]')?.addEventListener("click", () => void loadMembers());
+    void loadMembers();
+  }
+
+  // The OAuth link round-trip drops its answer in the query string.
+  const linkResult = new URLSearchParams(location.search).get("link");
+  if (linkResult) {
+    const LINK_MESSAGES = {
+      ok: "Discord connected. Open the app in Discord and this card goes live.",
+      taken: "That Discord account is already linked to another StatusC0rd account.",
+      failed: "Discord could not be connected. Try again in a moment.",
+      unconfigured: "The owner has not added a Discord application ID and secret yet.",
+      cancelled: "Discord linking was cancelled."
+    };
+    toast(LINK_MESSAGES[linkResult] || "Discord linking finished.", linkResult !== "ok");
+    history.replaceState(null, "", `${location.pathname}${location.hash}`);
   }
 
   void (async () => {

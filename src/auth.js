@@ -179,18 +179,7 @@ function deny(req, res, message, status) {
   return res.status(status).type("text").send(message);
 }
 
-/** Page routes: send anonymous visitors to the login screen. */
-function requireAuth(req, res, next) {
-  if (req.session?.user) return next();
-  return res.redirect(302, "/login");
-}
-
-/** API routes: answer with JSON instead of a redirect. */
-function requireAuthApi(req, res, next) {
-  if (req.session?.user) return next();
-  return res.status(401).json({ ok: false, error: "Not signed in." });
-}
-
+/** The signed-in identity as the browser may see it: no email, no hashes. */
 function publicUser(req) {
   const user = req.session?.user;
   if (!user) return null;
@@ -211,7 +200,5 @@ module.exports = {
   clientKey,
   ensureCsrf,
   requireCsrf,
-  requireAuth,
-  requireAuthApi,
   publicUser
 };

@@ -83,7 +83,7 @@ It prints a banner with the URL, the version and — on a first run — the setu
 link:
 
 ```
-  StatusC0rd v2.3.0  ·  http://localhost:3000  ·  development
+  StatusC0rd v2.4.0  ·  http://localhost:3000  ·  development
   FIRST RUN - open the setup wizard to finish configuring:
     http://localhost:3000/setup
 ```
@@ -382,3 +382,4 @@ status code you hit is explained in its
 - [ ] Process survives logout and reboot (§7)
 - [ ] Sleep disabled, or the machine is a Pi (§7.4)
 - [ ] Backup taken at least once (§8)
+- [ ] Member accounts decided — sign-ups open or closed — and each member told to press **Connect Discord** ([accounts](setup.md#7-7-accounts-you-and-the-people-you-invite))

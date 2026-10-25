@@ -156,8 +156,10 @@ table — with every status code, error shape and rate limit — is
 | `POST` | `/api/setup/asset` | Upload a photo during setup |
 | `POST` | `/api/setup/test-bot` | Validate a bot token |
 | `POST` | `/api/setup/complete` | Save key + bot + first presence, sign in |
-| `GET` | `/login`, `POST /login`, `POST /logout` | Dashboard session |
+| `GET` | `/login`, `POST /login`, `POST /logout` | Sign in — email + password for a member, the dashboard key for the owner |
+| `GET`/`POST` | `/register` | Self-serve member sign-up (the owner can close it) |
 | `GET` | `/auth/discord`, `/auth/discord/callback` | Optional Discord sign-in |
+| `GET` | `/auth/discord/link` | Claim a Discord account for the signed-in member |
 | `GET` | `/` | Dashboard |
 | `GET` | `/welcome` | Marketing page (no session) |
 | `GET` | `/guide`, `/guide/:slug` | The setup docs, rendered from `docs/*.md` (`local`, `cloud`, `free-cloud`) |
@@ -177,7 +179,8 @@ table — with every status code, error shape and rate limit — is
 | `GET` | `/api/events` | SSE stream of state changes |
 | `GET`/`POST` | `/api/assets` | List / upload photos |
 | `DELETE` | `/api/assets/:id` | Delete a photo |
-| `GET`/`POST` | `/api/settings` | Read / update settings, rotate the key |
+| `GET`/`POST` | `/api/settings` | Read / update settings, rotate the key — owner only |
+| `GET`/`POST` | `/api/admin/users`, `PATCH`/`DELETE` `/api/admin/users/:id` | Member accounts — owner only |
 | `POST` | `/api/companion/pairings` | Create a device pairing (returns the command) |
 | `DELETE` | `/api/companion/pairings/:id` | Revoke a device |
 | `GET` | `/companion.js?pair=…` | Personalized companion script |
@@ -198,8 +201,14 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ## Security
 
 - Signed `HttpOnly`, `SameSite=Lax` session cookies; `Secure` in production.
-- Dashboard key stored as a **scrypt** hash, compared in constant time; 5 failed
-  attempts per IP → 15-minute lockout.
+- Dashboard key stored as a **scrypt** hash, compared in constant time; member
+  passwords use the same scrypt + per-user salt and a 10-character minimum; 5
+  failed attempts per IP → 15-minute lockout.
+- Two separate doors: the key is the admin panel, members sign in with email and
+  password. Each member owns one card, cannot touch another's photos, share link
+  or devices, and can never write the bot's presence — that is enforced on the
+  server, not only hidden in the UI. Removing an account or resetting its password
+  retires every session opened before it.
 - CSRF double-submit tokens on every mutation; OAuth state is random, single-use
   and expires.
 - CSP without inline scripts, `nosniff`, `Referrer-Policy`, `Permissions-Policy`,

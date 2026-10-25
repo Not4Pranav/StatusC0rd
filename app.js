@@ -21,6 +21,7 @@ const oauth = require("./src/oauth");
 const { createZip } = require("./src/zip");
 const { loadGuide, guideNav, findDoc } = require("./src/guide");
 const { createActivityService, ActivityError, FRAME_ANCESTORS } = require("./src/activity");
+const { ADMIN_USER_ID } = require("./src/settings");
 const { templateList, applyTemplate } = require("./src/templates");
 
 
@@ -152,7 +153,10 @@ function createApp({
   logger = console,
   now = Date.now,
   version = require("./package.json").version,
-  isProduction = process.env.NODE_ENV === "production"
+  isProduction = process.env.NODE_ENV === "production",
+  logRequests = process.env.LOG_REQUESTS === undefined
+    ? true
+    : !["0", "false", "no", "off"].includes(String(process.env.LOG_REQUESTS).toLowerCase())
 }) {
   if (!settings) throw new Error("createApp requires a settings store");
   if (!assets) throw new Error("createApp requires an asset store");
@@ -283,6 +287,46 @@ function createApp({
     next();
   });
 
+  /**
+   * One line per page and API request.
+   *
+   * On a managed host the log is the *only* debugging surface: "the dashboard was
+   * a blank page" is unanswerable without knowing whether `GET /` was served, at
+   * which status, and how many bytes went out. Static assets and the SSE stream
+   * are skipped (they would drown the log and `EventSource` reconnects on its
+   * own), and `LOG_REQUESTS=0` turns the whole thing off.
+   */
+  function requestLogging(req) {
+    if (logRequests === false) return false;
+    if (req.path === "/api/events") return false;
+    if (req.path.startsWith("/assets/") || req.path === "/favicon.ico") return false;
+    return !/\.[a-z0-9]{2,5}$/i.test(req.path);
+  }
+
+  app.use((req, res, next) => {
+    if (!requestLogging(req)) return next();
+    const startedAt = now();
+    let done = false;
+    const line = (status) => {
+      if (done) return;
+      done = true;
+      const bytes = res.getHeader("Content-Length");
+      const size = bytes ? ` ${bytes}b` : "";
+      const ms = `${now() - startedAt}ms`;
+      logger.log?.(`[http] ${req.method} ${req.originalUrl} ${status}${size} ${ms}`);
+    };
+    res.on("finish", () => line(res.statusCode));
+    // A client that hangs up mid-response is exactly the blank-page case, so it
+    // deserves its own line rather than silence.
+    res.on("close", () => {
+      if (res.writableEnded) return line(res.statusCode);
+      done = true;
+      const ms = `${now() - startedAt}ms`;
+      logger.warn?.(`[http] ${req.method} ${req.originalUrl} aborted by the client after ${ms}`);
+    });
+    next();
+  });
+
   // --------------------------------------------------------------- helpers
 
   /** Public origin used for image URLs: configured URL first, request origin otherwise. */
@@ -290,9 +334,24 @@ function createApp({
     return settings.effective().publicUrl || originOf(req);
   }
 
-  /** Public card details, or null when sharing is off. */
+  /**
+   * Who is asking?
+   *
+   * Two kinds of principal: the dashboard key ("admin") and a member account
+   * ("u_…"). Every per-user map is keyed by this id, so the same endpoints serve
+   * both without a second code path.
+   */
+  function ownerId(req) {
+    return req.session?.user?.id || null;
+  }
+
+  function isAdminSession(req) {
+    return req.session?.user?.role === "admin";
+  }
+
+  /** Public card details for this person, or null when sharing is off. */
   function shareInfo(req) {
-    const share = settings.get().share;
+    const share = settings.shareFor(ownerId(req));
     if (!share?.slug) return null;
     return {
       slug: share.slug,
@@ -302,27 +361,31 @@ function createApp({
   }
 
   function snapshotFor(req) {
-    const presence = settings.get().presence || DEFAULT_CONFIG;
+    const userId = ownerId(req);
+    const admin = isAdminSession(req);
+    const presence = settings.presenceFor(userId) || DEFAULT_CONFIG;
     const origin = publicOrigin(req);
     const resolveAsset = (id) => {
       const asset = settings.findAsset(id);
       return asset ? assets.url(asset, origin) : "";
     };
+    const activitySession = activityService.snapshot();
     return {
       presence,
       activity: buildActivity(presence, { target: "companion", publicUrl: origin, resolveAsset }),
-      botActivity: buildActivity(presence, { target: "bot", publicUrl: origin, resolveAsset }),
+      // One bot, one card: only the owner's presence can reach it.
+      botActivity: admin ? buildActivity(presence, { target: "bot", publicUrl: origin, resolveAsset }) : null,
       bot: bot.getState(),
-      assets: settings.listAssets().map((asset) => ({
+      assets: settings.listAssets(userId).map((asset) => ({
         ...asset,
         url: assets.url(asset, origin)
       })),
-      draft: settings.get().draft || null,
+      draft: settings.draftFor(userId),
       share: shareInfo(req),
       templates: templateList(),
-      pairings: settings.listPairings(),
+      pairings: settings.listPairings(userId),
       keepAlive: keepAlive ? keepAlive.getState() : null,
-      activitySession: activityService.snapshot(),
+      activitySession: admin || activitySession.userId === userId ? activitySession : { ...activitySession, userId: null },
       meta: {
         version,
         setupComplete: !settings.needsSetup(),
@@ -334,7 +397,13 @@ function createApp({
         publicUrl: settings.effective().publicUrl || origin,
         publicUrlIsHttps: (settings.effective().publicUrl || origin).startsWith("https://"),
         startedAt: new Date(startedAt).toISOString(),
-        needsSetupToken: Boolean(settings.setupToken)
+        needsSetupToken: Boolean(settings.setupToken),
+        role: req.session?.user?.role || "member",
+        isAdmin: admin,
+        userId,
+        linkedDiscord: Boolean(settings.discordIdForUser(userId)),
+        allowSignup: settings.allowSignup,
+        memberCount: settings.countUsers()
       }
     };
   }
@@ -359,15 +428,64 @@ function createApp({
     Object.assign(req.session, data);
   }
 
+  /**
+   * The session on this request, or null when it should no longer be trusted.
+   *
+   * A dashboard-key session is the instance owner and never goes stale. A member
+   * session is only as good as the account behind it: removing the account, or
+   * an admin resetting the password, ends every session that came before it.
+   */
+  function liveUser(req) {
+    const user = req.session?.user;
+    if (!user) return null;
+    if (user.id === ADMIN_USER_ID) return user;
+    const row = settings.findUserById(user.id);
+    if (!row || row.disabled) return null;
+    if (user.pwAt && row.passwordChangedAt && user.pwAt !== row.passwordChangedAt) return null;
+    return user;
+  }
+
   function requireAuth(req, res, next) {
-    if (req.session?.user) return next();
+    if (liveUser(req)) return next();
+    if (req.session?.user) req.session = null;
     if (settings.needsSetup()) return res.redirect(302, "/setup");
     return res.redirect(302, "/login");
   }
 
   function requireAuthApi(req, res, next) {
-    if (req.session?.user) return next();
+    if (liveUser(req)) return next();
+    if (req.session?.user) req.session = null;
     return res.status(401).json({ ok: false, error: "Not signed in." });
+  }
+
+  /**
+   * The admin panel - instance configuration, member accounts, keys.
+   *
+   * Members get their own card and nothing else; the dashboard key (or a member
+   * explicitly promoted to `admin`) is what opens this.
+   */
+  function requireAdmin(req, res, next) {
+    if (!liveUser(req)) {
+      req.session = null;
+      return res.redirect(302, "/login");
+    }
+    if (isAdminSession(req)) return next();
+    return res.status(403).type("html").send(
+      render("error.html", {
+        TITLE: "Admins only",
+        STATUS: 403,
+        DETAIL: "That page is the admin panel. Ask the server owner for access."
+      })
+    );
+  }
+
+  function requireAdminApi(req, res, next) {
+    if (!liveUser(req)) {
+      req.session = null;
+      return res.status(401).json({ ok: false, error: "Not signed in." });
+    }
+    if (isAdminSession(req)) return next();
+    return res.status(403).json({ ok: false, error: "That action is for the instance owner." });
   }
 
   /**
@@ -400,10 +518,12 @@ function createApp({
     res.status(status).type("html").send(render("error.html", { TITLE: title, STATUS: status, DETAIL: detail }));
   }
 
+  /** Only the admin's card reaches the bot; members' cards go to their profile. */
   function applyPresenceToBot() {
-    const presence = settings.get().presence || DEFAULT_CONFIG;
-    if (presence.enabled && presence.targets?.bot !== false) bot.setPresence(presence);
-    else bot.clearPresence(presence.status || "online");
+    const presence = settings.presenceFor(ADMIN_USER_ID) || DEFAULT_CONFIG;
+    const wanted = presence.enabled && presence.targets?.bot !== false;
+    bot.setPresence(wanted ? presence : { ...presence, enabled: false });
+    if (!wanted) bot.clearPresence(presence.status || "online");
   }
 
   // ----------------------------------------------------------------- public
@@ -443,7 +563,7 @@ function createApp({
   // slug is random and can be rotated or switched off at any time.
 
   app.post("/api/share", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const presence = settings.get().presence;
+    const presence = settings.presenceFor(ownerId(req));
     if (!presence?.enabled || !presence.name) {
       return res.status(400).json({ ok: false, error: "Apply a presence first - there is nothing to share." });
     }
@@ -457,19 +577,23 @@ function createApp({
       return res.status(400).json({ ok: false, error: "A share link needs 6-32 letters and numbers." });
     }
 
-    const existing = settings.get().share;
-    settings.update({
-      share: {
-        slug,
-        createdAt: existing?.createdAt && existing.slug === slug ? existing.createdAt : new Date(now()).toISOString()
-      }
+    const userId = ownerId(req);
+    // A slug is a public address, so it has to be unique across every account.
+    const clash = settings.findShareBySlug(slug);
+    if (clash && clash.userId !== userId) {
+      return res.status(400).json({ ok: false, error: "That link is already taken. Try another." });
+    }
+    const existing = settings.shareFor(userId);
+    settings.setShare(userId, {
+      slug,
+      createdAt: existing?.createdAt && existing.slug === slug ? existing.createdAt : new Date(now()).toISOString()
     });
     broadcastState();
     res.json({ ok: true, share: shareInfo(req) });
   });
 
   app.delete("/api/share", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    settings.update({ share: null });
+    settings.setShare(ownerId(req), null);
     broadcastState();
     res.json({ ok: true, share: null });
   });
@@ -479,12 +603,13 @@ function createApp({
    * whole thing from the HTML, including the Open Graph tags.
    */
   app.get("/c/:slug", (req, res) => {
-    const share = settings.get().share;
-    if (!share?.slug || share.slug !== req.params.slug) {
+    const found = settings.findShareBySlug(req.params.slug);
+    if (!found) {
       return sendErrorPage(res, 404, "Card not found", "This card does not exist or its owner turned sharing off.");
     }
+    const { userId, share } = found;
 
-    const presence = settings.get().presence || DEFAULT_CONFIG;
+    const presence = settings.presenceFor(userId) || DEFAULT_CONFIG;
     if (!presence.enabled || !presence.name) {
       return sendErrorPage(res, 404, "Card not found", "This card is not being shared right now.");
     }
@@ -741,11 +866,14 @@ function createApp({
     settings.update({ ...patch, discord: { ...settings.get().discord, ...discordPatch } });
 
     if (body.presence && typeof body.presence === "object") {
-      const result = sanitizePresence(body.presence, { current: settings.get().presence || DEFAULT_CONFIG, now: now() });
+      const result = sanitizePresence(body.presence, {
+        current: settings.presenceFor(ADMIN_USER_ID) || DEFAULT_CONFIG,
+        now: now()
+      });
       if (!result.ok) {
         return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
       }
-      settings.update({ presence: result.value });
+      settings.setPresence(ADMIN_USER_ID, result.value);
     }
 
     settings.completeSetup();
@@ -756,7 +884,7 @@ function createApp({
     if (keepAlive) keepAlive.configure(effective.keepAlive.enabled ? { ...effective.keepAlive, publicUrl: effective.publicUrl } : { enabled: false });
 
     resetSession(req, {
-      user: { id: "dashboard", name: "Dashboard", role: "admin", via: "key" },
+      user: { id: ADMIN_USER_ID, name: "Dashboard", role: "admin", via: "key" },
       csrf: randomToken(24)
     });
     logger.log?.(`[setup] completed (bot: ${effective.hasBotToken ? "configured" : "not configured"})`);
@@ -766,6 +894,11 @@ function createApp({
 
   // -------------------------------------------------------------------- auth
 
+  /**
+   * One page, two doors: members use email + password, the owner uses the
+   * dashboard key. Both end in the same session shape, with `role` deciding what
+   * the dashboard shows (the admin panel is the key's, or a promoted member's).
+   */
   app.get("/login", (req, res) => {
     if (settings.needsSetup()) return res.redirect(302, "/setup");
     if (req.session?.user) return res.redirect(302, "/");
@@ -774,30 +907,98 @@ function createApp({
         CSRF: ensureCsrf(req),
         DISCORD_ENABLED: settings.effective().discordLoginEnabled ? "true" : "false",
         KEY_ENABLED: settings.hasAdminKey ? "true" : "false",
+        SIGNUP_ENABLED: settings.allowSignup ? "true" : "false",
         VERSION: version
       })
     );
   });
 
+  function startMemberSession(req, user) {
+    resetSession(req, {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role === "admin" ? "admin" : "member",
+        via: "password",
+        // Pinned so a later password reset can retire this session.
+        pwAt: user.passwordChangedAt || null
+      },
+      csrf: randomToken(24)
+    });
+  }
+
   app.post("/login", requireCsrf, (req, res) => {
-    const key = clientKey(req);
-    const limited = loginLimiter.status(key);
+    const ip = clientKey(req);
+    const limited = loginLimiter.status(ip);
     if (limited.blocked) {
       res.setHeader("Retry-After", String(Math.ceil(limited.retryAfterMs / 1000)));
       return res.redirect(303, "/login?error=locked");
     }
-    if (!settings.hasAdminKey) return res.redirect(303, "/login?error=key_disabled");
-    if (!settings.verifyAdminKey(req.body?.key)) {
-      const after = loginLimiter.fail(key);
-      logger.warn?.(`[auth] failed dashboard login from ${key}`);
-      return res.redirect(303, after.blocked ? "/login?error=locked" : "/login?error=invalid");
+
+    // Door 1: the dashboard key (the admin panel).
+    if (req.body?.key !== undefined && req.body.key !== "") {
+      if (!settings.hasAdminKey) return res.redirect(303, "/login?error=key_disabled");
+      if (!settings.verifyAdminKey(req.body.key)) {
+        const after = loginLimiter.fail(ip);
+        logger.warn?.(`[auth] failed dashboard-key sign-in from ${ip}`);
+        return res.redirect(303, after.blocked ? "/login?error=locked" : "/login?error=invalid");
+      }
+      loginLimiter.reset(ip);
+      resetSession(req, {
+        user: { id: ADMIN_USER_ID, name: "Dashboard", role: "admin", via: "key" },
+        csrf: randomToken(24)
+      });
+      logger.log?.(`[auth] dashboard key sign-in from ${ip}`);
+      return res.redirect(303, "/");
     }
-    loginLimiter.reset(key);
-    resetSession(req, {
-      user: { id: "dashboard", name: "Dashboard", role: "admin", via: "key" },
-      csrf: randomToken(24)
-    });
-    logger.log?.(`[auth] dashboard key sign-in from ${key}`);
+
+    // Door 2: a member account.
+    const email = String(req.body?.email || "").trim();
+    const password = String(req.body?.password || "");
+    const user = settings.verifyCredentials(email, password);
+    if (!user) {
+      const after = loginLimiter.fail(ip);
+      logger.warn?.(`[auth] failed password sign-in for "${email.slice(0, 80)}" from ${ip}`);
+      return res.redirect(303, after.blocked ? "/login?error=locked" : "/login?error=bad_credentials");
+    }
+    loginLimiter.reset(ip);
+    settings.touchUserLogin(user.id);
+    startMemberSession(req, user);
+    logger.log?.(`[auth] ${user.id} signed in`);
+    res.redirect(303, "/");
+  });
+
+  app.get("/register", (req, res) => {
+    if (settings.needsSetup()) return res.redirect(302, "/setup");
+    if (req.session?.user) return res.redirect(302, "/");
+    res.type("html").send(
+      render("register.html", {
+        CSRF: ensureCsrf(req),
+        SIGNUP_ENABLED: settings.allowSignup ? "true" : "false",
+        VERSION: version
+      })
+    );
+  });
+
+  app.post("/register", requireCsrf, (req, res) => {
+    if (!settings.allowSignup) return res.redirect(303, "/register?error=closed");
+    const email = String(req.body?.email || "").trim();
+    const password = String(req.body?.password || "");
+    const confirm = String(req.body?.confirm ?? password);
+    if (password !== confirm) return res.redirect(303, "/register?error=mismatch");
+    let user;
+    try {
+      user = settings.createUser({ email, password, name: req.body?.name });
+    } catch (error) {
+      const message = encodeURIComponent(error.message);
+      return res.redirect(303, `/register?error=invalid&message=${message}`);
+    }
+    settings.touchUserLogin(user.id);
+    // createUser() hands back the public shape; the session needs the row so it
+    // can pin passwordChangedAt and be retired by a later reset.
+    startMemberSession(req, settings.findUserById(user.id) || user);
+    logger.log?.(`[auth] ${user.id} signed up`);
     res.redirect(303, "/");
   });
 
@@ -814,26 +1015,48 @@ function createApp({
     return `${originOf(req)}/auth/discord/callback`;
   }
 
-  app.get("/auth/discord", (req, res) => {
+  function startOAuth(req, res, intent) {
     const effective = settings.effective();
-    if (!effective.discordLoginEnabled) return res.redirect(302, "/login?error=discord_disabled");
+    if (!effective.clientId || !effective.clientSecret) {
+      return res.redirect(302, intent === "link" ? "/?tab=profile&link=unconfigured" : "/login?error=discord_disabled");
+    }
     const state = randomToken(24);
-    req.session.oauth = { state, at: now() };
+    req.session.oauth = { state, at: now(), intent };
     res.redirect(
       302,
       oauth.buildAuthorizeUrl({ clientId: effective.clientId, redirectUri: callbackUri(req), state })
     );
+  }
+
+  app.get("/auth/discord", (req, res) => {
+    const effective = settings.effective();
+    if (!effective.discordLoginEnabled) return res.redirect(302, "/login?error=discord_disabled");
+    return startOAuth(req, res, "login");
+  });
+
+  /**
+   * Tie the Discord account you are signed in as to this StatusC0rd account.
+   *
+   * The in-Discord app only learns a Discord user id, so without this link it
+   * cannot know whose card to push. It is the member equivalent of "sign in with
+   * Discord", and it needs no allowlist - you are already signed in.
+   */
+  app.get("/auth/discord/link", (req, res) => {
+    if (!req.session?.user) return res.redirect(302, "/login");
+    return startOAuth(req, res, "link");
   });
 
   app.get("/auth/discord/callback", async (req, res) => {
     const pending = req.session?.oauth;
     req.session.oauth = null;
-    if (req.query.error) return res.redirect(302, "/login?error=cancelled");
-    if (!pending || !req.query.state || !safeEqual(req.query.state, pending.state)) {
-      return res.redirect(302, "/login?error=state");
-    }
-    if (now() - Number(pending.at) > OAUTH_STATE_TTL_MS) return res.redirect(302, "/login?error=expired");
-    if (!req.query.code) return res.redirect(302, "/login?error=state");
+    const intent = pending?.intent === "link" ? "link" : "login";
+    const fail = (code) =>
+      intent === "link" ? res.redirect(302, `/?tab=profile&link=${code}`) : res.redirect(302, `/login?error=${code}`);
+
+    if (req.query.error) return fail("cancelled");
+    if (!pending || !req.query.state || !safeEqual(req.query.state, pending.state)) return fail("state");
+    if (now() - Number(pending.at) > OAUTH_STATE_TTL_MS) return fail("expired");
+    if (!req.query.code) return fail("state");
 
     const effective = settings.effective();
     let me;
@@ -846,23 +1069,56 @@ function createApp({
       });
       me = await oauth.fetchMe(token.access_token);
     } catch (error) {
-      logger.error?.(`[auth] Discord sign-in failed: ${error.message}`);
-      return res.redirect(302, "/login?error=discord_failed");
+      logger.error?.(`[auth] Discord ${intent} failed: ${error.message}`);
+      return fail(intent === "link" ? "failed" : "discord_failed");
     }
 
+    // ---- linking an already signed-in account ----
+    if (intent === "link") {
+      const userId = ownerId(req);
+      if (!userId) return res.redirect(302, "/login?error=state");
+      try {
+        settings.linkDiscord(me.id, userId);
+      } catch (error) {
+        logger.warn?.(`[auth] could not link ${me.id} to ${userId}: ${error.message}`);
+        return res.redirect(302, "/?tab=profile&link=taken");
+      }
+      logger.log?.(`[auth] Discord account ${me.id} linked to ${userId}`);
+      broadcastState();
+      return res.redirect(302, "/?tab=profile&link=ok");
+    }
+
+    // ---- signing in with Discord ----
+    // A link already on file is the strongest signal: a member who connected
+    // their account earlier signs in without being on any allowlist.
+    const linked = settings.userIdForDiscord(me.id);
+    if (linked === ADMIN_USER_ID) {
+      resetSession(req, {
+        user: { id: ADMIN_USER_ID, name: me.global_name || me.username || "Dashboard", role: "admin", via: "discord" },
+        csrf: randomToken(24)
+      });
+      return res.redirect(302, "/");
+    }
+    const member = linked ? settings.findUserById(linked) : null;
+    if (member && !member.disabled) {
+      settings.touchUserLogin(member.id);
+      startMemberSession(req, member);
+      return res.redirect(302, "/");
+    }
+
+    // Otherwise the allowlist decides, and an allowlisted account becomes the
+    // admin - linking it too, so its card can reach the bot.
     if (!effective.allowedDiscordIds.includes(me.id)) {
-      logger.warn?.(`[auth] Discord account ${me.id} is not on the allowlist`);
+      logger.warn?.(`[auth] Discord account ${me.id} is neither linked nor allowlisted`);
       return res.redirect(302, "/login?error=not_allowed");
     }
-
+    try {
+      settings.linkDiscord(me.id, ADMIN_USER_ID);
+    } catch {
+      /* another account already owns it; the session below is still valid */
+    }
     resetSession(req, {
-      user: {
-        id: me.id,
-        name: me.global_name || me.username || `user ${me.id}`,
-        role: "admin",
-        via: "discord",
-        avatar: me.avatar ? `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.png?size=64` : null
-      },
+      user: { id: ADMIN_USER_ID, name: me.global_name || me.username || "Dashboard", role: "admin", via: "discord" },
       csrf: randomToken(24)
     });
     res.redirect(302, "/");
@@ -872,11 +1128,18 @@ function createApp({
 
   app.get("/", requireAuth, (req, res) => {
     const effective = settings.effective();
+    const user = req.session.user;
     res.type("html").send(
       render("dashboard.html", {
         CSRF: ensureCsrf(req),
         VERSION: version,
         CLIENT_ID: effective.clientId,
+        ROLE: user.role === "admin" ? "admin" : "member",
+        USER_NAME: user.name || "Member",
+        USER_EMAIL: user.email || "",
+        MEMBER_COUNT: String(settings.countUsers()),
+        ALLOW_SIGNUP: settings.allowSignup ? "true" : "false",
+        ALLOW_SIGNUP_CHECKED: settings.allowSignup ? "checked" : "",
         // No application id means no invite link: a `client_id=` with an empty
         // value is a dead page on discord.com, worse than no button at all.
         INVITE_URL: effective.clientId
@@ -892,8 +1155,31 @@ function createApp({
     res.json({ ok: true, user: publicUser(req), csrf: ensureCsrf(req), ...snapshotFor(req) });
   });
 
+  /**
+   * Validate a card for whoever is asking.
+   *
+   * A member's card can only target their own profile: there is one bot and its
+   * card is the server owner's. Forcing that here (rather than trusting the
+   * checkbox) means a crafted request cannot take over the bot card.
+   */
+  function sanitizeForOwner(req, body) {
+    const userId = ownerId(req);
+    const current = settings.presenceFor(userId) || DEFAULT_CONFIG;
+    const payload = isAdminSession(req)
+      ? body
+      : { ...(body || {}), targets: { bot: false, companion: true } };
+    const result = sanitizePresence(payload, { current, now: now() });
+    return { ...result, userId };
+  }
+
+  /** Only the owner's publish moves the bot card. */
+  function applyBotIfOwner(req) {
+    if (isAdminSession(req)) applyPresenceToBot();
+  }
+
   app.get("/api/presence", requireAuthApi, (req, res) => {
-    const presence = settings.get().presence || DEFAULT_CONFIG;
+    const userId = ownerId(req);
+    const presence = settings.presenceFor(userId) || DEFAULT_CONFIG;
     const origin = publicOrigin(req);
     const resolveAsset = (id) => {
       const asset = settings.findAsset(id);
@@ -903,18 +1189,21 @@ function createApp({
       ok: true,
       presence,
       activity: buildActivity(presence, { target: "companion", publicUrl: origin, resolveAsset }),
-      botActivity: buildActivity(presence, { target: "bot", publicUrl: origin, resolveAsset })
+      botActivity: isAdminSession(req)
+        ? buildActivity(presence, { target: "bot", publicUrl: origin, resolveAsset })
+        : null
     });
   });
 
   app.post("/api/presence", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const result = sanitizePresence(req.body, { current: settings.get().presence || DEFAULT_CONFIG, now: now() });
+    const result = sanitizeForOwner(req, req.body);
     if (!result.ok) return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
 
-    settings.update({ presence: result.value, draft: null });
-    applyPresenceToBot();
+    settings.setPresence(result.userId, result.value);
+    settings.setDraft(result.userId, null);
+    applyBotIfOwner(req);
     broadcastState();
-    logger.log?.(`[presence] "${result.value.name}" -> ${result.value.targets.bot ? "bot" : ""}${result.value.targets.bot && result.value.targets.companion ? "+" : ""}${result.value.targets.companion ? "profile" : ""}`);
+    logger.log?.(`[presence] ${result.userId} -> "${result.value.name}"`);
     res.json({ ok: true, presence: result.value, bot: bot.getState() });
   });
 
@@ -924,52 +1213,56 @@ function createApp({
    * so anything scripted against the old API keeps working.
    */
   app.post("/api/presence/draft", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const current = settings.get().presence || DEFAULT_CONFIG;
-    const result = sanitizePresence(req.body, { current, now: now() });
+    const result = sanitizeForOwner(req, req.body);
     if (!result.ok) return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
 
     const draft = { ...result.value, savedAt: new Date(now()).toISOString() };
-    settings.update({ draft });
+    settings.setDraft(result.userId, draft);
     res.json({ ok: true, draft });
   });
 
   app.post("/api/presence/publish", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const stored = settings.get();
-    const source = req.body && Object.keys(req.body).length > 0 ? req.body : stored.draft;
+    const userId = ownerId(req);
+    const source =
+      req.body && Object.keys(req.body).length > 0 ? req.body : settings.draftFor(userId);
     if (!source) return res.status(400).json({ ok: false, error: "There is nothing staged to publish." });
 
-    const result = sanitizePresence(source, { current: stored.presence || DEFAULT_CONFIG, now: now() });
+    const result = sanitizeForOwner(req, source);
     if (!result.ok) return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
 
-    settings.update({ presence: result.value, draft: null });
-    applyPresenceToBot();
+    settings.setPresence(result.userId, result.value);
+    settings.setDraft(result.userId, null);
+    applyBotIfOwner(req);
     broadcastState();
-    logger.log?.(`[presence] published "${result.value.name}"`);
+    logger.log?.(`[presence] ${result.userId} published "${result.value.name}"`);
     res.json({ ok: true, presence: result.value, bot: bot.getState() });
   });
 
   app.delete("/api/presence/draft", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    settings.update({ draft: null });
+    settings.setDraft(ownerId(req), null);
     broadcastState();
     res.json({ ok: true, draft: null });
   });
 
   /** A template, merged into the current config and validated the same way. */
   app.post("/api/templates/:id", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const current = settings.get().draft || settings.get().presence || DEFAULT_CONFIG;
+    const userId = ownerId(req);
+    const current = settings.draftFor(userId) || settings.presenceFor(userId) || DEFAULT_CONFIG;
     const merged = applyTemplate(req.params.id, current);
     if (!merged) return res.status(404).json({ ok: false, error: "Unknown template." });
 
-    const result = sanitizePresence(merged, { current, now: now() });
+    const result = sanitizeForOwner(req, merged);
     if (!result.ok) return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
     res.json({ ok: true, presence: result.value });
   });
 
   app.post("/api/presence/clear", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const current = settings.get().presence || DEFAULT_CONFIG;
+    const userId = ownerId(req);
+    const current = settings.presenceFor(userId) || DEFAULT_CONFIG;
     const next = { ...current, enabled: false, updatedAt: new Date(now()).toISOString() };
-    settings.update({ presence: next, draft: null });
-    applyPresenceToBot();
+    settings.setPresence(userId, next);
+    settings.setDraft(userId, null);
+    applyBotIfOwner(req);
     broadcastState();
     res.json({ ok: true, presence: next, bot: bot.getState() });
   });
@@ -1004,12 +1297,18 @@ function createApp({
     const origin = publicOrigin(req);
     res.json({
       ok: true,
-      assets: settings.listAssets().map((asset) => ({ ...asset, url: assets.url(asset, origin) }))
+      assets: settings
+        .listAssets(ownerId(req))
+        .map((asset) => ({ ...asset, url: assets.url(asset, origin) }))
     });
   });
 
   app.post("/api/assets", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const result = assets.save({ dataUrl: req.body?.dataUrl, name: req.body?.name });
+    const result = assets.save({
+      dataUrl: req.body?.dataUrl,
+      name: req.body?.name,
+      owner: ownerId(req)
+    });
     if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
     broadcastState();
     res.json({ ok: true, asset: { ...result.asset, url: assets.url(result.asset, publicOrigin(req)) } });
@@ -1017,15 +1316,18 @@ function createApp({
 
   app.delete("/api/assets/:id", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
     const id = String(req.params.id || "");
-    if (!settings.findAsset(id)) return res.status(404).json({ ok: false, error: "Image not found." });
-    assets.remove(id);
+    // 404 rather than 403: another member's library is not your business.
+    if (!settings.ownsAsset(id, ownerId(req))) {
+      return res.status(404).json({ ok: false, error: "Image not found." });
+    }
+    assets.remove(id, ownerId(req));
     broadcastState();
     res.json({ ok: true });
   });
 
   // --------------------------------------------------------------- settings
 
-  app.get("/api/settings", requireAuthApi, (req, res) => {
+  app.get("/api/settings", requireAdminApi, (req, res) => {
     const effective = settings.effective();
     const stored = settings.get();
     res.json({
@@ -1043,13 +1345,15 @@ function createApp({
         },
         managed: effective.managed,
         keyFromEnv: settings.keyFromEnv,
+        allowSignup: settings.allowSignup,
+        memberCount: settings.countUsers(),
         pairings: settings.listPairings(),
         updatedAt: stored.updatedAt
       }
     });
   });
 
-  app.post("/api/settings", requireAuthApi, requireCsrf, writeLimiter.middleware(), async (req, res) => {
+  app.post("/api/settings", requireAdminApi, requireCsrf, writeLimiter.middleware(), async (req, res) => {
     const body = req.body || {};
     const effective = settings.effective();
     const patch = {};
@@ -1069,6 +1373,7 @@ function createApp({
         intervalMinutes: Math.max(5, Math.min(60, Number(body.keepAlive.intervalMinutes) || 10))
       };
     }
+    if (body.allowSignup !== undefined) patch.allowSignup = Boolean(body.allowSignup);
 
     if (body.botToken !== undefined && !effective.managed.botToken) {
       discord.botToken = String(body.botToken || "").trim();
@@ -1119,18 +1424,107 @@ function createApp({
     res.json({ ok: true });
   });
 
+  // ---------------------------------------------------------------- members
+  //
+  // The admin panel's account management. Open sign-up creates members; these
+  // endpoints are for the owner: add someone by hand, disable an account, reset
+  // a forgotten password, unlink a Discord account, or remove someone entirely.
+
+  function memberPayload(user) {
+    return {
+      ...user,
+      presenceName: settings.presenceFor(user.id)?.name || null,
+      shareSlug: settings.shareFor(user.id)?.slug || null,
+      devices: settings.listPairings(user.id).filter((pairing) => !pairing.revokedAt).length,
+      photos: settings.listAssets(user.id).length
+    };
+  }
+
+  app.get("/api/admin/users", requireAdminApi, (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      ok: true,
+      users: settings.listUsers().map(memberPayload),
+      allowSignup: settings.allowSignup,
+      limit: 500
+    });
+  });
+
+  app.post("/api/admin/users", requireAdminApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    try {
+      const user = settings.createUser({
+        email: req.body?.email,
+        name: req.body?.name,
+        password: req.body?.password,
+        role: req.body?.role
+      });
+      logger.log?.(`[admin] created account ${user.id}`);
+      broadcastState();
+      return res.json({ ok: true, user: memberPayload(user) });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: error.message });
+    }
+  });
+
+  app.patch("/api/admin/users/:id", requireAdminApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    try {
+      const user = settings.updateUser(String(req.params.id || ""), {
+        name: req.body?.name,
+        email: req.body?.email,
+        role: req.body?.role,
+        disabled: req.body?.disabled
+      });
+      broadcastState();
+      return res.json({ ok: true, user: memberPayload(user) });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: error.message });
+    }
+  });
+
+  app.post("/api/admin/users/:id/password", requireAdminApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    const id = String(req.params.id || "");
+    if (!settings.findUserById(id)) return res.status(404).json({ ok: false, error: "No such account." });
+    try {
+      settings.setUserPassword(id, req.body?.password);
+      logger.log?.(`[admin] reset the password for ${id}`);
+      return res.json({ ok: true });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: error.message });
+    }
+  });
+
+  app.post("/api/admin/users/:id/unlink", requireAdminApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    const id = String(req.params.id || "");
+    if (!settings.findUserById(id)) return res.status(404).json({ ok: false, error: "No such account." });
+    settings.unlinkDiscord(id);
+    broadcastState();
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/admin/users/:id", requireAdminApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    const id = String(req.params.id || "");
+    const result = settings.deleteUser(id);
+    if (!result.removed) return res.status(404).json({ ok: false, error: "No such account." });
+    // Their photos are unlisted with the account; prune() then deletes exactly
+    // the files no surviving account points at (identical uploads are shared).
+    if (result.assetIds.length) assets.prune();
+    logger.log?.(`[admin] removed account ${id}`);
+    broadcastState();
+    res.json({ ok: true });
+  });
+
   // -------------------------------------------------------------- companion
 
   app.get("/api/companion/pairings", requireAuthApi, (req, res) => {
-    res.json({ ok: true, pairings: settings.listPairings() });
+    res.json({ ok: true, pairings: settings.listPairings(ownerId(req)) });
   });
 
   app.post("/api/companion/pairings", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    const existing = settings.listPairings().filter((pairing) => !pairing.revokedAt);
+    const existing = settings.listPairings(ownerId(req)).filter((pairing) => !pairing.revokedAt);
     if (existing.length >= 10) {
       return res.status(400).json({ ok: false, error: "You already have 10 paired devices. Remove one first." });
     }
-    const { pairing, token } = settings.createPairing(req.body?.label);
+    const { pairing, token } = settings.createPairing(req.body?.label, ownerId(req));
     const origin = settings.effective().publicUrl || originOf(req);
     const command = `curl -fsSL "${origin}/companion.js?pair=${token}" | node`;
     broadcastState();
@@ -1149,7 +1543,8 @@ function createApp({
   });
 
   app.delete("/api/companion/pairings/:id", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
-    settings.revokePairing(String(req.params.id || ""));
+    const removed = settings.revokePairing(String(req.params.id || ""), ownerId(req));
+    if (!removed) return res.status(404).json({ ok: false, error: "No such device." });
     broadcastState();
     res.json({ ok: true });
   });
@@ -1227,7 +1622,8 @@ function createApp({
     const pairing = settings.findPairingByToken(req.get("authorization")?.replace(/^Bearer\s+/i, "") || req.query.token);
     if (!pairing) return res.status(401).json({ ok: false, error: "Not paired." });
 
-    const presence = settings.get().presence || DEFAULT_CONFIG;
+    // A device pushes the card of the account that paired it.
+    const presence = settings.presenceFor(pairing.owner) || DEFAULT_CONFIG;
     const origin = settings.effective().publicUrl || originOf(req);
     const resolveAsset = (id) => {
       const asset = settings.findAsset(id);

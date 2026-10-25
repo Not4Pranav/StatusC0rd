@@ -4,6 +4,8 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const { ADMIN_USER_ID } = require("./settings");
+
 /**
  * Presence artwork ("photos").
  *
@@ -134,46 +136,61 @@ class AssetStore {
   }
 
   /**
-   * Store an uploaded image.
-   * @param {{dataUrl: string, name?: string}} input
+   * Store an uploaded image for one account.
+   *
+   * Files are content-hashed and shared on disk, but ownership is per account:
+   * two members uploading the same picture get one file and two entries, and one
+   * of them deleting it leaves the other's card working.
+   *
+   * @param {{dataUrl: string, name?: string, owner?: string}} input
    */
-  save({ dataUrl, name }) {
+  save({ dataUrl, name, owner = ADMIN_USER_ID }) {
     const parsed = parseUpload(dataUrl);
     if (!parsed.ok) return parsed;
 
     const id = crypto.createHash("sha256").update(parsed.buffer).digest("hex").slice(0, 20);
-    const existing = this.settings.findAsset(id);
+    const existing = this.settings.listAssets(owner).find((asset) => asset.id === id);
     if (existing) return { ok: true, asset: existing, duplicate: true };
 
     fs.mkdirSync(this.dir, { recursive: true });
     const file = path.join(this.dir, `${id}.${parsed.ext}`);
-    const tmp = `${file}.tmp`;
-    fs.writeFileSync(tmp, parsed.buffer, { mode: 0o644 });
-    fs.renameSync(tmp, file);
+    // Another account may already have stored these exact bytes.
+    if (!fs.existsSync(file)) {
+      const tmp = `${file}.tmp`;
+      fs.writeFileSync(tmp, parsed.buffer, { mode: 0o644 });
+      fs.renameSync(tmp, file);
+    }
 
-    const asset = this.settings.addAsset({
-      id,
-      ext: parsed.ext,
-      mime: parsed.mime,
-      bytes: parsed.buffer.length,
-      width: parsed.width,
-      height: parsed.height,
-      name: String(name || "image").replace(/[^\w.\- ]+/g, "").slice(0, 60) || "image",
-      createdAt: new Date().toISOString()
-    });
+    const asset = this.settings.addAsset(
+      {
+        id,
+        ext: parsed.ext,
+        mime: parsed.mime,
+        bytes: parsed.buffer.length,
+        width: parsed.width,
+        height: parsed.height,
+        name: String(name || "image").replace(/[^\w.\- ]+/g, "").slice(0, 60) || "image",
+        createdAt: new Date().toISOString()
+      },
+      owner
+    );
 
     return { ok: true, asset };
   }
 
-  remove(id) {
-    const asset = this.settings.findAsset(id);
-    if (!asset) return false;
+  /** Drop one account's entry, and the file only when nobody else holds it. */
+  remove(id, owner = ADMIN_USER_ID) {
+    const result = this.settings.removeAsset(id, owner);
+    if (!result.removed) return false;
+    if (!result.fileUnused) return true;
     try {
-      fs.rmSync(this.filePath(asset), { force: true });
+      for (const entry of fs.readdirSync(this.dir)) {
+        if (entry.startsWith(`${id}.`)) fs.rmSync(path.join(this.dir, entry), { force: true });
+      }
     } catch {
-      /* ignore */
+      /* nothing to clean up */
     }
-    return this.settings.removeAsset(id);
+    return true;
   }
 
   /** Absolute, publicly reachable URL for an asset (requires a public URL). */

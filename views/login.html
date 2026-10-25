@@ -10,31 +10,74 @@
     <link rel="stylesheet" href="/styles.css" />
     <script src="/login.js" defer></script>
   </head>
-  <body class="auth" data-key-enabled="{{KEY_ENABLED}}" data-discord-enabled="{{DISCORD_ENABLED}}">
+  <body
+    class="auth"
+    data-key-enabled="{{KEY_ENABLED}}"
+    data-discord-enabled="{{DISCORD_ENABLED}}"
+    data-signup-enabled="{{SIGNUP_ENABLED}}"
+  >
     <main class="auth-card">
       <div class="brand brand-lg">
         <span class="brand-mark" aria-hidden="true">S</span>
-        <span>StatusC<strong>0</strong>rd</span>
+        <span>StatusC0rd</span>
       </div>
-      <p class="auth-sub">Control your Discord bot's rich presence.</p>
+      <p class="auth-sub">Sign in to build your card and put it on your profile.</p>
 
       <div id="alert" class="alert" role="alert" hidden></div>
 
-      <form id="key-form" class="stack" method="post" action="/login">
+      <!-- members: email + password ------------------------------------- -->
+      <form id="member-form" class="stack" method="post" action="/login">
         <input type="hidden" name="_csrf" value="{{CSRF}}" />
         <label class="field">
-          <span>Dashboard key</span>
+          <span>Email</span>
           <input
-            id="key"
-            name="key"
+            id="email"
+            name="email"
+            type="email"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            required
+          />
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input
+            id="password"
+            name="password"
             type="password"
             autocomplete="current-password"
-            spellcheck="false"
             required
           />
         </label>
         <button class="btn primary block" type="submit">Sign in</button>
       </form>
+
+      <p id="signup-hint" class="fineprint">
+        No account yet? <a href="/register">Create one</a> — it takes a moment.
+      </p>
+
+      <!-- the owner: dashboard key -------------------------------------- -->
+      <details id="owner-box" class="auth-owner">
+        <summary>Instance owner? Use the dashboard key</summary>
+        <form id="key-form" class="stack" method="post" action="/login">
+          <input type="hidden" name="_csrf" value="{{CSRF}}" />
+          <label class="field">
+            <span>Dashboard key</span>
+            <input
+              id="key"
+              name="key"
+              type="password"
+              autocomplete="current-password"
+              spellcheck="false"
+            />
+          </label>
+          <button class="btn ghost block" type="submit">Sign in to the admin panel</button>
+        </form>
+        <p id="key-help" class="fineprint" hidden>
+          Key sign-in is disabled. Ask the owner for access or use Discord sign-in.
+        </p>
+      </details>
 
       <div id="divider" class="divider"><span>or</span></div>
 
@@ -49,10 +92,8 @@
       </a>
 
       <p id="discord-help" class="fineprint">
-        Discord sign-in is limited to accounts listed in <code>ALLOWED_DISCORD_IDS</code>.
-      </p>
-      <p id="key-help" class="fineprint" hidden>
-        Key sign-in is disabled. Ask the owner for access or use Discord sign-in.
+        Works for a Discord account the owner has allowed, or one already connected to an
+        account here.
       </p>
 
       <footer class="auth-footer">

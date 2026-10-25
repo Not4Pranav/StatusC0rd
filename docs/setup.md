@@ -405,8 +405,11 @@ stored when you press **Continue** and **Finish setup**.
   keep-alive target.
 
 Press **Finish setup**. StatusC0rd saves the admin key, the Discord values, the
-presence and the keep-alive settings, signs you in, and drops you on
-**My profile** with the **Open in Discord** button in front of you.
+presence and the keep-alive settings, signs you in **as the instance owner**, and
+drops you on **My profile** with the **Open in Discord** button in front of you.
+
+From here the instance is yours to share: anyone else signs up at `/register` and
+gets their own card, while the tabs that configure the instance stay yours (§7.7).
 
 > **The first presence targets itself.** *My own profile* is always on; *The bot*
 > is ticked only if you gave a bot token, so a token-less setup never leaves a
@@ -422,7 +425,7 @@ presence and the keep-alive settings, signs you in, and drops you on
 ## 7. The dashboard, tab by tab
 
 Everything is configured on the website; there is no config file to edit. This
-section is the map of it — the pages, the top bar and the five tabs. The sections
+section is the map of it — the pages, the top bar and the six tabs. The sections
 after it are the walkthrough.
 
 ### 7.1 The pages the site serves
@@ -432,8 +435,9 @@ after it are the walkthrough.
 | `/welcome` | anyone | the two-minute overview, with links to the wizard and these docs |
 | `/guide` | anyone | this document, plus `/guide/local`, `/guide/cloud`, `/guide/free-cloud` |
 | `/setup` | the operator, first run only | the three-step wizard (§6) |
-| `/login` | anyone | the dashboard key, or **Continue with Discord** when an allowlist is set (§15.4) |
-| `/` | signed in | the dashboard described below |
+| `/login` | anyone | one page, two doors: **email + password** for a member, the **dashboard key** for the owner, plus **Continue with Discord** when it is configured (§15.4) |
+| `/register` | anyone, while sign-ups are open | the self-serve account form; a closed instance answers *Sign-ups are closed* (§7.7) |
+| `/` | signed in | the dashboard described below — six tabs for the owner, three for a member |
 | `/c/<slug>` | anyone holding the link | the optional public share card (§11) |
 | `/activity/` | Discord, in its iframe | the in-Discord app that puts the card on your profile (§9) |
 | `/health` | anyone | `{"status":"ok"}` and uptime, and nothing else |
@@ -443,8 +447,8 @@ after it are the walkthrough.
 | anything else | anyone | the 404 page (`/api/*` answers a JSON 404 instead) |
 
 Before setup, every path redirects to `/setup`. After it, `/` needs a session and
-sends you to `/login`; a session lasts 8 hours and then you sign in with the key
-again. Dashboard pages are sent `no-store`, so a shared browser never keeps a
+sends you to `/login`; a session lasts 8 hours. The owner signs in with the key
+again, a member with their email and password. Dashboard pages are sent `no-store`, so a shared browser never keeps a
 stale copy of your card.
 
 The in-Discord app's JSON lives at `/activity/api/*` and is mounted a second time
@@ -464,19 +468,28 @@ Discord proxies it or you open it directly. §21 has every route.
 - **Profile pill** — *Profile live (Discord)* while the in-Discord app is pushing,
   *Profile live* while a paired companion is, *Profile idle* when a device is
   paired but silent, *Profile not live* when neither.
-- **User chip** — your Discord name and avatar if you signed in with Discord,
-  otherwise *Signed in*.
+- **User chip** — the name on the account you signed in with (hover it for the
+  email).
 - **Setup guide** opens `/guide` in a new tab; **Sign out** ends the session.
 
-### 7.3 The five tabs
+### 7.3 The six tabs
 
-| Tab | What it is for | Documented in |
-| --- | --- | --- |
-| **Presence** | the editor and the live preview: every field that reaches Discord | §8 |
-| **Photos** | the image library — reuse, inspect or delete what you uploaded | §8.7 |
-| **My profile** | the in-Discord app, the share card and the optional companion | §9, §11, §12 |
-| **Bot & 24/7** | the bot's connection, its invite link and the keep-alive | §10 |
-| **Settings** | application ID, client secret, bot token, allowlist, dashboard key | §7.4 |
+Every card, photo, share link and paired device belongs to the account that made
+it. The owner's dashboard has six tabs; a member sees the first three, because the
+last three are about the instance rather than about one person.
+
+| Tab | What it is for | Who sees it | Documented in |
+| --- | --- | --- | --- |
+| **Presence** | the editor and the live preview: every field that reaches Discord | everyone | §8 |
+| **Photos** | the image library — reuse, inspect or delete what you uploaded | everyone | §8.7 |
+| **My profile** | the in-Discord app, the Discord link, the share card and the optional companion | everyone | §9, §11, §12 |
+| **Bot & 24/7** | the bot's connection, its invite link and the keep-alive | owner | §10 |
+| **Members** | who has an account here: passwords, Discord links, removals, open sign-up | owner | §7.7 |
+| **Settings** | application ID, client secret, bot token, allowlist, dashboard key | owner | §7.4 |
+
+A member's Presence tab has one difference: the **bot** target is not offered,
+because there is exactly one bot and its card is the owner's. Members publish to
+their own profile through the in-Discord app.
 
 ### 7.4 Settings, form by form
 
@@ -524,8 +537,9 @@ because the environment always wins.
   nothing reaches Discord until you press **Publish** (§8.4).
 - Validation errors appear above the form, Discord's own refusal arrives as a
   toast, and closing the tab with a save in flight asks first.
-- It is a single-tenant dashboard: one key, one presence, one profile per
-  instance. Several people each wanting their own card means several instances.
+- It is a shared instance, not a shared card: one key (the owner), one bot, and
+  one presence per account. Nothing a member saves can reach another account, and
+  only the owner's publish moves the bot (§7.7).
 
 ### 7.6 A first-run tour
 
@@ -542,6 +556,80 @@ Ten minutes, in this order:
 8. **My profile → Open in Discord** — the card lands on your profile (§9).
 9. **My profile → Create share link** if you want a public `/c/…` card (§11).
 10. Run the verification table in §13 once; it catches every typo.
+
+### 7.7 Accounts: you, and the people you invite
+
+The dashboard key is not a login for everybody — it *is* the admin panel. Everyone
+else gets an account with an email and a password, and each account builds its own
+card.
+
+**Two doors, one page**
+
+| Who | Signs in with | What they see |
+| --- | --- | --- |
+| you, the owner | the dashboard key (in the collapsed *Owner sign-in* section of `/login`) | all six tabs |
+| a member | their email and password | Presence, Photos, My profile |
+| either, when configured | **Continue with Discord** | same as above, decided by the account |
+
+A member never sees another member's card, photos, share link or paired devices,
+and cannot reach `/api/settings` or `/api/admin/users` — those answer `403`.
+
+**Letting people join.** Sign-ups are open on a fresh install. `/register` is the
+whole flow: name (optional), email, password twice, and the account is signed in
+immediately. The switch is **Members → Let anyone with the link create an account**;
+turn it off and `/register` answers *Sign-ups are closed*, while accounts you make
+by hand keep working. On this build the switch is stored in `data/settings.json`
+and defaults to open.
+
+**Making an account for someone.** **Members → Add someone by hand**: their email,
+an optional name and a starting password of 10+ characters. Send them both
+yourself — this build sends no mail (§7.7.2).
+
+**The rows in Members** carry what you need to diagnose a "my card does not
+show up" question: the email, whether a Discord account is linked, the current
+card name, how many photos and paired devices, and when the account was made.
+
+| Button | What it does |
+| --- | --- |
+| **Reset password** | sets a new password; every session that was open on the old one is signed out within a second |
+| **Unlink Discord** | forgets the Discord account, so the next person to press *Connect Discord* on that profile claims this StatusC0rd account |
+| **Remove** | deletes the account, its card, photos, share link, paired devices and Discord link. The photo files are deleted too, unless another account uploaded identical bytes |
+
+Removing an account takes the card off that person's profile at the in-Discord
+app's next poll (a few seconds) — the app is told the link is gone, and answers
+`403 not_linked` from then on.
+
+#### 7.7.1 How a member's card reaches their own profile
+
+1. The member opens **My profile → Connect Discord** once. That is an OAuth round
+   trip with the `identify` scope; the server stores `discordId → account`.
+2. They press **Open in Discord** and leave the panel open.
+3. The Activity reads the Discord user id from the SDK token, looks the account up
+   by that link, and pushes *that* account's card every five seconds.
+
+Without step 1 the app has no idea whose card to use, which is why an unlinked
+account gets a plain `403` with *press Connect Discord* rather than a silent
+nothing. The link is per account: two members cannot claim the same Discord user,
+and the first one to link it keeps it until you unlink it.
+
+#### 7.7.2 No mail is sent, on purpose
+
+Nothing in this build sends email: no verification mail, no password reset link,
+no invite. The email address is an identifier, not a mailbox the server talks to.
+That keeps the install free (no SMTP host, no API key, no domain), and it is why
+the owner resets passwords by hand.
+
+The hooks for real mail later are deliberately small: an account already carries
+`email`, `createdAt` and `passwordChangedAt`, sign-up already has a single server
+entry point (`POST /register`), and password reset is one admin endpoint
+(`POST /api/admin/users/:id/password`). Adding a provider means calling it from
+those two places — no data-model change. Until then, treat every password you set
+as something you have to hand over out of band.
+
+**The honest limits.** There is no email verification, so a typo'd address is only
+a typo. There is no self-serve "forgot password" — the member asks you. And there
+is no per-member role UI: promoting a member to a second admin means editing
+`data/settings.json` (`"role": "admin"`) and restarting, which §15.1 covers.
 
 ---
 
@@ -981,11 +1069,13 @@ stops working.
 
 ### 15.4 Who can use the instance
 
-- **Dashboard sign-in** — the key, plus (optionally) allowlisted Discord accounts.
-- **The in-Discord app** — anyone who can launch the app *and* is on
-  `ALLOWED_DISCORD_IDS`, if that list is set. With no list, a single-tenant
-  install trusts anyone who can install the app; that is fine for your own app,
-  not for a shared one.
+- **Dashboard sign-in** — the key (the admin panel), plus member accounts with
+  email + password, plus (optionally) allowlisted Discord accounts.
+- **The in-Discord app** — anyone who can launch the app *and* has a StatusC0rd
+  account linked to their Discord user (My profile → Connect Discord). The
+  allowlist only gates the legacy single-owner path: an instance with no member
+  accounts still trusts `ALLOWED_DISCORD_IDS`, and with no list at all, anyone who
+  can install the app.
 - **Companion devices** — one hashed token per device, revocable individually.
 - **The share card** — public by design, opt-in, rotatable, switchable off.
 - **`/health`** — public and minimal; version, storage, bot and Activity state are
@@ -997,8 +1087,11 @@ stops working.
 | Message | Meaning |
 | --- | --- |
 | *That dashboard key is not correct.* | wrong key |
+| *That email and password do not match an account.* | no such member, wrong password, or a disabled account |
+| *Sign-ups are closed on this server. Ask the owner for an account.* | `/register` while **Let anyone with the link create an account** is off |
 | *Too many failed attempts…* | five wrong keys from this IP; 15-minute block |
 | *Dashboard key sign-in is disabled on this server.* | `admin.keyHash` is empty and there is no `DASHBOARD_KEY`; sign in with Discord or run the wizard (§15.1) |
+| *That Discord account is not linked to an account here…* | the OAuth login worked but nobody claimed that Discord user — a member should press **Connect Discord** while signed in, or you add them to `ALLOWED_DISCORD_IDS` |
 | *Discord sign-in is not configured on this server.* | no client secret, or an empty allowlist — both are required |
 | *That Discord account is not on the allowlist for this dashboard.* | the account is fine, the instance is not open to it |
 | *That sign-in attempt was invalid or expired.* | the OAuth `state` did not match, or you waited too long (10 minutes) |
@@ -1077,6 +1170,7 @@ unconfigured instance still boots and serves `/setup`.
 | `KEEP_ALIVE_INTERVAL_MINUTES` | `10` | ping interval, clamped to 5–60 |
 | `REDIRECT_URI` | `<PUBLIC_URL>/auth/discord/callback` | override the OAuth callback |
 | `TRUST_PROXY` | `loopback, linklocal, uniquelocal` | which hops may set `X-Forwarded-*`; `false` when exposed directly, or a hop count / proxy list |
+| `LOG_REQUESTS` | on | one `[http] METHOD /path status bytes ms` line per page and API request; static files and the SSE stream are skipped. `0` silences it entirely |
 
 A copy-paste template lives in `.env.example`. Invalid values do not stop the
 server: it prints `[config] …` warnings at boot and carries on.
@@ -1127,8 +1221,12 @@ being silently deleted.
   The upload body may be up to 8 MB (that is the base64 of a 2 MB image plus
   slack); forms are capped at 64 KB.
 - **Sessions last 8 hours.** Re-sign-in after that; the dashboard key still works.
-- **Ten paired devices**, and **50 allowlisted Discord IDs**, are the caps. Both
-  are per instance, both can be trimmed in the dashboard.
+- **Ten paired devices** (per account), **50 allowlisted Discord IDs** and
+  **500 accounts** are the caps. Devices and accounts are trimmed in the
+  dashboard.
+- **A password reset signs that person out everywhere.** Their old sessions die
+  immediately; the card itself stays published.
+- **No email is sent** — no verification, no reset link, no invite. §7.7.2.
 - **A setup grant lasts 30 minutes.** After that the wizard asks for the token
   again; nothing you already typed is lost until the page is closed.
 - **Rate limits** are per IP and per minute-ish: 60 writes, 20 setup calls per
@@ -1160,7 +1258,14 @@ being silently deleted.
 | The app is not in Discord's launcher | the app was installed without the commands scope | re-run the invite with the `bot applications.commands` scopes (§4.6) |
 | Buttons do not appear | the client rejects button fields, or the card has none | the pill says **no buttons**; update the Discord client |
 | "That dashboard key is not correct" | typo, or the key was rotated | try again; if truly lost see §15.1 |
-| "Too many failed attempts" | five wrong keys from one IP | wait 15 minutes |
+| "Too many failed attempts" | five wrong keys or passwords from one IP | wait 15 minutes |
+| A member cannot sign in | wrong password, or you reset it and they kept the old one | reset it in **Members** and send the new one (§7.7) |
+| A member was signed out on its own | the account was removed or disabled, or you reset its password — every older session dies by design | sign in again with the current password |
+| "Sign-ups are closed" | the **Let anyone with the link create an account** switch is off | turn it on in **Members**, or create the account there by hand |
+| A member's card never appears on their profile | they never pressed **Connect Discord**, so the app cannot tell whose card to push | **My profile → Connect Discord**, then reopen the app |
+| "That Discord account is already linked to a different account" | someone else claimed that Discord user first | **Members → Unlink Discord** on the wrong row, then link again |
+| A member sees no Bot or Settings tab | by design — one bot, one card, and it is yours (§7.3) | nothing; they publish through the in-Discord app |
+| A deleted member's photo is still served | another account uploaded identical bytes, so the file is still in use | it disappears when the last account using it is removed or deletes the photo |
 | Wizard asks for a setup token | you opened it from a non-local address | copy it from the log or `data/setup-token.txt`, or set `SETUP_TOKEN` |
 | "Setup is locked" | the token expired (30-minute grant) or was rotated | re-enter the current token |
 | `EADDRINUSE` on start | another process owns `PORT` | set `PORT` to a free port |
@@ -1179,6 +1284,9 @@ being silently deleted.
 | "This pairing link is invalid or was revoked" | the token was rotated, or the device was removed | pair again from **My profile** |
 | The dashboard says *Bot idle* | the gateway is connected but the presence is not on the bot | check that **The bot** is ticked on the Presence tab and publish |
 | `/api/health` says `degraded` | `data/` is not writable (permissions, full disk, read-only mount) | fix the mount or ownership; `/health` returns 503 until then |
+| A blank page **and no `[http]` line for it in the host's log** | the request never reached Node — the platform's proxy answered instead (service asleep, out of instance hours, crashed, or still deploying) | check `/health` from outside; wake or redeploy; on Render confirm the service is **Live**, not *Suspended* |
+| A blank page **and the log shows `GET / 200 27527b`** | the HTML was served, so the browser dropped the CSS/JS or the page was never rendered — an extension, a proxy, or an old cached bundle | hard reload (`Ctrl`/`Cmd`+`Shift`+`R`), then another browser or network; the log line proves the server's side is fine |
+| The log shows `GET / aborted by the client` | the browser hung up mid-response, usually a proxy timing out on a cold free instance | wait for the instance to be warm (one `/health` 200 first) and reload |
 | `/guide` answers "No such guide" | a typo in the path; only `local`, `cloud` and `free-cloud` exist | start at `/guide` |
 | Browser console: 429 or `EventSource` errors | a proxy is rate-limiting or buffering | the page falls back to polling on its own; a 429 on writes means the limit in §15.5 |
 | Keep-alive says **Waiting** | the server cannot reach `PUBLIC_URL` — DNS, TLS, or a sleeping host | open `https://YOUR-HOST/health` from outside; fix `PUBLIC_URL` |
@@ -1246,7 +1354,7 @@ actually mounts, not an idealised version.
 
 | Credential | How it travels | Opens |
 | --- | --- | --- |
-| dashboard session | `statusc0rd.sid` cookie — signed, `HttpOnly`, `SameSite=Lax`, `Secure` over TLS, 8 hours | `/` and every `/api/*` except setup, companion and Activity |
+| dashboard session | `statusc0rd.sid` cookie — signed, `HttpOnly`, `SameSite=Lax`, `Secure` over TLS, 8 hours | `/` and every `/api/*` except setup, companion and Activity. Carries the role: `admin` (key or promoted member) or `member` |
 | CSRF token | `x-csrf-token` header, or `_csrf` in the body/query | every non-GET on a session route — take it from `/api/state` → `csrf` or the page's `<meta name="csrf-token">` |
 | setup token | `x-setup-token` header, `setupToken` in the body, or `?setupToken=` | `/api/setup/*` while setup is incomplete, from anywhere that is not loopback |
 | pairing token | `Authorization: Bearer <token>` (the companion sends this) | `/api/companion/config`, `/api/companion/heartbeat` |
@@ -1256,6 +1364,11 @@ actually mounts, not an idealised version.
 Loopback requests (`127.0.0.1`, `::1`) may use `/api/setup/*` without the token
 unless `SETUP_REQUIRE_TOKEN=1`; a setup grant, once given, lasts 30 minutes.
 
+A member session is re-checked on every request: if the account was removed,
+disabled, or its password was reset after the session was created, the cookie is
+dropped and the next call answers `401` (pages redirect to `/login`). A
+dashboard-key session is the instance owner and never goes stale.
+
 ### 21.2 Pages
 
 | Method | Path | Answer |
@@ -1264,7 +1377,8 @@ unless `SETUP_REQUIRE_TOKEN=1`; a setup grant, once given, lasts 30 minutes.
 | `GET` | `/guide` | `200` this document, rendered from `docs/setup.md` |
 | `GET` | `/guide/:slug` | `200` for `local`, `cloud`, `free-cloud`; `404` page otherwise |
 | `GET` | `/` | `200` dashboard with a session, else `302` → `/login` (or `/setup` before setup) |
-| `GET` | `/login` | `200` sign-in page; `302` → `/` when already signed in |
+| `GET` | `/login` | `200` sign-in page (member form, owner key, Discord button); `302` → `/` when already signed in |
+| `GET` | `/register` | `200` the sign-up form while it is open, with `data-signup-enabled="false"` when it is closed; `302` → `/` when already signed in |
 | `GET` | `/setup` | `200` wizard while unconfigured; afterwards `302` → `/` or `/login` |
 | `GET` | `/c/:slug` | `200` public card; `404` page for a wrong, rotated or disabled slug |
 | `GET` | `/activity` | `302` → `/activity/` |
@@ -1273,8 +1387,9 @@ unless `SETUP_REQUIRE_TOKEN=1`; a setup grant, once given, lasts 30 minutes.
 | `GET` | `/favicon.ico` | `302` → `/favicon.svg` |
 | `GET` | anything else | `404` HTML error page — or `{"ok":false,"error":"Not found."}` under `/api/` |
 
-`/?tab=profile` (and `photos`, `bot`, `settings`) opens the dashboard on that tab;
-that is how the wizard hands you over.
+`/?tab=profile` (and `photos`, `bot`, `members`, `settings`) opens the dashboard on
+that tab; that is how the wizard hands you over. Asking for `bot`, `members` or
+`settings` with a member session lands on `profile` instead.
 
 ### 21.3 Health
 
@@ -1297,17 +1412,21 @@ that is how the wizard hands you over.
 
 | Method | Path | Answer |
 | --- | --- | --- |
-| `POST` | `/login` | `303` → `/` on success; `303` → `/login?error=…` otherwise (`invalid`, `locked` or `key_disabled`) |
+| `POST` | `/login` | `303` → `/` on success; `303` → `/login?error=…` otherwise (`invalid`, `locked`, `key_disabled`, `bad_credentials`) |
+| `POST` | `/register` | `303` → `/` and signed in on success; `303` → `/register?error=…` otherwise (`closed`, `mismatch`, `invalid`) |
 | `POST` | `/logout` | `303` → `/login` (CSRF required) |
 | `GET` | `/auth/discord` | `302` to Discord, or back to `/login?error=discord_disabled` |
-| `GET` | `/auth/discord/callback` | `302` → `/` on success; `?error=…` otherwise (`cancelled`, `state`, `expired`, `not_allowed`, `discord_failed`) |
+| `GET` | `/auth/discord/link` | `302` to Discord from a signed-in session (claims a Discord user for *this* account); `302` → `/?tab=profile&link=unconfigured` without a client id/secret |
+| `GET` | `/auth/discord/callback` | `302` → `/` on login, `302` → `/?tab=profile&link=ok` — or `taken` / `failed` on a link attempt; `?error=…` otherwise (`cancelled`, `state`, `expired`, `not_allowed`, `discord_failed`) |
+| `GET` | `/auth/discord` | the login intent — the same as `/login`'s Discord button |
 
 §15.4 translates each `error=` code.
 
 ### 21.6 The dashboard's JSON
 
 All of these need the session; everything that is not a `GET` also needs the CSRF
-token.
+token. Rows marked **owner** answer `403` to a member session and are visible only
+on the owner's dashboard.
 
 | Method | Path | Answer |
 | --- | --- | --- |
@@ -1325,8 +1444,14 @@ token.
 | `DELETE` | `/api/assets/:id` | `200`; `404` unknown |
 | `POST` | `/api/share` | `200` `{share:{slug,url,createdAt}}`; `400` when there is no live presence or the slug is invalid |
 | `DELETE` | `/api/share` | `200` `{share:null}` |
-| `GET` | `/api/settings` | `200` `{settings}` — non-secret values plus `hasBotToken`, `botTokenPreview`, `hasClientSecret`, `managed`, `keyFromEnv` |
-| `POST` | `/api/settings` | `200`; `400` bad URL/ID or a short key; `403` wrong current key when rotating |
+| `GET` | `/api/settings` **owner** | `200` `{settings}` — non-secret values plus `hasBotToken`, `botTokenPreview`, `hasClientSecret`, `managed`, `keyFromEnv`, `allowSignup`, `memberCount` |
+| `POST` | `/api/settings` **owner** | `200`; `400` bad URL/ID or a short key; `403` wrong current key when rotating. `{allowSignup:true}` or `false` toggles sign-ups |
+| `GET` | `/api/admin/users` **owner** | `200` `{users:[{id,email,name,role,linked,discordId,createdAt,lastLoginAt,presenceName,shareSlug,devices,photos}], allowSignup, limit}` |
+| `POST` | `/api/admin/users` **owner** | `200` `{user}` from `{email,name,password}`; `400` duplicate email, bad email, short password or 500 accounts |
+| `PATCH` | `/api/admin/users/:id` **owner** | `200` `{user}` — `name`, `email`, `role` or `disabled`; `400` invalid |
+| `POST` | `/api/admin/users/:id/password` **owner** | `200`; `400` short password; `404` unknown. Retires that account's open sessions |
+| `POST` | `/api/admin/users/:id/unlink` **owner** | `200` — forgets the Discord link so it can be claimed again |
+| `DELETE` | `/api/admin/users/:id` **owner** | `200`; `404` unknown. Removes the card, photos (files too, when nothing else uses them), share link, devices and link |
 | `GET` | `/api/companion/pairings` | `200` `{pairings}` (no tokens — only labels, times and status) |
 | `POST` | `/api/companion/pairings` | `200` `{pairing, token, command, scriptUrl, launchers}` — the only time the token is returned; `400` at ten devices |
 | `DELETE` | `/api/companion/pairings/:id` | `200`, token invalidated immediately |
@@ -1346,7 +1471,7 @@ token.
 | `buttons` | array | max 2 × `{label (32), url (https://)}`; invalid entries are dropped |
 | `startedAt` | boolean | turns the elapsed timer on |
 | `restartTimer` | boolean | re-bases the timer on this save instead of keeping the old start |
-| `targets` | object | `{bot, companion}`; at least one must be true |
+| `targets` | object | `{bot, companion}`; at least one must be true. A member session always gets `{bot:false, companion:true}`, whatever it sends |
 | `enabled` | boolean | `false` is what **Clear** sets |
 
 There is **no PATCH semantics**: send the whole card. Only `type`, `status`,
@@ -1410,6 +1535,19 @@ curl -s -H "Cookie: statusc0rd.sid=$COOKIE" https://YOUR-HOST/api/health
 # Watch the dashboard's own event stream, exactly as the page does
 curl -N -H "Cookie: statusc0rd.sid=$COOKIE" https://YOUR-HOST/api/events
 ```
+
+What the server thinks happened, in the host's log (one line per page and API
+request, assets skipped):
+
+```
+[http] GET / 200 27527b 1ms
+[http] POST /login 303 27b 2ms
+[http] GET /api/state 200 2235b 2ms
+```
+
+A request that never produces one of these lines never reached the app — which
+is the difference between "the server is down or still starting" and "the server
+answered and the browser is the problem".
 
 The companion's view of the same state, without touching Discord:
 
