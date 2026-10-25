@@ -17,7 +17,10 @@
 
 const { escapeHtml } = require("./views");
 
-const SAFE_URL = /^(https?:\/\/|mailto:|\/|#)/i;
+// Same-page anchors, site-absolute paths, absolute URLs, and links between the
+// documentation files (`setup-local.md`, possibly with a `#anchor`). Nothing
+// else - in particular no `javascript:` - ever becomes an href.
+const SAFE_URL = /^(https?:\/\/|mailto:|\/|#|[\w.-]+\.md(#|$))/i;
 const BLOCK_START = /^(#{1,6}\s|```|>|\||[-*]\s|\d+\.\s|---)/;
 
 /** Heading anchor ids: "## 4. Path A — Render" -> "path-a-render". */

@@ -45,32 +45,43 @@ rather not open the Activity.
 
 ## Setup
 
-> **Every setup step lives in one file: [`docs/setup.md`](docs/setup.md).**
-> It walks from an empty Discord account to a card on your own profile — the
-> Discord application, three free hosting paths, the wizard, the editor, the
-> in-Discord app, 24/7, updates, backups, security, every environment variable
-> and the troubleshooting table. Any running instance serves the same file at
-> **`/guide`**, so the repository and the website can never disagree.
+> **Four files, one product.** Every setup step lives in `docs/`, split by *where
+> the server runs* — the only part that actually differs.
+>
+> | File | Covers |
+> | --- | --- |
+> | [`docs/setup.md`](docs/setup.md) | the shared steps: the Discord application, the wizard, the editor, your profile, the 24/7 bot, verification, security, environment variables, troubleshooting |
+> | [`docs/setup-local.md`](docs/setup-local.md) | your own PC, Mac or Raspberry Pi, start to finish — including the tunnel that gives you a public HTTPS URL |
+> | [`docs/setup-cloud.md`](docs/setup-cloud.md) | a VPS or managed platform you pay for: DNS, firewall, systemd, Caddy, Docker, backups |
+> | [`docs/setup-free-cloud.md`](docs/setup-free-cloud.md) | Render free tier, Oracle Always Free, GCP free tier — with the catch of each |
+>
+> Any running instance serves these same files at **`/guide`**, **`/guide/local`**,
+> **`/guide/cloud`** and **`/guide/free-cloud`**, so the repository, GitHub and
+> the website can never disagree.
 
 | You want to… | Read |
 | --- | --- |
 | understand what the thing does | [`§1`](docs/setup.md#1-what-the-user-gets) · [`§2`](docs/setup.md#2-what-the-developer-gets) |
-| pick a free host | [`§3`](docs/setup.md#3-which-free-stack-to-pick) |
-| create the Discord application (ID, secret, bot token, Activities) | [`§4`](docs/setup.md#4-step-1-the-discord-application) |
-| deploy on Render (fastest, no card) | [`§5`](docs/setup.md#5-step-2-path-a-render) |
-| deploy on Oracle Always Free (permanent) | [`§6`](docs/setup.md#6-step-3-path-b-oracle-always-free) |
-| run it on your own PC / Raspberry Pi | [`§7`](docs/setup.md#7-step-4-path-c-your-own-pc-or-pi) |
-| finish the first boot and the wizard | [`§8`](docs/setup.md#8-step-5-first-boot-and-the-wizard) |
-| design the card and publish it | [`§9`](docs/setup.md#9-step-6-design-and-publish-the-card) |
-| put it on your own profile (no install) | [`§10`](docs/setup.md#10-step-7-on-your-own-profile-no-install) |
-| keep the bot online 24/7 | [`§11`](docs/setup.md#11-step-8-the-bot-card-always-online) |
-| publish a share card | [`§12`](docs/setup.md#12-step-9-the-share-card-optional) |
-| use the optional companion instead | [`§13`](docs/setup.md#13-step-10-the-optional-companion) |
-| verify the install | [`§14`](docs/setup.md#14-step-11-verify-the-whole-install) |
-| update, back up, move hosts | [`§15`](docs/setup.md#15-step-12-updates-and-backups) |
-| rotate keys and lock down access | [`§16`](docs/setup.md#16-step-13-security-and-rotation) |
-| look up an environment variable | [`§17`](docs/setup.md#17-environment-variables) |
-| fix a problem | [`§20`](docs/setup.md#20-troubleshooting) |
+| choose where it will run | [`§3`](docs/setup.md#3-pick-where-it-runs) |
+| create the Discord application (ID, secret, bot token, Activities, URL mapping) | [`§4`](docs/setup.md#4-step-1-the-discord-application) |
+| run it on your own computer, Mac or Pi | [`local §1`](docs/setup-local.md#1-what-you-need) |
+| get a public HTTPS URL from a home machine | [`local §4`](docs/setup-local.md#4-a-public-https-url) |
+| keep it alive after logout / reboot | [`local §7`](docs/setup-local.md#7-keep-it-running-after-logout-and-reboot) |
+| deploy on a VPS with your own domain | [`cloud §2`](docs/setup-cloud.md#2-create-the-server) |
+| deploy on Render free (fastest, no card) | [`free §2`](docs/setup-free-cloud.md#2-path-a-render-free) |
+| deploy on Oracle Always Free (permanent) | [`free §3`](docs/setup-free-cloud.md#3-path-b-oracle-always-free) |
+| deploy on GCP Always Free | [`free §4`](docs/setup-free-cloud.md#4-path-c-gcp-always-free-e2-micro) |
+| finish the first boot and the wizard | [`§6`](docs/setup.md#6-step-3-first-boot-and-the-wizard) |
+| design the card and publish it | [`§7`](docs/setup.md#7-step-4-design-and-publish-the-card) |
+| put it on your own profile (no install) | [`§8`](docs/setup.md#8-step-5-on-your-own-profile-no-install) |
+| keep the bot online 24/7 | [`§9`](docs/setup.md#9-step-6-the-bot-card-always-online) |
+| publish a share card | [`§10`](docs/setup.md#10-step-7-the-share-card-optional) |
+| use the optional companion instead | [`§11`](docs/setup.md#11-step-8-the-optional-companion) |
+| verify the install | [`§12`](docs/setup.md#12-step-9-verify-the-whole-install) |
+| update, back up, move hosts | [`§13`](docs/setup.md#13-step-10-updates-and-backups) |
+| rotate keys and lock down access | [`§14`](docs/setup.md#14-step-11-security-and-rotation) |
+| look up an environment variable | [`§15`](docs/setup.md#15-environment-variables) |
+| fix a problem | [`§18`](docs/setup.md#18-troubleshooting) |
 
 Just want it on localhost to poke at it?
 
@@ -81,7 +92,7 @@ npm start          # http://localhost:3000 → the setup wizard
 
 Requirements: Node.js 20+ (22 LTS recommended). Photos need a public HTTPS URL
 (Discord refuses `http://` and `localhost`), which matters even locally — see
-[`§7`](docs/setup.md#7-step-4-path-c-your-own-pc-or-pi).
+[`local §4`](docs/setup-local.md#4-a-public-https-url).
 
 ---
 
@@ -125,7 +136,7 @@ The bot lives on the server, so it is online as long as the server is:
 | --- | --- |
 | `/activity/` | the in-Discord app — Discord loads this inside the client (no install) |
 | `/welcome` | anyone — what StatusC0rd does |
-| `/guide` | anyone — the complete setup guide, rendered from `docs/setup.md` |
+| `/guide` | anyone — the setup docs, rendered from `docs/*.md` (`/guide/local`, `/guide/cloud`, `/guide/free-cloud`) |
 | `/setup` | the operator, on first boot, for the three-step wizard |
 | `/` | the signed-in dashboard |
 | `/c/<slug>` | the optional public share card |
@@ -150,7 +161,7 @@ Session cookie + `x-csrf-token` for mutations. Companion endpoints use a
 | `GET` | `/auth/discord`, `/auth/discord/callback` | Optional Discord sign-in |
 | `GET` | `/` | Dashboard |
 | `GET` | `/welcome` | Marketing page (no session) |
-| `GET` | `/guide` | This setup guide, rendered from `docs/setup.md` |
+| `GET` | `/guide`, `/guide/:slug` | The setup docs, rendered from `docs/*.md` (`local`, `cloud`, `free-cloud`) |
 | `GET` | `/activity` | Redirects to the in-Discord app shell at `/activity/` |
 | `GET` | `/api/setup/status` | What the wizard should show (needs setup, token required, managed values) |
 | `GET` | `/api/state` | Presence, bot, photos, devices, keep-alive, meta |
@@ -240,7 +251,8 @@ src/views.js           tiny auto-escaping `{{TOKEN}}` renderer
 src/companion/agent.js the companion (also served as a personalized script)
 views/                 setup, dashboard, login, welcome, guide, card, activity
 public/                styles, dashboard JS, setup JS, upload helper, activity app
-docs/setup.md          the one setup document (also served at /guide)
+docs/setup.md          shared steps; setup-local.md, setup-cloud.md,
+                       setup-free-cloud.md are the three host paths
 test/                  node:test suites (presence, settings, assets, bot,
                        keepalive, companion IPC, HTTP integration)
 ```

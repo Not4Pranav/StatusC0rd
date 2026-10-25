@@ -137,20 +137,38 @@ test("empty input is empty output", () => {
   assert.deepEqual(renderMarkdown(""), { html: "", headings: [] });
 });
 
-test("the deployment guide renders with working anchors and no raw html", () => {
-  const guide = require("../src/guide").loadGuide();
-  assert.equal(guide.available, true);
-  assert.ok(guide.html.length > 2000);
-  assert.ok(guide.headings.length >= 5);
+test("every setup document renders with working anchors and no raw html", () => {
+  const { loadGuide, DOCS } = require("../src/guide");
 
-  // Every table of contents link points at a real heading id.
-  const ids = new Set(guide.headings.map((heading) => heading.id));
-  for (const match of guide.html.matchAll(/href="#([^"]+)"/g)) {
-    assert.ok(ids.has(match[1]), `dangling anchor #${match[1]}`);
-  }
+  for (const doc of DOCS) {
+    const guide = loadGuide(doc.slug);
+    assert.equal(guide.available, true, doc.file);
+    assert.ok(guide.html.length > 2000, `${doc.file} is substantial`);
+    assert.ok(guide.headings.length >= 5, `${doc.file} has headings`);
+    assert.equal(guide.file, doc.file, "loadGuide reports the file it rendered");
 
-  // No raw html tags from the source leaked through.
-  for (const tag of ["<script", "<iframe", "onerror="]) {
-    assert.ok(!guide.html.includes(tag), `guide html contains ${tag}`);
+    // Every same-page link points at a real heading id.
+    const ids = new Set(guide.headings.map((heading) => heading.id));
+    for (const match of guide.html.matchAll(/href="#([^"]+)"/g)) {
+      assert.ok(ids.has(match[1]), `dangling anchor #${match[1]} in ${doc.file}`);
+    }
+
+    // No raw html tags from the source leaked through.
+    for (const tag of ["<script", "<iframe", "onerror="]) {
+      assert.ok(!guide.html.includes(tag), `${doc.file} contains ${tag}`);
+    }
   }
+});
+
+test("links between the guide files survive rendering and get routed", () => {
+  const { renderMarkdown } = require("../src/markdown");
+  const { html } = renderMarkdown(
+    "See [the wizard](setup.md#6-step-3-first-boot-and-the-wizard) and [local](setup-local.md)."
+  );
+  assert.match(html, /href="setup\.md#6-step-3-first-boot-and-the-wizard"/);
+  assert.match(html, /href="setup-local\.md"/);
+
+  // Unsafe schemes never become hrefs.
+  const unsafe = renderMarkdown("[click](javascript:void)").html;
+  assert.ok(!unsafe.includes("javascript:"), "javascript: urls are stripped");
 });

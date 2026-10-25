@@ -1518,6 +1518,41 @@ body.site {
 
 /* Rendered markdown (`docs/free-setup.md`) */
 
+/* The four setup documents share one layout; these tabs switch between them. */
+
+.guide-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 clamp(18px, 3vw, 30px);
+}
+
+.md a.guide-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.md a.guide-tab:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.md a.guide-tab.is-active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  text-decoration: none;
+}
+
 .md {
   min-width: 0;
   font-size: 0.94rem;

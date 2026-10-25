@@ -26,13 +26,14 @@
         <p class="toc-title">On this page</p>
         <nav>{{{TOC_HTML}}}</nav>
         <p class="fineprint">
-          This is the same guide as <code>docs/setup.md</code> in the repository, rendered by
+          This is the same file as <code>{{GUIDE_FILE}}</code> in the repository, rendered by
           the app you are looking at.
         </p>
         <p class="fineprint" id="guide-updated">{{GUIDE_UPDATED}}</p>
       </aside>
 
       <article class="md">
+        <nav class="guide-tabs" aria-label="Setup paths">{{{GUIDE_NAV}}}</nav>
         {{{GUIDE_HTML}}}
         <p class="fineprint guide-end">
           Ready? <a href="{{BACK_HREF}}">{{BACK_LABEL}}</a> — or go back to the

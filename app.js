@@ -19,7 +19,7 @@ const {
 } = require("./src/auth");
 const oauth = require("./src/oauth");
 const { createZip } = require("./src/zip");
-const { loadGuide } = require("./src/guide");
+const { loadGuide, guideNav, findDoc } = require("./src/guide");
 const { createActivityService, ActivityError, FRAME_ANCESTORS } = require("./src/activity");
 const { templateList, applyTemplate } = require("./src/templates");
 
@@ -555,15 +555,23 @@ function createApp({
   });
 
   /**
-   * The complete setup guide, rendered from `docs/setup.md` so the website
-   * and the repository can never disagree.
+   * The setup documentation, rendered from `docs/*.md` so the website and the
+   * repository can never disagree. One page per deployment path:
+   * `/guide` (shared steps), `/guide/local`, `/guide/cloud`, `/guide/free-cloud`.
    */
-  app.get("/guide", (req, res) => {
-    const guide = loadGuide();
+  function sendGuide(req, res, doc) {
+    const guide = loadGuide(doc.slug);
     const action = primaryAction(req);
     const toc = guide.headings
       .filter((heading) => heading.level === 2)
       .map((heading) => `<a href="#${heading.id}">${escapeHtml(heading.text)}</a>`)
+      .join("");
+    const nav = guideNav(doc.slug)
+      .map((item) =>
+        item.active
+          ? `<a class="guide-tab is-active" href="${item.href}" aria-current="page">${escapeHtml(item.label)}</a>`
+          : `<a class="guide-tab" href="${item.href}">${escapeHtml(item.label)}</a>`
+      )
       .join("");
     const updated = guide.updatedAt
       ? `Last updated ${new Date(guide.updatedAt).toISOString().slice(0, 10)}`
@@ -574,12 +582,29 @@ function createApp({
         VERSION: version,
         GUIDE_TITLE: guide.title,
         GUIDE_HTML: guide.html,
+        GUIDE_NAV: nav,
+        GUIDE_FILE: `docs/${guide.file}`,
         TOC_HTML: toc,
         GUIDE_UPDATED: updated,
         BACK_HREF: action.href,
         BACK_LABEL: action.label
       })
     );
+  }
+
+  app.get("/guide", (req, res) => sendGuide(req, res, findDoc("")));
+
+  app.get("/guide/:slug", (req, res) => {
+    const doc = findDoc(req.params.slug);
+    if (!doc) {
+      return sendErrorPage(
+        res,
+        404,
+        "No such guide",
+        "That setup document does not exist. Start at /guide to see every path."
+      );
+    }
+    return sendGuide(req, res, doc);
   });
 
   // ------------------------------------------------------------------- setup

@@ -1,43 +1,48 @@
-# StatusC0rd — the complete setup guide, start to finish
+# The setup guide
 
-> **This is the only setup document.** Everything you need to go from an empty
-> Discord account to a rich presence on your own profile lives in this one file.
-> Any running StatusC0rd instance serves this same file at **`/guide`**, and the
-> public overview lives at `/welcome`. Edit `docs/setup.md` once and both the
-> repository and the website show the update.
+> **One product, four documents.** Everything that is the same wherever you run
+> StatusC0rd lives here. The part that differs — *where the server actually
+> runs* — has its own start-to-finish file:
+>
+> - [**Your own computer**](setup-local.md) — a PC, a Mac or a Raspberry Pi.
+> - [**Cloud server**](setup-cloud.md) — a VPS or managed platform you pay for.
+> - [**Free cloud**](setup-free-cloud.md) — Render free tier, Oracle Always Free,
+>   GCP free tier.
+>
+> Every running instance serves these same files at **`/guide`** (and
+> `/guide/local`, `/guide/cloud`, `/guide/free-cloud`). Edit a Markdown file once
+> and the repository, GitHub and the website all show the update.
 
-There are two readers here. Find yourself and skip ahead:
+**Read this page for:** the Discord application, the wizard, the dashboard, going
+live on your profile, the 24/7 bot card, verification, security, environment
+variables and troubleshooting.
 
-| Who you are | Where to start | What you will do |
+**Read a path file for:** creating the machine, installing Node or Docker,
+HTTPS, keeping it running, updating and backing up *that* kind of host.
+
+| You are | Path file | Time |
 | --- | --- | --- |
-| **You run the server** (you own the Discord app and the host) | §1, then §4 onward, in order | 13 numbered steps, 15–90 minutes, $0 |
-| **Somebody gave you a URL** to their instance | §1 then §9 and §10 | design a card, publish, open the in-Discord app — 5 minutes |
-| **You just want to read what the thing is** | §1 and §2 | two minutes |
+| Running it on your own machine | [setup-local.md](setup-local.md) | ~15 min |
+| Renting a cloud server | [setup-cloud.md](setup-cloud.md) | ~30 min |
+| Wanting free hosting | [setup-free-cloud.md](setup-free-cloud.md) | 10–60 min |
 
-Everything is configured from the website. There is no config file to edit, no
-SQL, no build step, and no restart after the first launch.
-
-**Before you start:** [what this is](#1-what-the-user-gets) ·
+**Before you start:** [what the user gets](#1-what-the-user-gets) ·
 [the developer view](#2-what-the-developer-gets) ·
-[your free host](#3-which-free-stack-to-pick) ·
+[pick a host](#3-pick-where-it-runs) ·
 [the Discord application](#4-step-1-the-discord-application)
 
-**Deploy it:** [Render](#5-step-2-path-a-render) ·
-[Oracle Always Free](#6-step-3-path-b-oracle-always-free) ·
-[your own PC or Pi](#7-step-4-path-c-your-own-pc-or-pi)
+**Go live:** [first boot](#6-step-3-first-boot-and-the-wizard) ·
+[design and publish](#7-step-4-design-and-publish-the-card) ·
+[your own profile](#8-step-5-on-your-own-profile-no-install) ·
+[24/7 bot card](#9-step-6-the-bot-card-always-online) ·
+[share card](#10-step-7-the-share-card-optional) ·
+[companion](#11-step-8-the-optional-companion)
 
-**Go live:** [first boot](#8-step-5-first-boot-and-the-wizard) ·
-[design and publish](#9-step-6-design-and-publish-the-card) ·
-[your own profile](#10-step-7-on-your-own-profile-no-install) ·
-[24/7 bot card](#11-step-8-the-bot-card-always-online) ·
-[share card](#12-step-9-the-share-card-optional) ·
-[companion](#13-step-10-the-optional-companion)
-
-**Look after it:** [verify](#14-step-11-verify-the-whole-install) ·
-[update and back up](#15-step-12-updates-and-backups) ·
-[security](#16-step-13-security-and-rotation) ·
-[environment variables](#17-environment-variables) ·
-[troubleshooting](#20-troubleshooting)
+**Look after it:** [verify](#12-step-9-verify-the-whole-install) ·
+[update and back up](#13-step-10-updates-and-backups) ·
+[security](#14-step-11-security-and-rotation) ·
+[environment variables](#15-environment-variables) ·
+[troubleshooting](#18-troubleshooting)
 
 ---
 
@@ -65,7 +70,7 @@ be that client, and StatusC0rd ships both:
 - **The optional companion.** A ~700-line Node script that talks to the local
   Discord socket. Nothing to enable inside Discord, but it has to be installed
   and kept running. Only worth it if you want the presence without opening a
-  panel — see §13.
+  panel — see §11.
 
 ### The user's five minutes
 
@@ -109,6 +114,8 @@ Browser ──HTTPS──▶ your host (this repo, Node 20+)
   who is asking, and shapes the saved presence into a `setActivity` payload.
 - `src/companion/agent.js` is one file used by both the CLI and the in-process
   API; it speaks Discord's IPC protocol directly, with no extra dependencies.
+- `src/guide.js` renders `docs/*.md` for `/guide`, so the docs and the site are
+  the same bytes.
 - `data/` holds `settings.json` (mode `0600`), `assets/` and `setup-token.txt`.
   `DATA_DIR` moves it. **That directory is the deployment's state.**
 - `npm test` = 135 tests, including `test/companion-e2e.test.js`, which drives a
@@ -121,40 +128,52 @@ the matching `test/*.test.js`, run `npm test`. There is no build step.
 
 ---
 
-## 3. Which free stack to pick
+## 3. Pick where it runs
 
-Everything below is genuinely $0. "Best" depends on what you want to trade.
+Everything below is genuinely usable, and the two free options are genuinely
+free. "Best" depends on what you want to trade.
 
-| | **Render free web service** | **Oracle Cloud Always Free VM** | **Your own PC** |
+| | **Your own computer** | **Cloud server** | **Free cloud** |
 | --- | --- | --- | --- |
-| Time to first URL | ~10 min | ~45–60 min | ~15 min |
-| Credit card | not required | required for identity check, never charged | none |
-| Always on | sleeps after 15 min idle — the keep-alive ping prevents it | yes, permanently | only while the machine is on |
-| Disk | ephemeral, **lost on restart / spin-down / redeploy** | 200 GB persistent | your disk |
-| HTTPS | included | Caddy + Let's Encrypt (free) | Cloudflare quick tunnel (free) |
-| Stable URL | yes, `*.onrender.com` | yes, DuckDNS subdomain or your domain | no with quick tunnels |
-| Best for | trying it today | "set it once, forget it" | testing, a Raspberry Pi |
+| Guide | [Local setup](setup-local.md) | [Cloud setup](setup-cloud.md) | [Free-cloud setup](setup-free-cloud.md) |
+| Cost | $0 (plus your electricity) | ~$4–6/month | **$0** |
+| Time to first URL | ~15 min | ~30 min | 10–60 min |
+| Always on | only while the machine is awake | yes | yes, with caveats: Render free sleeps, Oracle stays up |
+| Disk | your disk, persistent | 20–80 GB, persistent | Render free is **ephemeral**; Oracle gives 200 GB persistent |
+| HTTPS | a tunnel (Cloudflare), no router changes | Caddy + Let's Encrypt | included on Render; Caddy on Oracle |
+| Stable URL | only with a named tunnel or DuckDNS | yes, your domain | Render: yes, `*.onrender.com`. Oracle: DuckDNS or your domain |
+| Best for | trying it, a Raspberry Pi, a home lab | "set it once, forget it", several users | trying it today, free forever |
 
 **Recommendation**
 
-- Just want to see it working, no card: **Path A (Render)** → §5.
-- Want free forever, with photos and settings that never vanish: **Path B
-  (Oracle)** → §6.
-- Already have an always-on box: **Path C** → §7.
+- Just want to see it working today, and a sleeping instance is fine →
+  [free cloud, Path A (Render)](setup-free-cloud.md#2-path-a-render-free).
+- Want free and permanent, with photos that never vanish →
+  [free cloud, Path B (Oracle)](setup-free-cloud.md#3-path-b-oracle-always-free).
+- Already have a machine that is on all day →
+  [your own computer](setup-local.md).
+- Want a proper server with your own domain and no free-tier surprises →
+  [cloud server](setup-cloud.md).
 
-Free pieces used by every path: the Discord application (free), Let's Encrypt
-certificates (free), a GitHub account (free), a DuckDNS subdomain (free), and one
-of the three hosts above.
+Not recommended: **Vercel**, **Netlify** and other serverless hosts — no
+long-running process, no writable disk, no SSE, so the bot is simply offline.
+**Fly.io**, **Koyeb** and **Railway** no longer have a free tier for new
+accounts; they work fine as paid hosts and are covered in the cloud file.
 
-Not recommended in 2026: Fly.io and Koyeb (no free tier for new accounts),
-Railway (no free tier), Vercel (no persistent process, no writable disk, no SSE —
-the bot would simply be offline).
+Whatever you pick, the end state is the same four things:
+
+1. An `https://` URL that reaches the app from the internet.
+2. `PUBLIC_URL` set to exactly that origin (photos and keep-alive need it).
+3. A writable `data/` directory that survives restarts, or the equivalent
+   environment variables (see §16).
+4. A process that starts again after a reboot.
 
 ---
 
 ## 4. Step 1: the Discord application
 
-You are collecting **four values**. Three are required-ish, one is optional.
+You are collecting **four values**. Three are required-ish, one is optional. This
+step is identical for every host, so do it first.
 
 ### 4.1 Create the application
 
@@ -181,7 +200,7 @@ password: it is what lets *your server* finish the Discord sign-in for the
 in-Discord app on the user's behalf.
 
 Resetting the secret invalidates the old one, so if you reset it later, paste the
-new value into the dashboard again (§16.3).
+new value into the dashboard again (§14.3).
 
 ### 4.4 Copy the bot token (this is `DISCORD_TOKEN`, optional)
 
@@ -200,12 +219,12 @@ Then, on the same page:
 ### 4.5 Enable the in-Discord app (five clicks, once)
 
 This is the part that puts photos and buttons on a profile with nothing
-installed. It needs your public URL, so do it after §5–§7 — or do it now and fix
-the URL afterwards.
+installed. It needs your public URL, so do it after the host exists — or do it
+now and fix the URL afterwards.
 
 1. **Activities → Settings** → tick **Enable Activities**. Discord registers the
    `Launch` entry-point command for you.
-2. **Activities → URL Mappings** → add mapping with prefix **`/`** and target
+2. **Activities → URL Mappings** → add a mapping with prefix **`/`** and target
    **`https://YOUR-HOST/activity/`**. Keep the trailing slash: the page uses
    relative URLs (`./api/token`).
 3. Nothing else is needed here — the client secret from §4.3 is already the
@@ -234,9 +253,9 @@ Instead of typing the dashboard key, an allowlisted Discord account can sign in
 with one click.
 
 1. **OAuth2 → Redirects** → add `https://YOUR-HOST/auth/discord/callback`.
-2. In the dashboard: **Settings → Discord sign-in** → paste the client secret and your
-   Discord **user ID** (Discord → Settings → Advanced → Developer Mode → right
-   click your name → *Copy User ID*). Separate several IDs with commas.
+2. In the dashboard: **Settings → Discord sign-in** → paste the client secret and
+   your Discord **user ID** (Discord → Settings → Advanced → Developer Mode →
+   right click your name → *Copy User ID*). Separate several IDs with commas.
 3. Sign out: the login page now offers **Continue with Discord**.
 
 Anyone not on that allowlist is rejected, whatever their account. The dashboard
@@ -254,165 +273,36 @@ set in the environment, in which case that value is the only key.
 
 ---
 
-## 5. Step 2: Path A, Render
+## 5. Step 2: deploy the app
 
-> **The two values that matter.** The wizard asks for an Application ID and an
-> OAuth2 client secret; that pair alone is enough to put photos, text and buttons
-> on your own profile through the in-Discord app. A bot token only adds the text
-> card that stays online while you are away.
+Now pick exactly **one** of these and follow it start to finish. Each one takes
+you from an empty account to a running instance with HTTPS and a URL:
 
-**Deploy**
+| Host | File |
+| --- | --- |
+| Your PC, Mac or Raspberry Pi | [setup-local.md](setup-local.md) |
+| A VPS you pay for (Hetzner, DigitalOcean, Linode, Vultr) | [setup-cloud.md](setup-cloud.md) |
+| Render free tier | [setup-free-cloud.md](setup-free-cloud.md#2-path-a-render-free) |
+| Oracle Always Free | [setup-free-cloud.md](setup-free-cloud.md#3-path-b-oracle-always-free) |
+| GCP Always Free (e2-micro) | [setup-free-cloud.md](setup-free-cloud.md#4-path-c-gcp-always-free-e2-micro) |
 
-1. Fork or push this repository to your own GitHub account.
-2. <https://dashboard.render.com> → **New +** → **Blueprint** → pick the repo.
-   Render reads `render.yaml`: Node 22, `npm ci`, `npm start`, health check
-   `/health`, plan `free`.
-3. Render asks for the `sync: false` variables. You can fill them now, or leave
-   every one blank and finish in the browser wizard — both are supported:
+Every path ends in the same place: the app is reachable at an `https://` URL and
+`PUBLIC_URL` is set to that exact origin. Come back to §6 when it is.
 
-   | Variable | Value |
-   | --- | --- |
-   | `DASHBOARD_KEY` | your login password, 12+ characters |
-   | `CLIENT_ID` | the Application ID from §4.2 |
-   | `CLIENT_SECRET` | the client secret from §4.3 |
-   | `DISCORD_TOKEN` | the bot token from §4.4 (optional) |
-   | `PUBLIC_URL` | leave blank for now — set it after the first deploy |
-   | `SETUP_TOKEN` | leave blank unless you want a fixed wizard token |
-
-4. **Apply** → wait for **Live** → copy the URL (`https://something.onrender.com`).
-5. **Environment** → set `PUBLIC_URL` to exactly that URL (no trailing slash) →
-   save; Render redeploys automatically.
-
-   > Setting `DASHBOARD_KEY` in the environment means the wizard is skipped and
-   > the site is configured as-is. Without it, the first visit lands on `/setup`.
-
-**Finish in the browser** — continue with §8 (wizard), §9 (card), §10 (profile).
-
-**Render free-tier truths**
-
-- 512 MB RAM, 0.1 CPU, 750 instance-hours per workspace per month. A 31-day month
-  is 744 hours, so one always-awake service fits — do not add a second.
-- **The disk is ephemeral.** Files are lost on restart, redeploy or spin-down.
-  Environment variables survive, and the keep-alive prevents *idle* spin-downs,
-  but a Render restart means re-entering the presence and re-uploading photos. If
-  that bothers you, take Path B.
-- Cold start after a real spin-down is about a minute, and the bot reconnects by
-  itself.
+> **The two values that matter most.** The wizard asks for an Application ID and
+> an OAuth2 client secret; that pair alone is enough to put photos, text and
+> buttons on your own profile through the in-Discord app. A bot token only adds
+> the text card that stays online while you are away.
 
 ---
 
-## 6. Step 3: Path B, Oracle Always Free
-
-New Oracle accounts get **2 OCPU / 12 GB RAM** of Ampere A1 (ARM) plus **200 GB**
-of block storage and 10 TB/month egress, free forever. A card is required for
-identity verification; Always Free resources are never charged.
-
-1. Sign up at <https://www.oracle.com/cloud/free/>. Pick a home region close to
-   you — it cannot be changed later.
-2. **Compute → Instances → Create instance**
-   - Image: **Ubuntu 24.04** (aarch64)
-   - Shape: **Ampere → VM.Standard.A1.Flex**, 2 OCPU / 12 GB (1/6 is plenty if
-     capacity is tight)
-   - Add your SSH public key, create the instance, note the **public IPv4**.
-3. **Networking → VCN → Security list** → add ingress rules for TCP **80** and
-   **443** from `0.0.0.0/0`. Leave 22 open for SSH.
-4. DNS: create a free subdomain at <https://www.duckdns.org> (for example
-   `statusc0rd-yourname.duckdns.org`) and point it at the public IP.
-5. SSH in and install Docker:
-
-   ```sh
-   sudo apt update && sudo apt install -y docker.io git
-   sudo usermod -aG docker "$USER" && newgrp docker
-   git clone https://github.com/YOUR-NAME/StatusC0rd.git && cd StatusC0rd
-   ```
-
-6. Build and run it with a persistent volume, bound to localhost only:
-
-   ```sh
-   docker build -t statusc0rd .
-   docker run -d --name statusc0rd --restart unless-stopped \
-     -p 127.0.0.1:3000:3000 \
-     -e PUBLIC_URL=https://statusc0rd-yourname.duckdns.org \
-     -v "$PWD/data:/app/data" \
-     statusc0rd
-   ```
-
-7. Put HTTPS in front, with automatic Let's Encrypt certificates:
-
-   ```sh
-   sudo apt install -y caddy
-   sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
-   statusc0rd-yourname.duckdns.org {
-     reverse_proxy 127.0.0.1:3000
-   }
-   EOF
-   sudo systemctl restart caddy
-   ```
-
-8. Open `https://statusc0rd-yourname.duckdns.org/setup` and finish the wizard. The
-   setup token is printed in `docker logs statusc0rd` and stored in
-   `data/setup-token.txt` — paste it when asked.
-9. **Bot & 24/7** → the public URL is already correct; the keep-alive can stay on
-   (harmless here, and it doubles as a liveness check).
-
-**Updates and backups**
-
-```sh
-cd StatusC0rd && git pull
-docker build -t statusc0rd . && docker restart statusc0rd
-tar -czf statusc0rd-backup-$(date +%F).tgz data/     # backup
-```
-
-`data/` survives every rebuild. Restore by unpacking it back into place before
-starting the container.
-
-Oracle occasionally reclaims Always Free instances that look completely idle. A
-running bot with a live gateway connection is enough activity in practice, and the
-keep-alive ping adds more.
-
----
-
-## 7. Step 4: Path C, your own PC or Pi
-
-For testing, or if you already leave a machine on:
-
-```sh
-git clone https://github.com/YOUR-NAME/StatusC0rd.git && cd StatusC0rd
-npm ci
-npm start          # http://localhost:3000
-```
-
-Optional but recommended on macOS/Linux, to keep it running after logout:
-
-```sh
-nohup npm start > statusc0rd.log 2>&1 &     # or a systemd unit / pm2
-```
-
-To expose it over HTTPS without touching your router:
-
-```sh
-cloudflared tunnel --url http://localhost:3000
-```
-
-It prints a `https://something.trycloudflare.com` URL. Put exactly that in
-**Bot & 24/7 → Public URL** and in the wizard — it is required for photo URLs and
-for keep-alive. Quick-tunnel URLs change on every restart, so update it when you
-restart. A named Cloudflare tunnel (needs a domain) or DuckDNS plus port
-forwarding gives a stable URL; both depend on your ISP not using CGNAT.
-
-The dashboard itself works at `http://localhost:3000` with no tunnel at all — only
-the *photos* need a public HTTPS URL, because Discord's image proxy has to fetch
-them from the internet.
-
----
-
-## 8. Step 5: first boot and the wizard
+## 6. Step 3: first boot and the wizard
 
 Open your URL. A fresh instance redirects everything to **`/setup`**, a three-step
 wizard. Nothing is written to disk until you press **Finish setup**, and nothing
 needs a restart afterwards.
 
-### 8.1 Unlocking setup (only when it is reachable from the internet)
+### 6.1 Unlocking setup (only when it is reachable from the internet)
 
 Loopback requests (`localhost`, `127.0.0.1`) may run the wizard directly. Anything
 else must present the one-time setup token:
@@ -427,9 +317,9 @@ wizard answers *"Setup is already complete"* from the dashboard. Set
 
 One exception, in your favour: if a completed instance ever loses its dashboard
 key (a hand-edited or half-restored `settings.json`), a fresh setup token is
-generated on the next boot — see §16.1.
+generated on the next boot — see §14.1.
 
-### 8.2 Step 1 — Account
+### 6.2 Step 1 — Account
 
 - **Dashboard key** — 12 characters minimum. This is the only password that
   protects the operator side. Use **Generate a strong key** (it produces a long
@@ -438,9 +328,9 @@ generated on the next boot — see §16.1.
 - **Repeat key** — must match.
 
 The key is stored as a scrypt hash with a random salt. If you lose it you cannot
-recover it; see §16.1.
+recover it; see §14.1.
 
-### 8.3 Step 2 — Discord app
+### 6.3 Step 2 — Discord app
 
 - **Application (client) ID** — from §4.2, digits only. Pasting spaces or the app
   *name* is the most common mistake; the field shows an inline hint if it looks
@@ -460,7 +350,7 @@ If a value is supplied by the environment (`CLIENT_ID`, `DISCORD_TOKEN`, …) th
 matching field is disabled and shows the managed value — the environment always
 wins.
 
-### 8.4 Step 3 — Presence
+### 6.4 Step 3 — Presence
 
 - **Activity name** (128 chars) — what Discord prints after "Playing".
 - **Type** — Playing, Listening, Watching, Competing. (Streaming needs a Twitch or
@@ -470,7 +360,7 @@ wins.
 - **Details (line 1)** and **State (line 2)** — 128 chars each.
 - **Large / small photo** — click the slot, pick a file, or drag one onto it.
   Photos are cropped to a square and downscaled in your browser before upload.
-- **Keep this server awake** — the 24/7 keep-alive (§11). Leave it ticked.
+- **Keep this server awake** — the 24/7 keep-alive (§9). Leave it ticked.
 - **Public URL of this dashboard** — pre-filled with the address you are using.
   It must be the public `https://` origin; it is the base for photo URLs and the
   keep-alive target.
@@ -485,18 +375,18 @@ presence and the keep-alive settings, signs you in, and drops you on
 
 ---
 
-## 9. Step 6: design and publish the card
+## 7. Step 4: design and publish the card
 
 Everything that reaches Discord is edited on one screen: the **Presence** tab.
 
-### 9.1 Start from a template (optional)
+### 7.1 Start from a template (optional)
 
 Ten starting points: **Focus mode, Listening, Building, Watching, Gaming,
 Studying, Reading, On a break, In the studio, Ranked**. Clicking one fills the
 form; the photo you already picked and your target choices survive. Nothing is
 published by clicking a template — you still press **Publish**.
 
-### 9.2 The fields, with their real limits
+### 7.2 The fields, with their real limits
 
 | Field | Limit / rule | Notes |
 | --- | --- | --- |
@@ -512,7 +402,7 @@ published by clicking a template — you still press **Publish**.
 | Buttons | at most **2**; label 32 chars; URL must be `https://` | Discord renders them under the card |
 | Timer | on/off plus "restart from now" | counts up from the moment you publish |
 
-### 9.3 Photos
+### 7.3 Photos
 
 - Use **drag and drop**, **paste** (`Ctrl`/`Cmd` + `V`), the file picker, or
   **Reuse** to pull one out of your library.
@@ -528,7 +418,7 @@ published by clicking a template — you still press **Publish**.
   Discord. If the photo shows as a letter or a silhouette, the public URL is the
   usual suspect.
 
-### 9.4 Draft, publish, discard
+### 7.4 Draft, publish, discard
 
 - Every edit is staged and autosaved as a **draft** — on any device — and nothing
   reaches Discord until you press **Publish**.
@@ -539,7 +429,7 @@ published by clicking a template — you still press **Publish**.
 - Closing the tab with a save in flight asks for confirmation; everything else is
   already saved.
 
-### 9.5 Where it shows
+### 7.5 Where it shows
 
 Two checkboxes under **Show this presence on**:
 
@@ -550,7 +440,7 @@ Pick one or both; at least one is required. Un-ticking *My own profile* is why a
 Activity can legitimately show "no presence" while the dashboard looks fine — the
 Activity names that reason explicitly.
 
-### 9.6 The Photos tab
+### 7.6 The Photos tab
 
 Uploads are not thrown away when you publish: every image you ever uploaded is
 in the library, and the **Photos** tab is where you manage it.
@@ -568,12 +458,12 @@ does not fill the disk. Uploads are capped at 2 MB and 4096×4096; the browser
 already shrinks ordinary phone photos well below that.
 
 If the tab shows a yellow **"This dashboard is not on HTTPS"** warning, Discord
-will refuse to load your images — fix `PUBLIC_URL` first (§17), then publish
+will refuse to load your images — fix `PUBLIC_URL` first (§15), then publish
 again.
 
 ---
 
-## 10. Step 7: on your own profile, no install
+## 8. Step 5: on your own profile, no install
 
 1. **My profile** tab → **Open in Discord**. That link is
    `https://discord.com/activities/<your-app-id>`; the same app is in Discord's
@@ -601,28 +491,26 @@ again.
 | Not on `ALLOWED_DISCORD_IDS` | `403 not_allowed`, message in the panel |
 | Discord rejects the payload | "Discord refused the activity" with Discord's reason |
 
-The bot card (§11) is the part that stays after you close the panel.
+The bot card (§9) is the part that stays after you close the panel.
 
 ---
 
-## 11. Step 8: the bot card, always online
+## 9. Step 6: the bot card, always online
 
 The bot runs on the server, so its card is online as long as the server is. Two
-things make that true on free hosts:
+things make that true:
 
 1. **A bot token** in the wizard or **Settings** (or `DISCORD_TOKEN`). Without
    one the dashboard still works — the **Bot & 24/7** tab just says *No bot*.
 2. **The keep-alive.** Free web services sleep after a period without inbound
-   traffic, which drops the gateway connection. StatusC0rd pings its own public
-   `/health` on a timer to generate that traffic.
+   traffic. StatusC0rd pings its own public URL on a timer so the host never sees
+   an idle service.
 
-Configure it under **Bot & 24/7**:
+**Turning it on** — **Bot & 24/7 → 24/7 online**:
 
-| Field | Meaning |
-| --- | --- |
-| Public URL of this dashboard | the `https://` origin; without it the keep-alive cannot run |
-| Keep the service awake | on/off |
-| Ping every (minutes) | 5–60, default 10 — must be shorter than the host's idle timeout (Render: 15 min) |
+- **Keep this server awake** (ticked by default).
+- **Interval** — 5 to 60 minutes, default 10. Keep it under the host's idle
+  timeout (Render: 15 minutes).
 
 The card shows **Active** with "Last ping … · N pings" once a ping succeeds. If it
 says **Waiting**, the URL is unreachable from the server. If it says **Paused**,
@@ -641,7 +529,7 @@ presence update and uptime. The expected states are *Bot online*, *Connecting…
 
 ---
 
-## 12. Step 9: the share card (optional)
+## 10. Step 7: the share card (optional)
 
 **My profile → Share card → Create share link** publishes a read-only page at
 `/c/<random-slug>` with the same card and real `Open Graph` / Twitter tags, so it
@@ -657,7 +545,7 @@ unfurls with its photo anywhere.
 
 ---
 
-## 13. Step 10: the optional companion
+## 11. Step 8: the optional companion
 
 Some people would rather not open a panel. The companion is a Node script that
 talks to the local Discord client over its socket and pushes the same card. It is
@@ -697,9 +585,10 @@ Notes that matter:
 
 ---
 
-## 14. Step 11: verify the whole install
+## 12. Step 9: verify the whole install
 
-Run through this once. It catches every typical mistake.
+Run through this once, on whatever host you chose. It catches every typical
+mistake.
 
 | # | Check | Expected |
 | --- | --- | --- |
@@ -714,23 +603,23 @@ Run through this once. It catches every typical mistake.
 | 9 | Change the state text in the dashboard | panel and profile update within ~5 s |
 | 10 | Close the panel | the card disappears; the bot card is still there |
 | 11 | **Share card → Create**, open `/c/<slug>` in a private window | the card renders; no dashboard |
-| 12 | Restart the host (Path A: redeploy) | with env values set, the dashboard comes back without the wizard; with an ephemeral disk, photos are gone — that is Render, not a bug |
+| 12 | Restart the host | with env values set, the dashboard comes back without the wizard; on an ephemeral disk, photos are gone — that is the host, not a bug |
 
-If a check fails, §20 has the symptom-to-cause table.
+If a check fails, §18 has the symptom-to-cause table.
 
 ---
 
-## 15. Step 12: updates and backups
+## 13. Step 10: updates and backups
 
 **Update** (any git-based host):
 
 ```sh
 git pull
 npm ci            # only when package-lock.json changed
-# restart the process (Render does it for you; Docker: rebuild + restart)
+# restart the process (Render/your host does it; Docker: rebuild and restart)
 ```
 
-Check the new version at `/api/health` (`version`) or in the welcome page footer.
+Check the new version at `/api/health` (`version`) or in the page footer.
 
 **Back up** — `data/` is the whole state:
 
@@ -746,16 +635,17 @@ Nothing else in the deployment is stateful.
 before the first boot, set the same `PUBLIC_URL`, start it. The dashboard key,
 presence, photos, share slug and paired devices all come back.
 
-**If the disk is ephemeral** (Render free): either move to Path B, or keep
-`DASHBOARD_KEY`, `CLIENT_ID`, `CLIENT_SECRET`, `DISCORD_TOKEN` and `PUBLIC_URL` in
-the environment so a wiped instance boots straight into a working dashboard (the
-wizard is skipped) and only the photos and the presence text need re-entering.
+**If the disk is ephemeral** (Render free): either use a host with a real disk,
+or keep `DASHBOARD_KEY`, `CLIENT_ID`, `CLIENT_SECRET`, `DISCORD_TOKEN` and
+`PUBLIC_URL` in the environment so a wiped instance boots straight into a working
+dashboard (the wizard is skipped) and only the photos and the presence text need
+re-entering.
 
 ---
 
-## 16. Step 13: security and rotation
+## 14. Step 11: security and rotation
 
-### 16.1 The dashboard key
+### 14.1 The dashboard key
 
 - Change it in **Settings → Dashboard key** — it requires the current key and a
   new one of 12+ characters.
@@ -775,19 +665,19 @@ wizard is skipped) and only the photos and the presence text need re-entering.
   If you cannot reach the log or the filesystem, set `SETUP_TOKEN` in the
   environment before restarting and use your own value in step 4.
 
-### 16.2 The bot token
+### 14.2 The bot token
 
 Reset it in the portal (**Bot → Reset Token**), then paste the new value in
 **Settings → Application & bot → Bot token**. The bot reconnects immediately; no
 restart. A wrong token is visible as *Bot offline* with the reason in the log.
 
-### 16.3 The client secret
+### 14.3 The client secret
 
 Reset it in the portal (**OAuth2 → General**), paste the new one in **Settings**.
 Until you do, the in-Discord app answers `not_configured` and Discord sign-in
 stops working.
 
-### 16.4 Who can use the instance
+### 14.4 Who can use the instance
 
 - **Dashboard sign-in** — the key, plus (optionally) allowlisted Discord accounts.
 - **The in-Discord app** — anyone who can launch the app *and* is on
@@ -799,7 +689,7 @@ stops working.
 - **`/health`** — public and minimal; version, storage, bot and Activity state are
   behind the session at `/api/health`.
 
-### 16.5 Deployment hygiene
+### 14.5 Deployment hygiene
 
 - Serve over HTTPS. Photos need it anyway, and the session cookie is marked
   `Secure` when the request arrives over TLS.
@@ -810,10 +700,12 @@ stops working.
   (`loopback, linklocal, uniquelocal`) is correct.
 - Delete `data/users.json` if you ever see a warning about it at boot: it is the
   old v1 token store and is no longer used.
+- Back up `data/` before you upgrade (§13). It is the only thing that cannot be
+  rebuilt from the repository.
 
 ---
 
-## 17. Environment variables
+## 15. Environment variables
 
 Environment variables are **optional**: the wizard writes the same values into
 `data/settings.json`, and the environment wins when both exist. A completely
@@ -842,9 +734,13 @@ unconfigured instance still boots and serves `/setup`.
 A copy-paste template lives in `.env.example`. Invalid values do not stop the
 server: it prints `[config] …` warnings at boot and carries on.
 
+You can also drop a `.env` file next to `index.js` — it is read at boot, which is
+handy on a VPS or a home machine. Managed hosts (Render, Railway) give you a
+variables panel instead; use that so the values survive a redeploy.
+
 ---
 
-## 18. Where every secret lives
+## 16. Where every secret lives
 
 | Thing | Where | Survives a restart? |
 | --- | --- | --- |
@@ -864,7 +760,7 @@ being silently deleted.
 
 ---
 
-## 19. Limits worth knowing
+## 17. Limits worth knowing
 
 - **Photos and buttons cannot go on a bot card.** Discord's bot presence accepts
   only name/type/state. They belong to *your* profile, which the in-Discord app
@@ -885,11 +781,11 @@ being silently deleted.
 
 ---
 
-## 20. Troubleshooting
+## 18. Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `/setup` reappears after a restart | ephemeral disk (Render) and no `DASHBOARD_KEY` in the environment | set `DASHBOARD_KEY` (+ the other values) in the host's env, or move to Path B |
+| `/setup` reappears after a restart | ephemeral disk (Render free) and no `DASHBOARD_KEY` in the environment | put the values in the host's environment, or move to a host with a real disk |
 | Photos show as a letter or silhouette | `PUBLIC_URL` is wrong, not `https://`, or the host is asleep so Discord cannot fetch `/assets/…` | set the real public URL in **Bot & 24/7**, re-publish, open the photo URL to confirm |
 | *Profile live* never turns green | the Activity is not open, or the companion is not running | open the in-Discord app (or start the launcher) and keep it open |
 | The profile card vanishes after a while | the Activity panel was closed — Discord only shows it while the app is open | reopen the app; the bot card stays 24/7 |
@@ -901,7 +797,7 @@ being silently deleted.
 | Activity link opens a blank page | URL mapping missing or wrong | **Activities → URL Mappings**: prefix `/` → `https://YOUR-HOST/activity/` |
 | The app is not in Discord's launcher | the app was installed without the commands scope | re-run the invite with the `bot applications.commands` scopes (§4.6) |
 | Buttons do not appear | the client rejects button fields, or the card has none | the pill says **no buttons**; update the Discord client |
-| "That dashboard key is not correct" | typo, or the key was rotated | try again; if truly lost see §16.1 |
+| "That dashboard key is not correct" | typo, or the key was rotated | try again; if truly lost see §14.1 |
 | "Too many failed attempts" | five wrong keys from one IP | wait 15 minutes |
 | Wizard asks for a setup token | you opened it from a non-local address | copy it from the log or `data/setup-token.txt`, or set `SETUP_TOKEN` |
 | "Setup is locked" | the token expired (30-minute grant) or was rotated | re-enter the current token |
@@ -913,9 +809,12 @@ being silently deleted.
 | Companion says "no longer paired" | the device was removed in the dashboard | pair again |
 | `[config] …` warnings at boot | a malformed environment variable | fix the value; the server keeps running |
 
+Host-specific problems — tunnels, sleeping laptops, firewall ports, Docker,
+systemd — are in the troubleshooting section of the path file you used.
+
 ---
 
-## 21. All-in-one checklist
+## 19. All-in-one checklist
 
 **One-time, operator**
 
@@ -923,12 +822,13 @@ being silently deleted.
 2. Bot token copied, *Public Bot* off, privileged intents all off (§4.4).
 3. **Activities → Enable Activities**; URL mapping `/` → `https://YOUR-HOST/activity/` (§4.5).
 4. App installed with `bot applications.commands` (§4.6).
-5. Host deployed — Render (§5), Oracle (§6) or your own box (§7) — with HTTPS.
+5. Host deployed — [local](setup-local.md), [cloud](setup-cloud.md) or
+   [free cloud](setup-free-cloud.md) — with HTTPS.
 6. `PUBLIC_URL` set to the real public origin.
 7. `/setup` finished, or `DASHBOARD_KEY` + `CLIENT_ID` + `CLIENT_SECRET` +
-   `DISCORD_TOKEN` + `PUBLIC_URL` in the environment (§8).
-8. Keep-alive on, interval under the host's idle timeout (§11).
-9. §14 verification table green.
+   `DISCORD_TOKEN` + `PUBLIC_URL` in the environment (§6).
+8. Keep-alive on, interval under the host's idle timeout (§9).
+9. §12 verification table green.
 
 **Per user**
 
@@ -938,4 +838,5 @@ being silently deleted.
 4. **Open in Discord** and leave the panel open while you want the card.
 5. Optional: create the share link.
 
-Total cost: **$0**. Total downloads: **none**.
+Total cost: **$0** on the free paths. Total downloads for the person using the
+card: **none**.

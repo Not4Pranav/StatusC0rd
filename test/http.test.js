@@ -625,12 +625,51 @@ test("the setup guide is readable without signing in", async (t) => {
   const html = await res.text();
   // Rendered from docs/setup.md, so a heading from that file must be here.
   assert.match(html, /<h1 id="[^"]*"/);
-  assert.match(html, /Path A/);
+  assert.match(html, /Pick where it runs/);
   assert.match(html, /href="#1-what-the-user-gets"/);
   assert.match(html, /<div class="md-table">/);
+  // Links between the Markdown files are rewritten to /guide routes.
+  assert.ok(!/href="[^"]*\.md[^"]*"/.test(html), "no raw .md links survive");
+  assert.match(html, /href="\/guide\/local"/);
   // No template tokens may survive the render.
   assert.ok(!html.includes("{{{"));
   assert.ok(!html.includes("{{"));
+});
+
+test("every host path is a page of its own", async (t) => {
+  const ctx = await startApp({ completeSetup: false });
+  t.after(() => ctx.close());
+
+  const hub = await (await ctx.request("/guide")).text();
+  assert.match(hub, /class="guide-tab is-active" href="\/guide"/);
+  for (const slug of ["local", "cloud", "free-cloud"]) {
+    assert.match(hub, new RegExp(`href="/guide/${slug}"`), slug);
+  }
+
+  const pages = [
+    ["local", /cloudflared/, "docs/setup-local.md"],
+    ["cloud", /Caddy/, "docs/setup-cloud.md"],
+    ["free-cloud", /onrender\.com/, "docs/setup-free-cloud.md"]
+  ];
+  for (const [slug, needle, file] of pages) {
+    const res = await ctx.request(`/guide/${slug}`);
+    assert.equal(res.status, 200, slug);
+    const html = await res.text();
+    assert.match(html, needle, slug);
+    assert.match(html, new RegExp(`class="guide-tab is-active" href="/guide/${slug}"`), slug);
+    assert.ok(html.includes(file), `${slug} names its source file`);
+    assert.ok(!html.includes("{{"), `${slug} has no template tokens`);
+    assert.ok(!/href="[^"]*\.md[^"]*"/.test(html), `${slug} has no raw .md links`);
+  }
+});
+
+test("an unknown guide route is a 404, not a crash", async (t) => {
+  const ctx = await startApp({ completeSetup: false });
+  t.after(() => ctx.close());
+
+  const res = await ctx.request("/guide/nope");
+  assert.equal(res.status, 404);
+  assert.match(await res.text(), /No such guide/);
 });
 
 test("the guide survives an unreadable docs folder", async (t) => {
@@ -673,5 +712,5 @@ test("the login page links to the free guide", async (t) => {
   t.after(() => ctx.close());
 
   const html = await (await ctx.request("/login")).text();
-  assert.match(html, /href="\/guide">Free setup guide</);
+  assert.match(html, /href="\/guide">Setup guide</);
 });
