@@ -85,6 +85,13 @@ Oracle Always Free and GCP's e2-micro also work, and both give you a real disk.
 [SETUP.md § 3 and Part 2](SETUP.md#3-what-is-free-and-what-is-not) has the
 step-by-step for each, the free-tier catches, and the HTTPS setup.
 
+**The bot can live elsewhere.** A free web host sleeps, and a sleeping process has
+no Discord connection — so the 24/7 card dies with it. Run the same repo a second
+time on any small always-on box with `BOT_WORKER=1`, `BOT_URL` and a shared
+`BOT_WORKER_TOKEN`, and it holds only the gateway: it reads the card from the
+website every ten seconds and reports back, so the dashboard still shows the
+truth. Details in [SETUP.md 6.5](SETUP.md#65-hosting-the-bot-on-a-different-machine).
+
 ---
 
 ## Environment
@@ -106,10 +113,13 @@ and the environment wins when both exist.
 | `KEEP_ALIVE` | `true` | keep this host awake (`PUBLIC_URL` required) |
 | `KEEP_ALIVE_INTERVAL_MINUTES` | `10` | ping interval, 5–60 |
 | `BOT_ENABLED` | on with a token | `false` runs without a gateway |
+| `BOT_WORKER` | unset | `1` = this process is the Discord-only worker |
+| `BOT_URL` | unset | the website a worker reads its card from |
+| `BOT_WORKER_TOKEN` | unset | shared secret for `/api/bot/*`; enables split hosting |
 | `LOG_REQUESTS` | on | one line per page/API request; `0` silences it |
 
-The complete table — including `SETUP_TOKEN`, `SETUP_REQUIRE_TOKEN`,
-`REDIRECT_URI` and `TRUST_PROXY` — is [Part 12 of SETUP.md](SETUP.md#part-12-every-setting-and-environment-variable).
+The complete table — including `BOT_POLL_SECONDS`, `SETUP_TOKEN`,
+`SETUP_REQUIRE_TOKEN`, `REDIRECT_URI` and `TRUST_PROXY` — is [Part 12 of SETUP.md](SETUP.md#part-12-every-setting-and-environment-variable).
 
 ---
 
@@ -124,6 +134,8 @@ The complete table — including `SETUP_TOKEN`, `SETUP_REQUIRE_TOKEN`,
 | `GET` | `/activity/` | the in-Discord app (photos + buttons) |
 | `GET` | `/c/:handle` | a member's public card page — private until published |
 | `POST` | `/api/card` | handle and publish switch for that page |
+| `GET` | `/api/bot/card` | the owner's card for a separately hosted bot (token-gated) |
+| `POST` | `/api/bot/status` | the worker's connection report |
 | `GET` | `/assets/:hash.:ext` | uploaded photos, cached for a year |
 | `GET` | `/health` | `{"status":"ok"}` and nothing else |
 | `POST` | `/api/presence`, `/api/presence/publish`, `/api/presence/draft`, `/api/presence/clear` | the card |
@@ -145,7 +157,8 @@ npm test           # node:test, no network, no Discord credentials
 ```
 
 Covers the rules that break silently: card validation, the one-card-per-account
-store, upload sniffing and limits, key hashing, rate limiters and the keep-alive.
+store, upload sniffing and limits, key hashing, rate limiters, the keep-alive,
+public card handles, and the bot worker's polling, backing off and reporting.
 `SETUP.md` Part 10 has the pre-deploy checklist.
 
 ---
@@ -184,6 +197,7 @@ app.js              routes and middleware
 src/presence.js     the card model, validation, Discord payloads
 src/settings.js     accounts, per-user cards, photos, the store
 src/bot.js          the 24/7 gateway presence
+src/worker.js       split hosting: the bot alone, reading its card over HTTP
 src/activity.js     the in-Discord app's auth and config
 src/assets.js       uploads
 views/              server-rendered pages

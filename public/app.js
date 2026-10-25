@@ -446,6 +446,39 @@
   // ------------------------------------------------------------- state sync
 
   function renderBot(bot) {
+    // Split hosting: the gateway lives in another process, so the local state is
+    // "disabled" even when the bot is online. The worker's own report is the
+    // truth in that case, and a stale report means "not connected".
+    const worker = state?.botWorker;
+    if (worker?.lastSeenAt) {
+      const fresh = Date.now() - new Date(worker.lastSeenAt).getTime() < 90_000;
+      if (fresh && worker.connected) {
+        const pill = $("#bot-pill");
+        const where = "Bot online (hosted separately)";
+        pill.className = "pill is-online";
+        $("#bot-pill-text").textContent = "Bot online";
+        pill.title = `${where}${worker.tag ? ` · ${worker.tag}` : ""}`;
+        $("#bot-status").textContent = where;
+        $("#bot-tag").textContent = worker.tag || "—";
+        $("#bot-last").textContent = worker.lastActivity || "—";
+        $("#bot-uptime").textContent = formatUptime(bot?.uptimeSeconds);
+        const errorBox = $("#bot-error");
+        if (worker.error) {
+          errorBox.className = "alert";
+          errorBox.textContent = worker.error;
+          errorBox.hidden = false;
+        } else {
+          errorBox.hidden = true;
+        }
+        return;
+      }
+      if (fresh && !worker.connected) {
+        $("#bot-pill").className = "pill is-error";
+        $("#bot-pill-text").textContent = "Bot offline";
+        $("#bot-pill").title = worker.error || "The bot worker is running but is not connected to Discord.";
+      }
+    }
+
     const info = BOT_STATES[bot?.status] || BOT_STATES.idle;
     const pill = $("#bot-pill");
     pill.className = `pill ${info.className}`;
