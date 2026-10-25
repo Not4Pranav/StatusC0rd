@@ -315,6 +315,12 @@ URL, so this is for building cards, not for going live. When you want it live,
 put a tunnel in front (Cloudflare Tunnel or `ssh -R`) and set `PUBLIC_URL` to the
 public address.
 
+Photos still work here: you can upload, and they preview exactly as they will
+look. What the server will not do is hand Discord a `http://` address it cannot
+fetch, so the image is left out of what it sends while the rest of the card goes
+through. The editor says so under the preview. The moment `PUBLIC_URL` is an
+`https://` address, the same card carries the photo.
+
 ### Whatever path you picked
 
 Write down your public URL. It looks like `https://something.onrender.com` or
@@ -446,6 +452,10 @@ in a complete, valid card in one click. They never overwrite your images or your
 - Accepted: **PNG, JPEG, WebP, GIF**, 16×16 to 4096×4096, **2 MB** max after
   decoding.
 - Uploads are content-hashed, so the same image uploaded twice is stored once.
+- Discord only fetches images over public **HTTPS**. On an `http://` install
+  (localhost, a LAN address) the upload and the preview work, but the server
+  drops the image from what it sends, and the editor says why. Publish from an
+  `https://` address and it appears.
 - Discord caches artwork for a few minutes; a brand-new image can take a moment
   to appear, and occasionally a client restart.
 
