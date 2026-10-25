@@ -897,8 +897,12 @@ function createApp({
         ALLOW_SIGNUP_CHECKED: settings.allowSignup ? "checked" : "",
         // No application id means no invite link: a `client_id=` with an empty
         // value is a dead page on discord.com, worse than no button at all.
+        // `applications.commands` is what puts the app in Discord's App Launcher;
+        // without it the Activity can never be opened, so photos and buttons
+        // would have no way to reach a profile. `bot` is optional but harmless.
         INVITE_URL: effective.clientId
-          ? `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(effective.clientId)}&scope=bot&permissions=0`
+          ? `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(effective.clientId)}` +
+            `&scope=${encodeURIComponent("bot applications.commands")}&permissions=0`
           : ""
       })
     );

@@ -1286,6 +1286,18 @@ body.setup {
   color: var(--muted);
   font-size: 0.76rem;
   text-align: center;
+  line-height: 1.7;
+}
+
+.setup-foot a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.setup-foot a:hover,
+.setup-foot a:focus-visible {
+  border-bottom-color: currentColor;
 }
 
 details.advanced {
