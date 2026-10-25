@@ -197,6 +197,11 @@ body.auth {
   background: var(--border);
 }
 
+.setup-next {
+  text-align: left;
+  margin-top: 10px;
+}
+
 /* The owner's door, folded away: members should never have to wonder which
    password the top form wants. */
 .auth-owner {

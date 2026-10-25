@@ -441,3 +441,4 @@ route and status code is in its
 - [ ] Card published; **Open in Discord** shows **On your profile** (§8)
 - [ ] Nightly backup cron job installed and one archive exists (§10)
 - [ ] Uptime monitor pointed at `/health` (§9)
+- [ ] Member accounts decided — sign-ups open or closed — and each member told to press **Connect Discord** ([accounts](setup.md#7-7-accounts-you-and-the-people-you-invite))

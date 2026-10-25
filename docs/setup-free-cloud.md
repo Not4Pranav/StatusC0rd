@@ -354,3 +354,9 @@ route and status code is in its
 - [ ] HTTPS via Caddy, `/health` returns `200`
 - [ ] Keep-alive **off** (egress), wizard finished, URL mapping set
 - [ ] Billing report checked after a week
+
+**Every free host**
+
+- [ ] Env vars set so a wiped disk re-boots into a working dashboard (`DASHBOARD_KEY`, `CLIENT_ID`, `CLIENT_SECRET`, `PUBLIC_URL`, and `DISCORD_TOKEN` if you run the bot)
+- [ ] Member accounts decided — sign-ups open or closed — and each member told to press **Connect Discord** ([accounts](setup.md#7-7-accounts-you-and-the-people-you-invite))
+- [ ] You accept that photos do not survive a restart here, and you have kept the original files

@@ -405,8 +405,11 @@ stored when you press **Continue** and **Finish setup**.
   keep-alive target.
 
 Press **Finish setup**. StatusC0rd saves the admin key, the Discord values, the
-presence and the keep-alive settings, signs you in, and drops you on
-**My profile** with the **Open in Discord** button in front of you.
+presence and the keep-alive settings, signs you in **as the instance owner**, and
+drops you on **My profile** with the **Open in Discord** button in front of you.
+
+From here the instance is yours to share: anyone else signs up at `/register` and
+gets their own card, while the tabs that configure the instance stay yours (§7.7).
 
 > **The first presence targets itself.** *My own profile* is always on; *The bot*
 > is ticked only if you gave a bot token, so a token-less setup never leaves a

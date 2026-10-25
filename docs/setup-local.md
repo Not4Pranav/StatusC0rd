@@ -382,3 +382,4 @@ status code you hit is explained in its
 - [ ] Process survives logout and reboot (§7)
 - [ ] Sleep disabled, or the machine is a Pi (§7.4)
 - [ ] Backup taken at least once (§8)
+- [ ] Member accounts decided — sign-ups open or closed — and each member told to press **Connect Discord** ([accounts](setup.md#7-7-accounts-you-and-the-people-you-invite))
