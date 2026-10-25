@@ -139,9 +139,12 @@ sudo usermod -aG docker "$USER" && newgrp docker
 git clone https://github.com/YOUR-NAME/StatusC0rd.git && cd StatusC0rd
 ```
 
-Build and run it with a persistent volume, bound to localhost only:
+Build and run it with a persistent volume, bound to localhost only. The image
+runs as the unprivileged `node` user (uid 1000), so the mounted folder has to
+belong to it — otherwise the first save fails with `EACCES`:
 
 ```sh
+mkdir -p data && sudo chown -R 1000:1000 data
 docker build -t statusc0rd .
 docker run -d --name statusc0rd --restart unless-stopped \
   -p 127.0.0.1:3000:3000 \
@@ -226,6 +229,7 @@ node -v        # v20+ required; use https://github.com/nodesource/distributions 
 
 sudo git clone https://github.com/YOUR-NAME/StatusC0rd.git /opt/statusc0rd
 cd /opt/statusc0rd && sudo npm ci --omit=dev
+sudo chown -R statusc0rd:statusc0rd /opt/statusc0rd
 ```
 
 Run it as a service exactly as in

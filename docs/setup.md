@@ -118,7 +118,7 @@ Browser ──HTTPS──▶ your host (this repo, Node 20+)
   the same bytes.
 - `data/` holds `settings.json` (mode `0600`), `assets/` and `setup-token.txt`.
   `DATA_DIR` moves it. **That directory is the deployment's state.**
-- `npm test` = 135 tests, including `test/companion-e2e.test.js`, which drives a
+- `npm test` = 138 tests, including `test/companion-e2e.test.js`, which drives a
   real dashboard (upload → pair) and runs the real companion against a fake
   Discord socket, asserting the exact `SET_ACTIVITY` frame.
 - `npm run check` = syntax check across every source file.

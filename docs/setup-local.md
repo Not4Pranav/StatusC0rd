@@ -115,8 +115,9 @@ Three options, best first.
 ```sh
 # macOS
 brew install cloudflared
-# Debian / Ubuntu / Pi
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb -o cloudflared.deb
+# Debian / Ubuntu / Pi - pick the arch your machine is: amd64 for a PC,
+# arm64 for a 64-bit Pi. `uname -m` tells you.
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
 sudo dpkg -i cloudflared.deb
 # Windows
 winget install --id Cloudflare.cloudflared
@@ -246,6 +247,7 @@ administrator.
 ```sh
 sudo useradd -r -m -d /opt/statusc0rd statusc0rd
 sudo git clone https://github.com/Not4Pranav/StatusC0rd.git /opt/statusc0rd
+sudo chown -R statusc0rd:statusc0rd /opt/statusc0rd
 sudo -u statusc0rd npm --prefix /opt/statusc0rd ci
 
 sudo tee /etc/statusc0rd.env >/dev/null <<'EOF'
