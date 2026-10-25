@@ -150,7 +150,7 @@
                 <div class="upload-slot" id="slot-large" data-size="large" role="button" tabindex="0" aria-label="Upload large image">
                   <img alt="" hidden />
                   <span>Drop, paste or choose</span>
-                  <input type="file" accept="image/*" hidden />
+                  <input type="file" accept="image/*" aria-label="Upload the large image" hidden />
                 </div>
                 <div class="slot-links">
                   <button class="btn ghost small" type="button" data-clear-image="large">Remove</button>
@@ -162,7 +162,7 @@
                 <div class="upload-slot" id="slot-small" data-size="small" role="button" tabindex="0" aria-label="Upload small image">
                   <img alt="" hidden />
                   <span>Drop, paste or choose</span>
-                  <input type="file" accept="image/*" hidden />
+                  <input type="file" accept="image/*" aria-label="Upload the small image" hidden />
                 </div>
                 <div class="slot-links">
                   <button class="btn ghost small" type="button" data-clear-image="small">Remove</button>
@@ -307,7 +307,15 @@
             </ol>
 
             <div class="actions">
-              <a class="btn primary" id="activity-link" href="#" target="_blank" rel="noreferrer noopener">
+              <a
+                class="btn primary"
+                id="activity-link"
+                href="https://discord.com/activities"
+                target="_blank"
+                rel="noreferrer noopener"
+                aria-disabled="true"
+                hidden
+              >
                 Open in Discord
               </a>
               <button class="btn ghost" type="button" id="copy-activity">Copy link</button>

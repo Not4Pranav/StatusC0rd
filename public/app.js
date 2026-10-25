@@ -498,6 +498,7 @@
     if (appId) {
       link.href = `https://discord.com/activities/${encodeURIComponent(appId)}`;
       link.removeAttribute("aria-disabled");
+      link.hidden = false;
       link.classList.remove("is-disabled");
     } else {
       link.href = "#";

@@ -31,7 +31,7 @@ async function request(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
       ...options,
       signal: AbortSignal.timeout(timeoutMs),
       headers: {
-        "User-Agent": "StatusC0rd (dashboard, v2)",
+        "User-Agent": `StatusC0rd/${require("../package.json").version} (dashboard)`,
         ...options.headers
       }
     });

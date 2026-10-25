@@ -95,7 +95,7 @@ class DiscordBot extends EventEmitter {
     this.note = this.enabled
       ? null
       : token
-        ? "Bot disabled with BOT_ENABLED=false - the dashboard still works."
+        ? "Bot disabled (BOT_ENABLED) - the dashboard still works."
         : "No DISCORD_TOKEN configured - running in dashboard-only mode.";
 
     this.state = {
@@ -286,7 +286,7 @@ class DiscordBot extends EventEmitter {
     this.note = nextEnabled
       ? null
       : nextToken
-        ? "Bot disabled with BOT_ENABLED=false - the dashboard still works."
+        ? "Bot disabled (BOT_ENABLED) - the dashboard still works."
         : "No bot token configured - the dashboard works, but the bot is offline.";
 
     this._setState({

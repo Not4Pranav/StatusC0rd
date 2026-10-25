@@ -303,3 +303,15 @@ code {
     height: 74px;
   }
 }
+
+/* Shown until the Activity's own script boots: a browser tab that never gets a
+   handshake then explains itself instead of sitting on "Connecting…". */
+.boot-hint {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, #2b2f3a);
+  border-radius: 10px;
+  color: var(--muted, #9aa3b2);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}

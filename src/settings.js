@@ -62,6 +62,8 @@ const SCRYPT_KEYLEN = 32;
 
 /** Member passwords are the second way in (the dashboard key is the first). */
 const MIN_PASSWORD = 10;
+/** The dashboard key floor, enforced by the wizard, the settings page and here. */
+const MIN_KEY_LENGTH = 12;
 const MAX_USERS = 500;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 
@@ -80,6 +82,23 @@ function verifyKey(key, { keyHash, keySalt }) {
   const expected = Buffer.from(keyHash, "hex");
   const actual = crypto.scryptSync(String(key), keySalt, SCRYPT_KEYLEN);
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+/** Interpret the usual truthy/falsy spellings people put in a .env file. */
+function parseFlag(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const text = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on", "y"].includes(text)) return true;
+  if (["0", "false", "no", "off", "n"].includes(text)) return false;
+  return fallback;
+}
+
+/** The keep-alive interval is documented as 5-60 minutes; enforce it. */
+function clampKeepAliveInterval(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes <= 0) return 10;
+  return Math.max(5, Math.min(60, Math.round(minutes)));
 }
 
 function isPlainObject(value) {
@@ -183,6 +202,8 @@ class SettingsStore {
     this.env = options.env ?? {};
     this.now = options.now ?? Date.now;
     this.setupToken = "";
+    /** True when the file was missing or unreadable: the asset list may be lost. */
+    this.recovered = false;
     this.data = this._load();
     if (!this.data.createdAt) {
       this.data.createdAt = new Date(this.now()).toISOString();
@@ -195,6 +216,7 @@ class SettingsStore {
   // ------------------------------------------------------------------ files
 
   _load() {
+    if (!fs.existsSync(this.file)) this.recovered = true;
     try {
       const raw = fs.readFileSync(this.file, "utf8");
       try {
@@ -204,6 +226,9 @@ class SettingsStore {
       }
       return migrate(JSON.parse(raw));
     } catch (error) {
+      // Whatever was in there is gone: never let a later prune() read this as
+      // "the owner has no photos" and delete the files.
+      this.recovered = true;
       if (error.code !== "ENOENT") {
         const backup = `${this.file}.corrupt-${Date.now()}`;
         try {
@@ -317,8 +342,8 @@ class SettingsStore {
   }
 
   setAdminKey(key) {
-    if (!key || String(key).length < 8) {
-      throw new Error("The dashboard key must be at least 8 characters long.");
+    if (!key || String(key).length < MIN_KEY_LENGTH) {
+      throw new Error(`The dashboard key must be at least ${MIN_KEY_LENGTH} characters long.`);
     }
     this.update({
       admin: {
@@ -425,7 +450,7 @@ class SettingsStore {
    * Create a member account. Throws with a human message on bad input, so both
    * the admin panel and the sign-up form can show it verbatim.
    */
-  createUser({ email, name, password, role = "member", discordId = null }) {
+  createUser({ email, name, password, discordId = null }) {
     const normalized = normalizeEmail(email);
     if (!normalized) throw new Error("That email address does not look right.");
     if (this.findUserByEmail(normalized)) throw new Error("An account with that email already exists.");
@@ -443,7 +468,9 @@ class SettingsStore {
       name:
         String(name ?? "").trim().slice(0, 60) ||
         normalized.split("@")[0].replace(/[._-]+/g, " ").slice(0, 60),
-      role: role === "admin" ? "admin" : "member",
+      // One owner: the dashboard key. Accounts are always members, even if a
+      // caller asks for another role - the admin panel has a single door.
+      role: "member",
       passHash: keyHash,
       passSalt: keySalt,
       createdAt: stamp,
@@ -503,7 +530,11 @@ class SettingsStore {
       if (clash && clash.id !== id) throw new Error("An account with that email already exists.");
       next.email = email;
     }
-    if (patch.role !== undefined) next.role = patch.role === "admin" ? "admin" : "member";
+    // `role` is deliberately not settable here: promoting a member would open
+    // the admin panel without the dashboard key. See createUser().
+    if (patch.role !== undefined && patch.role !== "member") {
+      throw new Error("Accounts are members; the admin panel opens with the dashboard key.");
+    }
     if (patch.disabled !== undefined) next.disabled = Boolean(patch.disabled);
     next.updatedAt = new Date(this.now()).toISOString();
     this.data.users = this.data.users.map((user) => (user.id === id ? next : user));
@@ -622,8 +653,7 @@ class SettingsStore {
     const clientId = String(env.CLIENT_ID || discord.clientId || "").trim();
     const botToken = String(env.DISCORD_TOKEN || discord.botToken || "").trim();
     const publicUrl = String(env.PUBLIC_URL || stored.publicUrl || "").replace(/\/+$/, "");
-    const keepAliveEnabled =
-      env.KEEP_ALIVE === undefined ? Boolean(stored.keepAlive.enabled) : ["1", "true", "yes", "on"].includes(String(env.KEEP_ALIVE).toLowerCase());
+    const keepAliveEnabled = parseFlag(env.KEEP_ALIVE, Boolean(stored.keepAlive.enabled));
 
     return {
       clientId,
@@ -634,11 +664,12 @@ class SettingsStore {
         : discord.allowedIds,
       redirectUri: String(env.REDIRECT_URI || discord.redirectUri || "").trim(),
       publicUrl,
-      botEnabled: env.BOT_ENABLED === undefined ? Boolean(botToken) : String(env.BOT_ENABLED) !== "false",
+      botEnabled: parseFlag(env.BOT_ENABLED, Boolean(botToken)),
       keepAlive: {
         enabled: keepAliveEnabled && Boolean(publicUrl),
-        intervalMinutes:
-          Number(env.KEEP_ALIVE_INTERVAL_MINUTES) || Number(stored.keepAlive.intervalMinutes) || 10
+        intervalMinutes: clampKeepAliveInterval(
+          Number(env.KEEP_ALIVE_INTERVAL_MINUTES) || Number(stored.keepAlive.intervalMinutes)
+        )
       },
       hasBotToken: Boolean(botToken),
       hasClientSecret: Boolean(env.CLIENT_SECRET || discord.clientSecret),
@@ -697,4 +728,13 @@ class SettingsStore {
   }
 }
 
-module.exports = { SettingsStore, ADMIN_USER_ID, MIN_PASSWORD, normalizeEmail };
+module.exports = {
+  SettingsStore,
+  ADMIN_USER_ID,
+  MIN_PASSWORD,
+  MIN_KEY_LENGTH,
+  MAX_USERS,
+  normalizeEmail,
+  parseFlag,
+  clampKeepAliveInterval
+};

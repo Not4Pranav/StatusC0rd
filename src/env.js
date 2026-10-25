@@ -70,6 +70,29 @@ function normalizeEnv(env = process.env) {
     problems.push("DASHBOARD_KEY is shorter than 12 characters.");
   }
 
+  // Flags and numbers are easy to mistype, and a silently ignored value is the
+  // hardest kind of misconfiguration to notice later.
+  const flagVars = ["KEEP_ALIVE", "BOT_ENABLED"];
+  for (const name of flagVars) {
+    const value = trim(env[name]);
+    if (value && !/^(1|0|true|false|yes|no|on|off|y|n)$/i.test(value)) {
+      problems.push(`${name} "${value}" is not a yes/no value; use true or false.`);
+    }
+  }
+  const interval = trim(env.KEEP_ALIVE_INTERVAL_MINUTES);
+  if (interval) {
+    const minutes = Number(interval);
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      problems.push(`KEEP_ALIVE_INTERVAL_MINUTES "${interval}" is not a number of minutes; using the stored value.`);
+    } else if (minutes < 5 || minutes > 60) {
+      problems.push(`KEEP_ALIVE_INTERVAL_MINUTES ${minutes} is outside the 5-60 minute range and will be clamped.`);
+    }
+  }
+  const logRequests = trim(env.LOG_REQUESTS);
+  if (logRequests && !/^(1|0|true|false|yes|no|on|off)$/i.test(logRequests)) {
+    problems.push(`LOG_REQUESTS "${logRequests}" is not a yes/no value; use 1 or 0.`);
+  }
+
   const normalized = {
     ...env,
     NODE_ENV: nodeEnv,

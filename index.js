@@ -31,7 +31,20 @@ async function main() {
 
   const settings = new SettingsStore(path.join(dataDir, "settings.json"), { env });
   const assets = new AssetStore(path.join(dataDir, "assets"), settings);
-  assets.prune();
+  // A recovered settings file has no asset metadata yet. Pruning then would
+  // delete every uploaded photo on the disk - the files are the only copy - so
+  // leave them alone and let the owner restore settings.json first.
+  if (settings.recovered) {
+    const left = assets.countFiles();
+    if (left > 0) {
+      console.warn(
+        `[assets] settings.json was missing or unreadable; keeping ${left} uploaded file(s) instead of pruning them. ` +
+          "Restore that file (or re-upload) - nothing is lost until you delete it."
+      );
+    }
+  } else {
+    assets.prune();
+  }
 
   const effective = settings.effective();
   const bot = new DiscordBot({
