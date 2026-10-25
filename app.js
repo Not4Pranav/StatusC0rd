@@ -27,6 +27,7 @@ const {
   clampKeepAliveInterval
 } = require("./src/settings");
 const { templateList, applyTemplate } = require("./src/templates");
+const { splitHostingEnabled, localGatewayEnabled } = require("./src/worker");
 
 
 const VIEWS_DIR = path.join(__dirname, "views");
@@ -336,6 +337,9 @@ function createApp({
         hasClientSecret: Boolean(settings.effective().clientSecret),
         activityReady: activityService.ready(),
         botEnabled: settings.effective().botEnabled,
+        // True when a separate worker owns the gateway: the token field here is
+        // then inert, and the UI has to say so instead of pretending.
+        splitHosting: splitHostingEnabled(),
         discordLoginEnabled: settings.effective().discordLoginEnabled,
         publicUrl: settings.effective().publicUrl || origin,
         publicUrlIsHttps: (settings.effective().publicUrl || origin).startsWith("https://"),
@@ -662,7 +666,8 @@ function createApp({
     settings.completeSetup();
 
     const effective = settings.effective();
-    await bot.reconfigure({ token: effective.botToken, enabled: effective.botEnabled });
+    // Never open a second gateway when a worker owns the connection.
+    await bot.reconfigure({ token: effective.botToken, enabled: localGatewayEnabled(effective) });
     applyPresenceToBot();
     if (keepAlive) keepAlive.configure(effective.keepAlive.enabled ? { ...effective.keepAlive, publicUrl: effective.publicUrl } : { enabled: false });
 
@@ -1417,7 +1422,7 @@ function createApp({
 
     const next = settings.effective();
     if (body.botToken !== undefined) {
-      await bot.reconfigure({ token: next.botToken, enabled: next.botEnabled });
+      await bot.reconfigure({ token: next.botToken, enabled: localGatewayEnabled(next) });
       applyPresenceToBot();
     }
     if (keepAlive) {

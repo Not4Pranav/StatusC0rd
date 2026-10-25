@@ -445,6 +445,12 @@
 
   // ------------------------------------------------------------- state sync
 
+  /** Show or hide the split-hosting explainer on the Bot tab. */
+  function renderSplitHosting(meta) {
+    const note = document.getElementById("bot-hosted-note");
+    if (note) note.hidden = !meta?.splitHosting;
+  }
+
   function renderBot(bot) {
     // Split hosting: the gateway lives in another process, so the local state is
     // "disabled" even when the bot is online. The worker's own report is the
@@ -722,6 +728,7 @@
     }
     renderTemplates(next.templates);
     renderCardPanel(next.meta?.card);
+    renderSplitHosting(next.meta);
     renderPreviewNote(next.presence);
     renderUser(next.user);
     const redirect = $("#redirect-hint");

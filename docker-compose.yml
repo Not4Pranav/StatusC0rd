@@ -1,0 +1,80 @@
+# Two services, one repository.
+#
+# `docker compose up -d` runs the whole system: the website (dashboard, members,
+# photos, the card pages) and the bot worker that holds the Discord connection.
+# Split them only because a free host sleeps; on a VPS one process would do, and
+# `docker run` from SETUP.md is shorter.
+#
+# Before the first start, create a `.env` next to this file:
+#
+#   PUBLIC_URL=https://status.example.com     # the site, no trailing slash
+#   BOT_WORKER_TOKEN=<openssl rand -hex 32>   # shared by both services
+#   DISCORD_TOKEN=<bot token>                 # only the worker needs it
+#   CLIENT_ID=<application id>                # for the Activity and invites
+#   CLIENT_SECRET=<oauth2 secret>             # for the Activity and Discord sign-in
+#   DASHBOARD_KEY=<12+ characters>            # skips the setup wizard
+#
+# Everything except PUBLIC_URL and BOT_WORKER_TOKEN is optional: leave them out
+# and the wizard at $PUBLIC_URL/setup asks for them instead.
+
+services:
+  website:
+    build: .
+    image: statusc0rd:local
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env}
+      # Its presence is what stops this half from opening a gateway of its own.
+      BOT_WORKER_TOKEN: ${BOT_WORKER_TOKEN:?set BOT_WORKER_TOKEN in .env}
+      CLIENT_ID: ${CLIENT_ID:-}
+      CLIENT_SECRET: ${CLIENT_SECRET:-}
+      DASHBOARD_KEY: ${DASHBOARD_KEY:-}
+      # No DISCORD_TOKEN here on purpose: the worker owns the connection.
+    volumes:
+      # The only stateful thing in the system: settings.json, photos, the setup
+      # token. Back this up (SETUP.md Part 9).
+      - statusc0rd-data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  bot:
+    build: .
+    image: statusc0rd:local
+    restart: unless-stopped
+    depends_on:
+      - website
+    environment:
+      BOT_WORKER: "1"
+      BOT_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env}
+      BOT_WORKER_TOKEN: ${BOT_WORKER_TOKEN:?set BOT_WORKER_TOKEN in .env}
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN in .env}
+      PUBLIC_URL: ${PUBLIC_URL}
+      # How often the worker re-reads the card (5-300 seconds).
+      BOT_POLL_SECONDS: ${BOT_POLL_SECONDS:-10}
+      PORT: "3001"
+    # No volume: the worker keeps nothing and can be recreated at any time.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  statusc0rd-data:

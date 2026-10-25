@@ -12,7 +12,7 @@ const { SettingsStore, ADMIN_USER_ID, parseFlag } = require("./src/settings");
 const { AssetStore } = require("./src/assets");
 const { DiscordBot } = require("./src/bot");
 const { KeepAlive } = require("./src/keepalive");
-const { BotWorker } = require("./src/worker");
+const { BotWorker, assertWorkerUrl, splitHostingEnabled, localGatewayEnabled } = require("./src/worker");
 const { DEFAULT_CONFIG } = require("./src/presence");
 const { createApp } = require("./app");
 
@@ -59,11 +59,10 @@ async function main() {
   // With a worker token configured, the gateway belongs to the worker. Two
   // sessions on one bot token would fight over the presence, so the web process
   // stays out of it unless BOT_ENABLED=true says otherwise.
-  const splitHosted = Boolean(process.env.BOT_WORKER_TOKEN) && !parseFlag(process.env.BOT_ENABLED, false);
   const bot = new DiscordBot({
     token: effective.botToken,
     clientId: effective.clientId,
-    enabled: splitHosted ? false : effective.botEnabled
+    enabled: localGatewayEnabled(effective)
   });
 
   const keepAlive = new KeepAlive({
@@ -145,6 +144,9 @@ async function runBotWorker({ env, port, version }) {
       "BOT_WORKER needs BOT_URL (the website) and BOT_WORKER_TOKEN (the same secret the website has)."
     );
   }
+  // Every poll carries the token, so a plain-http address that is not the local
+  // machine would publish it to the network.
+  assertWorkerUrl(baseUrl);
   if (!botToken) {
     throw new Error("BOT_WORKER needs DISCORD_TOKEN: the bot cannot log in without one.");
   }
@@ -220,7 +222,7 @@ function printBanner({ settings, effective, port, version, isProduction }) {
   } else {
     console.log(`${line}`);
     console.log(`  Dashboard: http://localhost:${port}/login`);
-    const remote = Boolean(process.env.BOT_WORKER_TOKEN);
+    const remote = splitHostingEnabled();
     console.log(
       `  Bot:       ${
         remote

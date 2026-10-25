@@ -132,3 +132,53 @@ test("the poll interval is clamped to something Discord and a free host both sur
   assert.equal(clampPollSeconds(9999), 300);
   assert.equal(clampPollSeconds(30), 30);
 });
+
+test("a worker URL must not send the bot token in clear text", () => {
+  const { assertWorkerUrl } = require("../src/worker");
+  // TLS is always fine.
+  assert.equal(assertWorkerUrl("https://site.example").protocol, "https:");
+  // Plain http is only allowed where the network cannot be listened to.
+  for (const local of ["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.1.9:3000"]) {
+    assert.equal(assertWorkerUrl(local).protocol, "http:", local);
+  }
+  for (const bad of ["http://site.example", "http://10.0.0.5.example.com", "ftp://site.example", "not a url"]) {
+    assert.throws(() => assertWorkerUrl(bad), /BOT_URL/, bad);
+  }
+});
+
+test("the web process never opens a second gateway when a worker exists", () => {
+  const { splitHostingEnabled, localGatewayEnabled } = require("../src/worker");
+  const env = { BOT_WORKER_TOKEN: "t".repeat(32) };
+  assert.equal(splitHostingEnabled(env), true);
+  // The website stores a token and has a bot enabled - it still must not connect.
+  assert.equal(localGatewayEnabled({ botEnabled: true }, env), false);
+  // An operator who really wants both can say so.
+  assert.equal(localGatewayEnabled({ botEnabled: true }, { ...env, BOT_ENABLED: "1" }), true);
+  // No worker: unchanged behaviour.
+  assert.equal(splitHostingEnabled({}), false);
+  assert.equal(localGatewayEnabled({ botEnabled: true }, {}), true);
+  assert.equal(localGatewayEnabled({ botEnabled: false }, {}), false);
+  // An empty variable is not a configured worker.
+  assert.equal(splitHostingEnabled({ BOT_WORKER_TOKEN: "  " }), false);
+});
+
+test("status reports are coalesced so reconnect flaps cannot flood the site", async () => {
+  let posts = 0;
+  const bot = fakeBot();
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/api/bot/status")) posts += 1;
+    if (url.endsWith("/api/bot/card")) {
+      return { status: 200, ok: true, json: async () => ({ ok: true, presence: { name: "Card", enabled: true } }) };
+    }
+    return { status: 200, ok: true, json: async () => ({ ok: true }) };
+  };
+  const worker = new BotWorker({ bot, baseUrl: "https://site.example", token: "t".repeat(32), fetchImpl, pollSeconds: 5 });
+  // Three rapid state changes: one report now, the rest coalesced.
+  await worker.report();
+  await worker.report();
+  await worker.report();
+  assert.equal(posts, 1, "only the first report went out immediately");
+  await new Promise((resolve) => setTimeout(resolve, 2300));
+  assert.equal(posts, 2, "the trailing flush carries the latest state");
+  await worker.stop();
+});
