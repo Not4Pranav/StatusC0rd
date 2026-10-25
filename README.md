@@ -90,7 +90,8 @@ no Discord connection — so the 24/7 card dies with it. Run the same repo a sec
 time on any small always-on box with `BOT_WORKER=1`, `BOT_URL` and a shared
 `BOT_WORKER_TOKEN`, and it holds only the gateway: it reads the card from the
 website every ten seconds and reports back, so the dashboard still shows the
-truth. Details in [SETUP.md 6.5](SETUP.md#65-hosting-the-bot-on-a-different-machine).
+truth. `docker-compose.yml` runs both halves from this one repository if you prefer one
+command. Details in [SETUP.md 6.5](SETUP.md#65-hosting-the-bot-on-a-different-machine).
 
 ---
 
@@ -198,6 +199,7 @@ src/presence.js     the card model, validation, Discord payloads
 src/settings.js     accounts, per-user cards, photos, the store
 src/bot.js          the 24/7 gateway presence
 src/worker.js       split hosting: the bot alone, reading its card over HTTP
+docker-compose.yml  both halves, one command
 src/activity.js     the in-Discord app's auth and config
 src/assets.js       uploads
 views/              server-rendered pages

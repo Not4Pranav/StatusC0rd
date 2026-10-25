@@ -383,6 +383,20 @@
 
         <!-- =============================================== bot ============= -->
         <div class="pane admin-only" data-pane="bot" id="pane-bot" role="tabpanel">
+          <div class="card" id="bot-hosted-note" hidden>
+            <div class="card-head"><h2>Hosted separately</h2><span class="tag">Split hosting</span></div>
+            <p class="hint">
+              A bot worker on another machine owns the Discord connection and reads this card every
+              few seconds. The status below is what that worker reports. The bot token stored under
+              <a href="#" data-goto="settings">Settings → Application &amp; bot</a> is not used by this
+              server while a worker is configured.
+            </p>
+            <p class="hint">
+              The keep-alive below cannot reach that machine: keep the worker awake on its own host.
+              Setup: <code>SETUP.md</code> § 6.5.
+            </p>
+          </div>
+
           <div class="card">
             <div class="card-head"><h2>Bot status</h2></div>
             <dl class="facts">

@@ -18,11 +18,56 @@
  * token, and neither is ever returned to a browser.
  */
 
+const { isLocalHost } = require("./presence");
+const { parseFlag } = require("./settings");
+
 const DEFAULT_POLL_SECONDS = 10;
+/** Reports are coalesced: reconnect flaps must not become a request storm. */
+const REPORT_MIN_GAP_MS = 2_000;
 const MIN_POLL_SECONDS = 5;
 const MAX_POLL_SECONDS = 300;
 /** Wait longer after a failure, so a sleeping website is not hammered. */
 const MAX_BACKOFF_MS = 60_000;
+
+/**
+ * True when a separate worker owns the gateway.
+ *
+ * Two sessions on one bot token fight over the presence, so the web process must
+ * not connect when a worker is configured - unless `BOT_ENABLED=true` says the
+ * operator really wants both (they do not; it is there for testing).
+ */
+function splitHostingEnabled(env = process.env) {
+  return Boolean(String(env.BOT_WORKER_TOKEN || "").trim()) && !parseFlag(env.BOT_ENABLED, false);
+}
+
+/** What the *web* process should do with the gateway, in every code path. */
+function localGatewayEnabled(effective, env = process.env) {
+  return splitHostingEnabled(env) ? false : Boolean(effective?.botEnabled);
+}
+
+/**
+ * Refuse a worker URL that would leak the bot token.
+ *
+ * `BOT_URL` is sent with a bearer token on every poll. Over plain `http://` that
+ * token is readable by anything on the path, so only a loopback/LAN address is
+ * allowed without TLS - which is exactly the localhost case people test with.
+ *
+ * @throws {Error} with a message the operator can act on
+ */
+function assertWorkerUrl(baseUrl) {
+  let url;
+  try {
+    url = new URL(String(baseUrl || ""));
+  } catch {
+    throw new Error("BOT_URL is not a valid URL (use the site's https:// address).");
+  }
+  if (url.protocol === "https:") return url;
+  if (url.protocol === "http:" && isLocalHost(url.hostname)) return url;
+  throw new Error(
+    `BOT_URL is ${url.protocol}//${url.hostname} - the bot token would travel in clear text. ` +
+      "Use the https:// address of the site (http:// is only allowed for localhost)."
+  );
+}
 
 function clampPollSeconds(value) {
   const seconds = Number(value);
@@ -47,6 +92,8 @@ class BotWorker {
     this.logger = logger;
     this.fetchImpl = fetchImpl || globalThis.fetch;
     this.timer = null;
+    this.reportTimer = null;
+    this.lastReportMs = 0;
     this.stopping = false;
     this.failures = 0;
     this.state = {
@@ -151,9 +198,27 @@ class BotWorker {
     this._schedule(delay);
   }
 
-  /** Tell the website what the gateway is doing, so its dashboard is honest. */
-  async report() {
+  /**
+   * Tell the website what the gateway is doing, so its dashboard is honest.
+   *
+   * A reconnect can change state several times in a second; each change would be
+   * a POST. Reports are coalesced to one per `REPORT_MIN_GAP_MS`, with a trailing
+   * flush so the final state is never lost.
+   */
+  async report({ force = false } = {}) {
     if (!this.configured) return null;
+    const since = Date.now() - this.lastReportMs;
+    if (!force && this.lastReportMs && since < REPORT_MIN_GAP_MS) {
+      if (!this.reportTimer) {
+        this.reportTimer = setTimeout(() => {
+          this.reportTimer = null;
+          void this.report({ force: true });
+        }, REPORT_MIN_GAP_MS - since);
+        this.reportTimer.unref?.();
+      }
+      return this.state.lastReportAt;
+    }
+    this.lastReportMs = Date.now();
     const bot = typeof this.bot.getState === "function" ? this.bot.getState() : {};
     try {
       const response = await this.fetchImpl(`${this.baseUrl}/api/bot/status`, {
@@ -182,9 +247,19 @@ class BotWorker {
   async stop() {
     this.stopping = true;
     clearTimeout(this.timer);
+    clearTimeout(this.reportTimer);
     this.timer = null;
+    this.reportTimer = null;
     await this.bot.stop();
   }
 }
 
-module.exports = { BotWorker, clampPollSeconds, DEFAULT_POLL_SECONDS };
+module.exports = {
+  BotWorker,
+  assertWorkerUrl,
+  clampPollSeconds,
+  splitHostingEnabled,
+  localGatewayEnabled,
+  DEFAULT_POLL_SECONDS,
+  REPORT_MIN_GAP_MS
+};

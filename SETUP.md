@@ -662,10 +662,39 @@ Start it with `npm start`, exactly like the website. There is no disk, no
 - Both routes are `404` unless `BOT_WORKER_TOKEN` is set, so an instance that
   does not use split hosting exposes nothing new.
 - The token is compared in constant time and never leaves the server.
+- `BOT_URL` **must be `https://`**. Every poll carries the bot token, so a plain
+  `http://` address anywhere but localhost or a LAN address is refused at start
+  with a message that says exactly why.
 - `/api/bot/card` returns **only the owner's card** — the same one the bot shows
   in a single-process install. Members' cards never reach it.
 - Use `https://` for `BOT_URL`. Plain `http://` works on localhost, and over the
   open internet it hands your bot token to anyone on the path.
+
+**What the dashboard says**
+
+The **Bot & 24/7** tab grows a *Hosted separately* card explaining that another
+machine owns the connection, and the bot token stored under **Settings** is
+marked as not used by this server. The status line shows what the worker last
+reported: **Bot online (hosted separately)** with the bot's name, or *offline*
+when its reports stop. Nothing here pretends a local connection exists.
+
+**Both halves with Docker Compose**
+
+`docker-compose.yml` runs the website and the worker from this one repository:
+
+```sh
+printf 'PUBLIC_URL=%s\nBOT_WORKER_TOKEN=%s\nDISCORD_TOKEN=%s\n' \
+  "https://YOUR-HOST" "$(openssl rand -hex 32)" "YOUR-BOT-TOKEN" > .env
+docker compose up -d
+```
+
+- `website` publishes port 3000, mounts the `statusc0rd-data` volume, and gets
+  **no** `DISCORD_TOKEN` — so it cannot open a gateway even by accident.
+- `bot` builds the same image, has **no volume**, and reads the card from
+  `PUBLIC_URL` every `BOT_POLL_SECONDS` (default 10).
+- Both healthchecks hit `/health`, which each half answers.
+- Add `CLIENT_ID`, `CLIENT_SECRET` and `DASHBOARD_KEY` to `.env` to skip the
+  wizard; leave them out and finish setup at `PUBLIC_URL/setup`.
 
 **Free hosts that suit a worker** (it is a ~50 MB Node process with no disk):
 
@@ -938,6 +967,8 @@ close.
 | Worker log says *could not read the card* | `BOT_URL` is wrong, or the website is asleep | open `BOT_URL/health` from the worker's host; use `https://`, no trailing slash |
 | Pill stays **Bot offline** with a worker running | the worker sees the site but the website does not see the worker (egress blocked, or wrong token) | check `POST /api/bot/status` appears in the website's `[http]` log |
 | `/api/bot/card` returns `404` | `BOT_WORKER_TOKEN` is not set on the website | set it and restart; the route stays closed until then |
+| Worker exits with *the bot token would travel in clear text* | `BOT_URL` is `http://` and not localhost | point `BOT_URL` at the site's `https://` address |
+| Saving a bot token does not bring the bot online | a worker is configured, so this server deliberately keeps its gateway closed | expected — check the worker's own log, or unset `BOT_WORKER_TOKEN` to host the bot here |
 | Bot card shows "StatusC0rd" after a restart | an old build read a retired settings key (fixed in 3.2.0) | update; otherwise publish once |
 | *That dashboard key is not correct* | typo or rotated key | try again; recovery is in Part 11 |
 | *Too many failed attempts* | five failures from one IP | wait 15 minutes |
