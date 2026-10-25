@@ -623,7 +623,7 @@ test("the setup guide is readable without signing in", async (t) => {
   assert.match(res.headers.get("content-type"), /text\/html/);
 
   const html = await res.text();
-  // Rendered from docs/free-setup.md, so a heading from that file must be here.
+  // Rendered from docs/setup.md, so a heading from that file must be here.
   assert.match(html, /<h1 id="[^"]*"/);
   assert.match(html, /Path A/);
   assert.match(html, /href="#1-what-the-user-gets"/);
@@ -636,7 +636,7 @@ test("the setup guide is readable without signing in", async (t) => {
 test("the guide survives an unreadable docs folder", async (t) => {
   const { renderMarkdown } = require("../src/markdown");
   const { loadGuide } = require("../src/guide");
-  const guide = loadGuide("/nonexistent/free-setup.md");
+  const guide = loadGuide("/nonexistent/setup.md");
   assert.equal(guide.available, false);
   assert.match(guide.html, /missing from this deployment/);
   assert.deepEqual(guide.headings, []);

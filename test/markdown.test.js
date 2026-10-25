@@ -79,7 +79,7 @@ test("horizontal rules and blockquotes render", () => {
 });
 
 test("blocks indented under a list item still render", () => {
-  // `docs/free-setup.md` places its variable table and invite URL this way.
+  // `docs/setup.md` places its variable table and invite URL this way.
   const table = renderMarkdown(
     ["3. Fill these in:", "", "   | Variable | Value |", "   | --- | --- |", "   | `CLIENT_ID` | 123 |"].join("\n")
   );
@@ -88,6 +88,49 @@ test("blocks indented under a list item still render", () => {
 
   const code = renderMarkdown(["4. Invite the bot:", "", "   ```bash", "   npm start", "   ```"].join("\n"));
   assert.match(code.html, /<pre><code class="language-bash">npm start<\/code><\/pre>/);
+
+  // The block belongs to the item, so the list must not be broken in two -
+  // otherwise the steps after it would start again at 1.
+  assert.equal(table.html.match(/<ol>/g).length, 1);
+  assert.equal(code.html.match(/<ol>/g).length, 1);
+  assert.match(table.html, /<\/div><\/li><\/ol>/);
+});
+
+test("numbered steps keep counting across code, tables and prose", () => {
+  const { html } = renderMarkdown(
+    [
+      "1. First:",
+      "",
+      "   ```sh",
+      "   echo one",
+      "   ```",
+      "",
+      "2. Second:",
+      "",
+      "   | a | b |",
+      "   | --- | --- |",
+      "   | 1 | 2 |",
+      "",
+      "3. Third."
+    ].join("\n")
+  );
+  assert.equal(html.match(/<ol>/g).length, 1);
+  assert.equal(html.match(/<li>/g).length, 3);
+  assert.match(html, /<li>First:<pre><code class="language-sh">echo one<\/code><\/pre><\/li>/);
+  assert.match(html, /<li>Second:<div class="md-table">/);
+  assert.match(html, /<li>Third\.<\/li><\/ol>$/);
+});
+
+test("a list that changes type still ends where it ends", () => {
+  // Bullets followed by numbers are two lists, not one list that switched tag.
+  const { html } = renderMarkdown(["- a", "- b", "", "1. one", "2. two"].join("\n"));
+  assert.match(html, /^<ul><li>a<\/li><li>b<\/li><\/ul>\n<ol><li>one<\/li><li>two<\/li><\/ol>$/);
+});
+
+test("a tab-indented code block inside a step loses its indentation", () => {
+  const { html } = renderMarkdown(["1. Run:", "", "\t```sh", "\techo hi", "\t```", "", "2. Done."].join("\n"));
+  assert.match(html, /<pre><code class="language-sh">echo hi<\/code><\/pre>/);
+  assert.equal(html.match(/<ol>/g).length, 1);
 });
 
 test("empty input is empty output", () => {

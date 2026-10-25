@@ -53,7 +53,7 @@ const TEMPLATES = Object.freeze([
       state: "commit by commit",
       buttons: [
         { label: "Source", url: "https://github.com/Not4Pranav/StatusC0rd" },
-        { label: "Guide", url: "https://github.com/Not4Pranav/StatusC0rd/blob/main/docs/free-setup.md" }
+        { label: "Guide", url: "https://github.com/Not4Pranav/StatusC0rd/blob/main/docs/setup.md" }
       ]
     }
   },

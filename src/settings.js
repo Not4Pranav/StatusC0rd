@@ -179,7 +179,11 @@ class SettingsStore {
       this.setupToken = String(this.env.SETUP_TOKEN);
       return;
     }
-    if (this.data.setupComplete || this.keyFromEnv) return;
+    // Normally the token is only for a first run. But an instance can lose its
+    // dashboard key (a hand-edited or half-restored settings.json) while still
+    // being marked complete - then the wizard is the only way back in, and it
+    // needs a token when the request comes from the internet.
+    if (this.keyFromEnv || (this.data.setupComplete && this.data.admin.keyHash)) return;
     // Written next to the settings file so the owner can read it from the
     // filesystem even if logs are not accessible.
     const tokenFile = path.join(path.dirname(this.file), "setup-token.txt");

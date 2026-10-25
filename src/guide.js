@@ -1,10 +1,10 @@
 "use strict";
 
 /**
- * The free-setup guide, served by the website.
+ * The setup guide, served by the website.
  *
- * `docs/free-setup.md` is the only copy of the instructions: the README links to
- * it, GitHub renders it, and `/guide` renders the same file for people who are
+ * `docs/setup.md` is the only copy of the instructions: the README links to it,
+ * GitHub renders it, and `/guide` renders the same file for people who are
  * already on a deployment. Parsing is cached and invalidated by mtime.
  */
 
@@ -13,7 +13,7 @@ const path = require("node:path");
 
 const { renderMarkdown } = require("./markdown");
 
-const GUIDE_FILE = path.join(__dirname, "..", "docs", "free-setup.md");
+const GUIDE_FILE = path.join(__dirname, "..", "docs", "setup.md");
 
 let cache = null;
 
@@ -33,7 +33,7 @@ function loadGuide(file = GUIDE_FILE) {
       title: "Setup guide",
       html:
         "<p>The guide file is missing from this deployment. It normally lives in " +
-        "<code>docs/free-setup.md</code> - rebuild the image from the repository, " +
+        "<code>docs/setup.md</code> - rebuild the image from the repository, " +
         "or read it on GitHub.</p>",
       headings: [],
       updatedAt: null

@@ -555,7 +555,7 @@ function createApp({
   });
 
   /**
-   * The $0 deployment guide, rendered from `docs/free-setup.md` so the website
+   * The complete setup guide, rendered from `docs/setup.md` so the website
    * and the repository can never disagree.
    */
   app.get("/guide", (req, res) => {

@@ -3,7 +3,7 @@
 /**
  * A deliberately small Markdown renderer for the in-app guide.
  *
- * The guide lives in `docs/free-setup.md` and is also served by the website at
+ * The guide lives in `docs/setup.md` and is also served by the website at
  * `/guide`, so there is exactly one copy of the instructions. Only the subset
  * that document uses is supported:
  *
@@ -95,6 +95,64 @@ function renderList(lines, start) {
     }
   };
 
+  /**
+   * Move blocks that are indented under the current item into that item.
+   *
+   * Without this, a fenced code block or a table between two numbered steps
+   * ends the `<ol>`, and the following steps restart at 1. In Markdown they
+   * belong to the item above them, so the list stays one list.
+   */
+  const absorbBlocks = (from, itemIndent, out) => {
+    let index = from;
+    let absorbed = 0;
+    while (index < lines.length) {
+      let probe = index;
+      while (probe < lines.length && !lines[probe].trim()) probe += 1;
+      if (probe >= lines.length) return absorbed ? probe : index;
+
+      const lead = /^\s*/.exec(lines[probe])[0].replace(/\t/g, "  ").length;
+      if (lead <= itemIndent) {
+        // A sibling item continues this list only once we know the item had a
+        // block under it; otherwise leave the caller the old behaviour of
+        // ending the list at a blank line (so `<ul>` and `<ol>` never merge).
+        return absorbed ? probe : index;
+      }
+      if (ITEM.test(lines[probe])) return probe; // a nested list: the loop below owns it
+
+      const fence = /^\s*```(\w*)\s*$/.exec(lines[probe]);
+      if (fence) {
+        const dedent = new RegExp(`^[ \\t]{0,${lead}}`);
+        const code = [];
+        let cursor = probe + 1;
+        while (cursor < lines.length && !/^\s*```\s*$/.test(lines[cursor])) {
+          code.push(lines[cursor].replace(dedent, ""));
+          cursor += 1;
+        }
+        const language = fence[1] ? ` class="language-${escapeHtml(fence[1])}"` : "";
+        out.push(`<pre><code${language}>${escapeHtml(code.join("\n"))}</code></pre>`);
+        index = cursor + 1;
+        absorbed += 1;
+        continue;
+      }
+
+      if (/^\s*\|/.test(lines[probe]) && /^\s*\|[\s:|-]+\|?\s*$/.test(lines[probe + 1] || "")) {
+        const rows = [];
+        let cursor = probe;
+        while (cursor < lines.length && /^\s*\|/.test(lines[cursor])) {
+          rows.push(lines[cursor]);
+          cursor += 1;
+        }
+        out.push(renderTable(rows));
+        index = cursor;
+        absorbed += 1;
+        continue;
+      }
+
+      return probe;
+    }
+    return index;
+  };
+
   while (index < lines.length) {
     const match = ITEM.exec(lines[index]);
     if (!match) break;
@@ -123,6 +181,9 @@ function renderList(lines, start) {
     }
     html.push(`<li>${renderInline(text)}`);
     top.open = true;
+
+    // Blocks indented under this item belong to it (see absorbBlocks).
+    index = absorbBlocks(index, indent, html);
   }
 
   closeDeeperThan(-1);
