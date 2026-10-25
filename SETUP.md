@@ -586,6 +586,8 @@ service is an offline bot.
 - It says **Waiting** until the first successful ping.
 - On a VPS with a real disk and no sleep, you can leave it on or turn it off; it
   costs nothing either way.
+- It keeps **the website** awake. If the bot runs on a different host (6.5), that
+  host needs its own reason to stay up — the keep-alive cannot reach it.
 
 ### 6.4 What the bot shows
 
@@ -595,6 +597,88 @@ shows* to choose whether your card goes to it.
 
 The bot's card belongs to the **owner** account. Members' cards go to their own
 profiles and can never touch the bot.
+
+### 6.5 Hosting the bot on a different machine
+
+You do **not** have to do this. One deployment runs both halves and is simpler in
+every way. Split them only if the website's host sleeps: a sleeping process has
+no Discord connection, so the 24/7 card dies with it.
+
+In split mode the website keeps its disk, its members and its wizard, and a small
+second process holds only the Discord connection:
+
+```
+        ┌──────────────────────────┐        ┌───────────────────────────┐
+        │  Website (Render, VPS)   │◀──────▶│  Bot worker (Fly, Koyeb,  │
+        │  dashboard, members,     │  card  │  Oracle, a spare Pi)      │
+        │  photos, settings.json   │  ⇅     │  Discord gateway only     │
+        └──────────────────────────┘ status └───────────────────────────┘
+```
+
+**Step 1 — make a shared secret** (once, on any machine):
+
+```sh
+openssl rand -hex 32
+```
+
+**Step 2 — on the website** (the existing deployment), add one variable:
+
+| Variable | Value |
+| --- | --- |
+| `BOT_WORKER_TOKEN` | that 32-byte hex string |
+
+Restart it. The banner now reads `Bot: hosted separately`, and the website stops
+opening a gateway of its own — two sessions on one bot token would fight over
+your presence. (Set `BOT_ENABLED=true` as well if you ever want both.)
+
+**Step 3 — on the bot host**, deploy the same repo with these variables:
+
+| Variable | Value |
+| --- | --- |
+| `BOT_WORKER` | `1` |
+| `BOT_URL` | the website, e.g. `https://statusc0rd.onrender.com` (no trailing slash) |
+| `BOT_WORKER_TOKEN` | the same secret as step 2 |
+| `DISCORD_TOKEN` | the bot token from 6.1 |
+| `PUBLIC_URL` | the website's URL (only used in log lines) |
+
+Start it with `npm start`, exactly like the website. There is no disk, no
+`DATA_DIR` to preserve and no wizard — a wiped disk costs nothing.
+
+**What it does**
+
+- Reads `GET /api/bot/card` every `BOT_POLL_SECONDS` (default **10**, clamped
+  5–300) and applies whatever the dashboard last published. A new card reaches
+  Discord within about ten seconds.
+- Reports back with `POST /api/bot/status`, so the website's **Bot & 24/7** tab
+  and the top-bar pill show **Bot online (hosted separately)** with the bot's
+  name. If the worker stops, the pill goes back to offline — the website knows
+  the truth rather than guessing.
+- Serves `GET /health` on its port, because free hosts route only to a listening
+  port. That is all it serves; every other path answers
+  `{"error":"…the dashboard is at BOT_URL"}`.
+
+**Security of the pair**
+
+- Both routes are `404` unless `BOT_WORKER_TOKEN` is set, so an instance that
+  does not use split hosting exposes nothing new.
+- The token is compared in constant time and never leaves the server.
+- `/api/bot/card` returns **only the owner's card** — the same one the bot shows
+  in a single-process install. Members' cards never reach it.
+- Use `https://` for `BOT_URL`. Plain `http://` works on localhost, and over the
+  open internet it hands your bot token to anyone on the path.
+
+**Free hosts that suit a worker** (it is a ~50 MB Node process with no disk):
+
+| Host | Free offer | Catch |
+| --- | --- | --- |
+| **Oracle Always Free** | 2 ARM VMs, 24 GB disk total | card at signup; ARM capacity comes and goes |
+| **Fly.io** | small always-on allowance | trial credit, then a card on file |
+| **Koyeb** | one free service | sleeps after inactivity unless you pay |
+| **A spare Raspberry Pi** | free forever | your own electricity and a stable connection |
+
+Anything with a shell and Node 18+ works. If the bot host sleeps, the bot is
+offline while it sleeps — that is the whole reason the website's keep-alive
+exists, and it cannot help a different machine.
 
 ---
 
@@ -772,7 +856,11 @@ managed hosts should use it.
 | `CLIENT_ID` | unset | Discord application ID (public) |
 | `CLIENT_SECRET` | unset | OAuth2 secret; enables the in-Discord app and Discord sign-in |
 | `DISCORD_TOKEN` | unset | bot token for the 24/7 text card |
-| `BOT_ENABLED` | on when a token exists | `false`/`0`/`no`/`off` runs the dashboard without a gateway |
+| `BOT_ENABLED` | on when a token exists | `false`/`0`/`no`/`off` runs the dashboard without a gateway; `true` also lets the website hold a gateway when a worker is configured |
+| `BOT_WORKER` | unset | `1` turns this process into the Discord-only worker (6.5); it serves `/health` and nothing else |
+| `BOT_URL` | unset | the website the worker reads its card from, e.g. `https://statusc0rd.onrender.com` |
+| `BOT_WORKER_TOKEN` | unset | shared secret for `/api/bot/*`; setting it on the website turns split hosting on |
+| `BOT_POLL_SECONDS` | `10` | how often the worker re-reads the card, clamped to 5–300 |
 | `DASHBOARD_KEY` | unset | the owner key; setting it also marks the instance configured and skips the wizard |
 | `SESSION_SECRET` | generated | cookie signing key; 32+ characters (`openssl rand -hex 32`) |
 | `SETUP_TOKEN` | generated | a fixed setup token instead of the one in `data/setup-token.txt` |
@@ -846,6 +934,10 @@ close.
 | Bot says **offline** | wrong or reset token, or the host is asleep | paste the new token; check the keep-alive |
 | Bot goes offline every ~15 min | free host spinning down; keep-alive off or the URL is wrong | correct `PUBLIC_URL`, keep-alive on, interval under 15 min |
 | Bot is **online** but the card is empty | *The bot* is unticked, or the card was never published | tick **The bot** under *Where it shows*, press **Publish** |
+| Worker log says *the website rejected BOT_WORKER_TOKEN* | the two values differ (a trailing newline counts) | copy the same secret into both hosts and restart both |
+| Worker log says *could not read the card* | `BOT_URL` is wrong, or the website is asleep | open `BOT_URL/health` from the worker's host; use `https://`, no trailing slash |
+| Pill stays **Bot offline** with a worker running | the worker sees the site but the website does not see the worker (egress blocked, or wrong token) | check `POST /api/bot/status` appears in the website's `[http]` log |
+| `/api/bot/card` returns `404` | `BOT_WORKER_TOKEN` is not set on the website | set it and restart; the route stays closed until then |
 | Bot card shows "StatusC0rd" after a restart | an old build read a retired settings key (fixed in 3.2.0) | update; otherwise publish once |
 | *That dashboard key is not correct* | typo or rotated key | try again; recovery is in Part 11 |
 | *Too many failed attempts* | five failures from one IP | wait 15 minutes |
@@ -879,6 +971,8 @@ close.
 | `POST` | `/api/card` | signed in | change your handle, publish / unpublish the page |
 | `GET` | `/assets/:hash.:ext` | anyone | a photo, cached for a year, `ACAO: *` |
 | `GET` | `/health` | anyone | `{"status":"ok"}` and nothing else |
+| `GET` | `/api/bot/card` | bot worker | the owner's card for a separately hosted bot (`404` without `BOT_WORKER_TOKEN`) |
+| `POST` | `/api/bot/status` | bot worker | the worker's connection report, shown in the dashboard |
 | `GET` | `/api/health` | signed in | version, storage, bot, keep-alive, Activity |
 | `GET` | `/api/state` | signed in | the dashboard's whole picture |
 | `GET` | `/api/events` | signed in | SSE stream of every change |

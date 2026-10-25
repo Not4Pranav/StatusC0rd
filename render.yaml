@@ -43,3 +43,31 @@ services:
         value: "true"
       - key: KEEP_ALIVE_INTERVAL_MINUTES
         value: "10"
+      # Split hosting (SETUP.md 6.5): set BOT_WORKER_TOKEN here and run the bot
+      # on another box with BOT_WORKER=1, BOT_URL=<this service's URL> and the
+      # same token. Leave it empty to keep the bot in this process.
+      - key: BOT_WORKER_TOKEN
+        sync: false
+
+  # Uncomment to run the bot on Render too, as its own always-warm service.
+  # Two free services are allowed per account; the worker needs no disk.
+  # - type: worker
+  #   name: StatusC0rd-bot
+  #   runtime: node
+  #   plan: free
+  #   region: oregon
+  #   buildCommand: npm ci
+  #   startCommand: npm start
+  #   envVars:
+  #     - key: NODE_VERSION
+  #       value: "22"
+  #     - key: BOT_WORKER
+  #       value: "1"
+  #     - key: BOT_URL
+  #       sync: false          # https://<this web service>.onrender.com
+  #     - key: BOT_WORKER_TOKEN
+  #       sync: false          # the same value as the web service
+  #     - key: DISCORD_TOKEN
+  #       sync: false
+  #     - key: PUBLIC_URL
+  #       sync: false

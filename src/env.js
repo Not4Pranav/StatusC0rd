@@ -72,7 +72,7 @@ function normalizeEnv(env = process.env) {
 
   // Flags and numbers are easy to mistype, and a silently ignored value is the
   // hardest kind of misconfiguration to notice later.
-  const flagVars = ["KEEP_ALIVE", "BOT_ENABLED"];
+  const flagVars = ["KEEP_ALIVE", "BOT_ENABLED", "BOT_WORKER"];
   for (const name of flagVars) {
     const value = trim(env[name]);
     if (value && !/^(1|0|true|false|yes|no|on|off|y|n)$/i.test(value)) {
@@ -88,6 +88,33 @@ function normalizeEnv(env = process.env) {
       problems.push(`KEEP_ALIVE_INTERVAL_MINUTES ${minutes} is outside the 5-60 minute range and will be clamped.`);
     }
   }
+  // Split hosting: the gateway connection runs in its own worker process, which
+  // fetches the card from the website. Both sides need the same shared secret.
+  const botUrl = trim(env.BOT_URL).replace(/\/+$/, "");
+  if (botUrl) {
+    try {
+      const url = new URL(botUrl);
+      if (!["http:", "https:"].includes(url.protocol)) {
+        problems.push("BOT_URL must start with http:// or https://.");
+      }
+    } catch {
+      problems.push("BOT_URL is not a valid absolute URL (use the site's https:// address).");
+    }
+  }
+  const botWorkerToken = trim(env.BOT_WORKER_TOKEN);
+  if (botWorkerToken && botWorkerToken.length < 24) {
+    problems.push("BOT_WORKER_TOKEN is shorter than 24 characters; use `openssl rand -hex 32`.");
+  }
+  const pollSeconds = trim(env.BOT_POLL_SECONDS);
+  if (pollSeconds) {
+    const seconds = Number(pollSeconds);
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      problems.push(`BOT_POLL_SECONDS "${pollSeconds}" is not a number of seconds; using the default.`);
+    } else if (seconds < 5 || seconds > 300) {
+      problems.push(`BOT_POLL_SECONDS ${seconds} is outside the 5-300 second range and will be clamped.`);
+    }
+  }
+
   const logRequests = trim(env.LOG_REQUESTS);
   if (logRequests && !/^(1|0|true|false|yes|no|on|off)$/i.test(logRequests)) {
     problems.push(`LOG_REQUESTS "${logRequests}" is not a yes/no value; use 1 or 0.`);
@@ -104,6 +131,8 @@ function normalizeEnv(env = process.env) {
     REDIRECT_URI: redirectUri,
     PUBLIC_URL: publicUrl,
     SETUP_TOKEN: trim(env.SETUP_TOKEN),
+    BOT_URL: botUrl,
+    BOT_WORKER_TOKEN: botWorkerToken,
     DATA_DIR: trim(env.DATA_DIR),
     PORT: trim(env.PORT)
   };

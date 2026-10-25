@@ -8,10 +8,11 @@ const path = require("node:path");
 
 const pkg = require("./package.json");
 const { normalizeEnv } = require("./src/env");
-const { SettingsStore, ADMIN_USER_ID } = require("./src/settings");
+const { SettingsStore, ADMIN_USER_ID, parseFlag } = require("./src/settings");
 const { AssetStore } = require("./src/assets");
 const { DiscordBot } = require("./src/bot");
 const { KeepAlive } = require("./src/keepalive");
+const { BotWorker } = require("./src/worker");
 const { DEFAULT_CONFIG } = require("./src/presence");
 const { createApp } = require("./app");
 
@@ -24,6 +25,14 @@ async function main() {
   for (const problem of problems) console.warn(`[config] ${problem}`);
 
   const port = Number(process.env.PORT) || 3000;
+
+  // Split hosting: this process is only the Discord side. It holds the gateway
+  // connection, reads the card from the website and reports back. No disk, no
+  // sessions, no dashboard - which is why it fits on the smallest free box.
+  if (parseFlag(process.env.BOT_WORKER, false)) {
+    return runBotWorker({ env, port, version: pkg.version });
+  }
+
   const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
   fs.mkdirSync(dataDir, { recursive: true });
 
@@ -47,10 +56,14 @@ async function main() {
   }
 
   const effective = settings.effective();
+  // With a worker token configured, the gateway belongs to the worker. Two
+  // sessions on one bot token would fight over the presence, so the web process
+  // stays out of it unless BOT_ENABLED=true says otherwise.
+  const splitHosted = Boolean(process.env.BOT_WORKER_TOKEN) && !parseFlag(process.env.BOT_ENABLED, false);
   const bot = new DiscordBot({
     token: effective.botToken,
     clientId: effective.clientId,
-    enabled: effective.botEnabled
+    enabled: splitHosted ? false : effective.botEnabled
   });
 
   const keepAlive = new KeepAlive({
@@ -113,6 +126,84 @@ async function main() {
   return { server, app, bot, settings, assets, keepAlive };
 }
 
+/**
+ * Run only the Discord half of the app.
+ *
+ * The website stays wherever it already lives and keeps its disk, its members
+ * and its wizard; this process needs three things: a bot token, the site's URL,
+ * and the shared worker token. It answers `/health` so free hosts that probe a
+ * port stay happy.
+ */
+async function runBotWorker({ env, port, version }) {
+  const line = "─".repeat(64);
+  const baseUrl = String(env.BOT_URL || "").replace(/\/+$/, "");
+  const token = String(env.BOT_WORKER_TOKEN || "").trim();
+  const botToken = String(env.DISCORD_TOKEN || "").trim();
+
+  if (!baseUrl || !token) {
+    throw new Error(
+      "BOT_WORKER needs BOT_URL (the website) and BOT_WORKER_TOKEN (the same secret the website has)."
+    );
+  }
+  if (!botToken) {
+    throw new Error("BOT_WORKER needs DISCORD_TOKEN: the bot cannot log in without one.");
+  }
+
+  const bot = new DiscordBot({ token: botToken, clientId: env.CLIENT_ID, enabled: true });
+  const worker = new BotWorker({
+    bot,
+    baseUrl,
+    token,
+    pollSeconds: Number(process.env.BOT_POLL_SECONDS) || undefined
+  });
+
+  // Free hosts (Render, Fly, Koyeb) route only to a listening port, so the
+  // worker answers two probes of its own and nothing else.
+  const server = http.createServer((req, res) => {
+    if (req.url === "/health" || req.url === "/") {
+      const state = bot.getState();
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(
+        JSON.stringify({
+          status: "ok",
+          role: "bot-worker",
+          version,
+          bot: { status: state.status, connected: state.connected, tag: state.tag || null },
+          site: baseUrl,
+          lastCardAt: worker.state.lastCardAt
+        })
+      );
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "This process only runs the Discord bot. The dashboard is at BOT_URL." }));
+  });
+
+  await new Promise((resolve) => server.listen(port, "0.0.0.0", resolve));
+
+  console.log(`\n${line}`);
+  console.log(`  StatusC0rd bot worker v${version}  ·  port ${port}`);
+  console.log(`  Site:    ${baseUrl}`);
+  console.log(`  Polling: every ${worker.pollSeconds}s`);
+  console.log(`${line}\n`);
+
+  await worker.start().catch((error) => console.error("[worker] start failed:", error.message));
+
+  let shuttingDown = false;
+  const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[worker] ${signal} received - shutting down`);
+    await worker.stop();
+    await new Promise((resolve) => server.close(resolve));
+    process.exit(0);
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+
+  return { server, bot, worker };
+}
+
 function printBanner({ settings, effective, port, version, isProduction }) {
   const line = "─".repeat(64);
   console.log(`\n${line}`);
@@ -129,7 +220,16 @@ function printBanner({ settings, effective, port, version, isProduction }) {
   } else {
     console.log(`${line}`);
     console.log(`  Dashboard: http://localhost:${port}/login`);
-    console.log(`  Bot:       ${effective.botEnabled ? "connecting…" : "dashboard only (no bot token)"}`);
+    const remote = Boolean(process.env.BOT_WORKER_TOKEN);
+    console.log(
+      `  Bot:       ${
+        remote
+          ? `hosted separately (worker reads /api/bot/card)`
+          : effective.botEnabled
+            ? "connecting…"
+            : "dashboard only (no bot token)"
+      }`
+    );
     console.log(`  Keep-up:   ${effective.keepAlive.enabled ? `pinging ${effective.publicUrl} every ${effective.keepAlive.intervalMinutes}m` : "off"}`);
   }
   console.log(`${line}\n`);

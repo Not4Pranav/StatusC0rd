@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const express = require("express");
@@ -285,6 +286,14 @@ function createApp({
     return req.session?.user?.role === "admin";
   }
 
+  /**
+   * The split-hosting worker's own report, if this instance has one.
+   *
+   * Declared up here because `snapshotFor` reads it; it is filled in by
+   * `POST /api/bot/status` further down.
+   */
+  let botWorker = { connected: false, status: null, tag: null, error: null, lastSeenAt: null, lastActivity: null };
+
   function snapshotFor(req) {
     const userId = ownerId(req);
     const admin = isAdminSession(req);
@@ -317,6 +326,8 @@ function createApp({
       // Keep-alive is an instance concern: members do not need to know whether
       // the owner's uptime ping is on, let alone its target.
       keepAlive: admin && keepAlive ? keepAlive.getState() : null,
+      // A worker hosted elsewhere, if this instance uses one.
+      botWorker: admin ? botWorker : null,
       activitySession: visibleSession,
       meta: {
         version,
@@ -483,6 +494,8 @@ function createApp({
       setup: settings.needsSetup() ? "required" : "complete",
       bot: bot.getState().status,
       keepAlive: keepAlive ? keepAlive.getState() : null,
+      // Present only when the gateway lives in another process (SETUP.md 6.5).
+      botWorker: botWorker.lastSeenAt ? botWorker : null,
       activity: activityService.snapshot()
     });
   });
@@ -1079,6 +1092,60 @@ function createApp({
   });
 
   // --------------------------------------------------------------------- api
+
+  // ------------------------------------------------------- split-hosting API
+  //
+  // When the bot is hosted apart from the website, its worker holds the gateway
+  // connection and reads the owner's card from here. The shared secret is
+  // BOT_WORKER_TOKEN; without it both routes answer 404, so an instance that
+  // does not use split hosting exposes nothing extra.
+
+  function workerToken() {
+    return String(process.env.BOT_WORKER_TOKEN || "").trim();
+  }
+
+  function workerAuth(req, res) {
+    const expected = workerToken();
+    if (!expected) {
+      res.status(404).json({ ok: false, error: "Split hosting is not enabled on this instance." });
+      return false;
+    }
+    const supplied = String(req.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    const a = Buffer.from(supplied);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      res.setHeader("WWW-Authenticate", "Bearer");
+      res.status(401).json({ ok: false, error: "The bot worker token is not correct." });
+      return false;
+    }
+    return true;
+  }
+
+  app.get("/api/bot/card", (req, res) => {
+    if (!workerAuth(req, res)) return undefined;
+    // Only the owner's card ever reaches a bot; members' cards go to their own
+    // profile through the Activity, exactly as inside Discord.
+    res.setHeader("Cache-Control", "no-store");
+    const presence = settings.presenceFor(ADMIN_USER_ID) || DEFAULT_CONFIG;
+    return res.json({ ok: true, presence, version, updatedAt: presence.updatedAt || null });
+  });
+
+  app.post("/api/bot/status", writeLimiter.middleware(), (req, res) => {
+    if (!workerAuth(req, res)) return undefined;
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    botWorker = {
+      connected: Boolean(body.connected),
+      status: typeof body.status === "string" ? body.status.slice(0, 32) : null,
+      tag: typeof body.tag === "string" ? body.tag.slice(0, 64) : null,
+      error: typeof body.error === "string" ? body.error.slice(0, 200) : null,
+      lastActivity: typeof body.lastActivity === "string" ? body.lastActivity.slice(0, 128) : null,
+      lastSeenAt: new Date(now()).toISOString()
+    };
+    // The dashboard's bot pill listens to this, so a remote worker shows up
+    // exactly like a local connection would.
+    broadcastState();
+    return res.json({ ok: true });
+  });
 
   app.get("/api/state", requireAuthApi, (req, res) => {
     res.json({ ok: true, user: publicUser(req), csrf: ensureCsrf(req), ...snapshotFor(req) });
