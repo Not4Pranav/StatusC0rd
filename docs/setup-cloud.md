@@ -27,6 +27,22 @@
 Budget **$4–7 per month**, or **$0** on the free paths. One small server holds
 this comfortably: StatusC0rd idles at roughly 60–90 MB of RAM.
 
+**Before any path: the four Discord values** (2 minutes — the full walkthrough,
+with every click and every pitfall, is [the Discord application](setup.md#4-step-1-the-discord-application)):
+
+1. <https://discord.com/developers/applications> → **New Application**.
+2. **General Information** → copy the **Application ID** (public).
+3. **OAuth2 → General** → **Reset Secret** → copy the **Client Secret** (private).
+4. **Bot → Reset Token** → copy the **Bot token** (private, optional — it only
+   adds the text card that stays online 24/7).
+
+Then, once your instance has a public URL, come back to the portal and do the two
+clicks that make photos and buttons possible:
+
+5. **Activities → Settings** → tick **Enable Activities**.
+6. **Activities → URL Mappings** → prefix **`/`** → target
+   **`https://YOUR-HOST/activity/`** (trailing slash kept).
+
 ---
 
 ## 1. What you need

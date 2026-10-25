@@ -3,7 +3,7 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-131%20passing-3ddc97)
+![status: tested](https://img.shields.io/badge/tests-138%20passing-3ddc97)
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
@@ -118,15 +118,11 @@ Everything that reaches Discord is edited on one screen:
 
 ## 24/7 online
 
-The bot lives on the server, so it is online as long as the server is:
-
-- **Built-in keep-alive:** set your public URL under **Bot & 24/7** and StatusC0rd
-  pings its own `/health` every N minutes (min 5) to generate the inbound traffic
-  that keeps a free instance awake. The dashboard shows the last successful ping.
-- **Free web services sleep.** Render spins down after 15 minutes of no traffic,
-  which drops the gateway connection; the keep-alive is what prevents that.
-- **Self-hosted:** a normal always-on process — the bot reconnects with
-  exponential backoff after network blips and Discord restarts.
+The bot lives on the server, so its card is online as long as the server is. It
+reconnects with exponential backoff after network blips and Discord restarts, and
+the built-in keep-alive makes a sleeping free instance look busy so it is not
+spun down. How to turn that on — and how to keep the process running on each kind
+of host — is [`§9`](docs/setup.md#9-step-6-the-bot-card-always-online).
 
 ---
 
@@ -225,7 +221,7 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ```sh
 npm run dev    # node --watch
 npm run check  # parse every source file
-npm test       # 135 tests (node:test only)
+npm test       # 138 tests (node:test only)
 ```
 
 `test/companion-e2e.test.js` is the proof for the headline flow: it boots a real
@@ -248,6 +244,9 @@ src/activity.js        the in-Discord app's server half (code exchange, payload)
 src/oauth.js           Discord OAuth2 (identify) with timeouts
 src/auth.js            constant-time compare, CSRF, rate limiters
 src/views.js           tiny auto-escaping `{{TOKEN}}` renderer
+src/guide.js           serves docs/*.md at /guide, /guide/local, /guide/cloud,
+                       /guide/free-cloud
+src/markdown.js        the small Markdown subset those files are written in
 src/companion/agent.js the companion (also served as a personalized script)
 views/                 setup, dashboard, login, welcome, guide, card, activity
 public/                styles, dashboard JS, setup JS, upload helper, activity app

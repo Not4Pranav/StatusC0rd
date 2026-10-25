@@ -28,6 +28,22 @@ disappearing. Oracle is the only free option that behaves like a real server.
 Whatever you choose, the finish line is the same three things: an `https://` URL,
 `PUBLIC_URL` set to it, and a process that comes back after a reboot.
 
+**Before any path: the four Discord values** (2 minutes — the full walkthrough,
+with every click and every pitfall, is [the Discord application](setup.md#4-step-1-the-discord-application)):
+
+1. <https://discord.com/developers/applications> → **New Application**.
+2. **General Information** → copy the **Application ID** (public).
+3. **OAuth2 → General** → **Reset Secret** → copy the **Client Secret** (private).
+4. **Bot → Reset Token** → copy the **Bot token** (private, optional — it only
+   adds the text card that stays online 24/7).
+
+Then, once your instance has a public URL, come back to the portal and do the two
+clicks that make photos and buttons possible:
+
+5. **Activities → Settings** → tick **Enable Activities**.
+6. **Activities → URL Mappings** → prefix **`/`** → target
+   **`https://YOUR-HOST/activity/`** (trailing slash kept).
+
 ---
 
 ## 2. Path A: Render free
@@ -54,6 +70,7 @@ Whatever you choose, the finish line is the same three things: an `https://` URL
    | `DISCORD_TOKEN` | the bot token (optional) |
    | `PUBLIC_URL` | leave blank for now — set it after the first deploy |
    | `SETUP_TOKEN` | leave blank unless you want a fixed wizard token |
+   | `ALLOWED_DISCORD_IDS`, `REDIRECT_URI` | leave blank — both are optional |
 
 4. **Apply** → wait for **Live** → copy the URL
    (`https://something.onrender.com`).
@@ -67,9 +84,10 @@ Whatever you choose, the finish line is the same three things: an `https://` URL
 7. **Bot & 24/7 → 24/7 online** → keep **Keep this server awake** ticked with an
    interval **under 15 minutes**. This is what stops Render from spinning the
    service down — and a spun-down service is an offline bot.
-8. Discord side: **Enable Activities**, URL mapping **`/`** →
-   `https://YOUR-APP.onrender.com/activity/`, then **Publish** and **Open in
-   Discord** ([details](setup.md#8-step-5-on-your-own-profile-no-install)).
+8. Discord side: the two portal clicks are in the box at the top of this page —
+   **Enable Activities** and the `/` → `https://YOUR-APP.onrender.com/activity/`
+   mapping — then **Publish** and **Open in Discord**
+   ([details](setup.md#8-step-5-on-your-own-profile-no-install)).
 
 **Render free-tier truths**
 

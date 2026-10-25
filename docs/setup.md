@@ -497,14 +497,21 @@ The bot card (§9) is the part that stays after you close the panel.
 
 ## 9. Step 6: the bot card, always online
 
-The bot runs on the server, so its card is online as long as the server is. Two
+The bot runs on the server, so its card is online as long as the server is. Three
 things make that true:
 
 1. **A bot token** in the wizard or **Settings** (or `DISCORD_TOKEN`). Without
    one the dashboard still works — the **Bot & 24/7** tab just says *No bot*.
-2. **The keep-alive.** Free web services sleep after a period without inbound
+2. **A process that restarts itself** — systemd, Docker `--restart
+   unless-stopped`, pm2, or the host's own supervisor. The path file you followed
+   has the exact unit or command:
+   [local](setup-local.md#7-keep-it-running-after-logout-and-reboot) ·
+   [cloud](setup-cloud.md#5-install-the-app-and-run-it-as-a-service) ·
+   [free cloud](setup-free-cloud.md#2-path-a-render-free).
+3. **The keep-alive.** Free web services sleep after a period without inbound
    traffic. StatusC0rd pings its own public URL on a timer so the host never sees
-   an idle service.
+   an idle service. On a VPS, on Oracle or on GCP it changes nothing and can be
+   switched off.
 
 **Turning it on** — **Bot & 24/7 → 24/7 online**:
 
