@@ -42,17 +42,22 @@ to be that client, and StatusC0rd ships both:
 ### The user's five minutes
 
 1. Open the site → sign in with the dashboard key (or Discord, if enabled).
-2. **Presence** tab: name, type, status, details, state, optional timer; drop in
-   a photo for large and small art; add up to two buttons (label + https URL).
-   The preview on the right is exactly what Discord will show.
-3. **Apply presence** → the bot card updates within a second. This stays online
-   24/7 as long as the server is up.
+2. **Presence** tab: pick a template or type it yourself — name, type, status,
+   two lines, optional timer — drag or paste a photo into the large/small slots,
+   and add up to two buttons (label + https URL). The preview mirrors Discord,
+   including its light theme and compact card.
+3. **Publish** → the text card updates within a second (24/7 if you added a bot
+   token). Nothing reaches Discord before you publish: edits are autosaved as a
+   draft, and **Discard draft** puts the live card back.
 4. **My profile** tab → **Open in Discord** (or the app in Discord's app
    launcher). A panel opens inside Discord showing the same card; the badge
    flips to **Profile live**. No download, no terminal.
 5. Now the same card, with photos and buttons, is on their own profile. Edits in
    the dashboard arrive in ~5 seconds, without rejoining. Closing the panel
    clears the presence (it does not leave a stale card behind).
+6. Optional: **Share card** publishes `/c/<slug>` — a read-only page with the
+   same card and proper link previews, for bios, READMEs and servers. It can be
+   rotated or switched off at any time.
 
 Photos: PNG/JPEG/WebP/GIF, at least 16×16, 2 MB max, cropped to a square in the
 browser, stored under `data/assets/`, served over HTTPS from `/assets/<id>.png`
@@ -179,6 +184,11 @@ or now, and edit the URL later.
 ---
 
 ## 5. Path A — Render (fastest, no credit card)
+
+> **The two values that matter.** The wizard asks for an Application ID and an
+> OAuth2 client secret; that pair is enough to put photos, text and buttons on
+> your own profile through the in-Discord app. A bot token is optional and only
+> adds the text card that stays online while you are away.
 
 **Deploy**
 

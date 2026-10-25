@@ -33,12 +33,20 @@ const DEFAULT_SETTINGS = Object.freeze({
     redirectUri: ""
   },
   presence: null,
+  // Unpublished edits. `presence` is what Discord shows right now; `draft` is
+  // whatever the dashboard has staged. Publishing copies draft -> presence.
+  draft: null,
+  // Public read-only view of the presence card (`/c/<slug>`), opt-in.
+  share: null,
   keepAlive: { enabled: true, intervalMinutes: 10 },
   assets: [],
   pairings: []
 });
 
 const SCRYPT_KEYLEN = 32;
+
+/** Share slugs appear in URLs, so keep them boringly safe. */
+const SHARE_SLUG_RE = /^[a-z0-9]{6,32}$/;
 
 function hashKey(key, salt = crypto.randomBytes(16).toString("hex")) {
   const hash = crypto.scryptSync(String(key), salt, SCRYPT_KEYLEN).toString("hex");
@@ -73,6 +81,11 @@ function migrate(raw) {
   migrated.discord.allowedIds = Array.isArray(migrated.discord.allowedIds)
     ? migrated.discord.allowedIds.filter((id) => /^\d{5,25}$/.test(String(id)))
     : [];
+  migrated.draft = isPlainObject(migrated.draft) ? migrated.draft : null;
+  migrated.share =
+    isPlainObject(migrated.share) && SHARE_SLUG_RE.test(String(migrated.share.slug || ""))
+      ? migrated.share
+      : null;
   return migrated;
 }
 
@@ -391,6 +404,7 @@ module.exports = {
   SettingsStore,
   DEFAULT_SETTINGS,
   SETTINGS_VERSION,
+  SHARE_SLUG_RE,
   hashKey,
   verifyKey,
   migrate

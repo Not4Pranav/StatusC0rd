@@ -12,7 +12,7 @@ const {
   PUBLIC_URL
 } = require("./helpers");
 
-test("health reports setup state", async (t) => {
+test("the public health check reveals nothing but uptime", async (t) => {
   const ctx = await startApp({ completeSetup: false });
   t.after(() => ctx.close());
 
@@ -20,7 +20,27 @@ test("health reports setup state", async (t) => {
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.status, "ok");
-  assert.equal(body.setup, "required");
+  assert.ok(body.uptimeSeconds >= 0);
+  for (const secret of ["version", "storage", "setup", "bot"]) {
+    assert.equal(secret in body, false, `${secret} should not be public`);
+  }
+});
+
+test("the operator gets the full health report behind the session", async (t) => {
+  const ctx = await startApp();
+  t.after(() => ctx.close());
+
+  assert.equal((await ctx.request("/api/health")).status, 401);
+
+  await ctx.signIn();
+  const res = await ctx.request("/api/health");
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.status, "ok");
+  assert.equal(body.version, "2.1.0");
+  assert.equal(body.storage, "ok");
+  assert.equal(body.setup, "complete");
+  assert.ok("activity" in body);
 });
 
 test("a fresh instance redirects to the setup wizard", async (t) => {
@@ -529,8 +549,10 @@ test("the wizard rejects a public URL that is not a URL", async (t) => {
   });
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /must start with https/);
-  assert.equal((await ctx.request("/health")).status, 200);
-  assert.equal((await (await ctx.request("/health")).json()).setup, "required", "setup stays open");
+  // The wizard must still be reachable: a rejected payload cannot lock setup.
+  const setup = await ctx.request("/setup");
+  assert.equal(setup.status, 200);
+  assert.match(await setup.text(), /Create your dashboard login/);
 });
 
 test("uploaded photos resolve to public URLs in every presence payload", async (t) => {

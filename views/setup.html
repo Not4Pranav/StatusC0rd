@@ -32,7 +32,7 @@
 
       <ol class="steps" id="steps">
         <li data-step-tab="1" class="is-active"><span>1</span> Account</li>
-        <li data-step-tab="2"><span>2</span> Bot</li>
+        <li data-step-tab="2"><span>2</span> Discord app</li>
         <li data-step-tab="3"><span>3</span> Presence</li>
       </ol>
 
@@ -75,59 +75,69 @@
             </div>
           </form>
 
-          <details class="advanced">
-            <summary>Optional · allow Discord sign-in</summary>
-            <p class="hint">
-              Lets chosen Discord accounts sign in without the key. Add the redirect URL
-              <code id="redirect-hint">https://your-host/auth/discord/callback</code> to your
-              application's OAuth2 settings.
-            </p>
-            <label class="field">
-              <span>OAuth2 client secret</span>
-              <input id="client-secret" type="password" autocomplete="off" spellcheck="false" />
-            </label>
-            <label class="field">
-              <span>Allowed Discord user IDs (comma separated)</span>
-              <input id="allowed-ids" type="text" autocomplete="off" placeholder="123456789012345678" />
-            </label>
-          </details>
         </div>
       </section>
 
       <!-- step 2 ------------------------------------------------------------ -->
       <section class="step" data-step="2" hidden>
-        <h2>Connect the bot</h2>
+        <h2>Connect your Discord app</h2>
         <p class="hint">
-          The bot keeps the presence online 24/7 on this server. Create the token in
-          <a href="https://discord.com/developers/applications" target="_blank" rel="noreferrer">Developer Portal</a>
-          → your app → Bot → Reset Token.
+          Two values from the
+          <a href="https://discord.com/developers/applications" target="_blank" rel="noreferrer">Developer Portal</a>,
+          and you are live: this is what puts photos, text and buttons on your own profile from
+          inside Discord, with nothing to install.
         </p>
         <form id="bot-form" class="stack">
           <label class="field">
             <span>Application (client) ID</span>
             <input id="client-id" type="text" inputmode="numeric" autocomplete="off" value="{{CLIENT_ID}}" placeholder="e.g. 123456789012345678" />
-            <small>
-              Developer Portal → General Information → Application ID. Required: Discord attributes
-              the activity (and the companion connection) to this application.
-            </small>
+            <small>General Information → Application ID. A long number, not the app name.</small>
           </label>
           <label class="field">
-            <span>Bot token</span>
-            <input id="bot-token" type="password" autocomplete="off" spellcheck="false" placeholder="MTA…" />
+            <span>OAuth2 client secret</span>
+            <input id="client-secret" type="password" autocomplete="off" spellcheck="false" placeholder="from OAuth2 → General" />
+            <small>
+              Used once per launch to finish Discord's sign-in for the in-Discord app. It stays on
+              this server and never reaches a browser. Skip it only if you are just editing text.
+            </small>
           </label>
-          <div class="actions">
-            <button class="btn ghost" type="button" id="test-bot">Test connection</button>
-            <button class="btn primary" type="submit" id="bot-next">Continue</button>
-            <button class="btn link" type="button" id="skip-bot">Skip — dashboard only</button>
-          </div>
+
+          <details class="advanced">
+            <summary>Optional · a bot card that stays online 24/7</summary>
+            <p class="hint">
+              Bots can only show an activity name and one line of text, but that card stays up while
+              you are offline. Create the token in Developer Portal → your app → Bot → Reset Token.
+            </p>
+            <label class="field">
+              <span>Bot token</span>
+              <input id="bot-token" type="password" autocomplete="off" spellcheck="false" placeholder="MTA…" />
+            </label>
+            <label class="field">
+              <span>Allow these Discord accounts to sign in without the key (optional)</span>
+              <input id="allowed-ids" type="text" autocomplete="off" placeholder="123456789012345678, 987654321098765432" />
+              <small>
+                Needs the redirect <code id="redirect-hint">https://your-host/auth/discord/callback</code>
+                added to the app's OAuth2 settings.
+              </small>
+            </label>
+            <button class="btn ghost" type="button" id="test-bot">Test bot connection</button>
+          </details>
+
           <div id="bot-result" class="alert is-ok" hidden></div>
+          <div class="actions">
+            <button class="btn primary" type="submit" id="bot-next">Continue</button>
+            <button class="btn link" type="button" id="skip-bot">Skip for now</button>
+          </div>
         </form>
       </section>
 
       <!-- step 3 ------------------------------------------------------------ -->
       <section class="step" data-step="3" hidden>
         <h2>Design your presence</h2>
-        <p class="hint">You can change all of this later. Photos work on your own profile via the companion.</p>
+        <p class="hint">
+          Change any of this later. Everything here — name, both lines, photos, buttons — lands on
+          your own profile the moment you open StatusC0rd inside Discord.
+        </p>
 
         <div class="setup-grid">
           <div>
@@ -225,7 +235,8 @@
       </section>
 
       <footer class="setup-foot">
-        Your bot token, client secret and dashboard key never leave this server.
+        Your bot token, client secret and dashboard key never leave this server. Nothing is
+        downloaded, ever — the dashboard and Discord are the whole product.
       </footer>
     </main>
   </body>

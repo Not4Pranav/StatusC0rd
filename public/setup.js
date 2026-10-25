@@ -115,12 +115,6 @@
     if (key !== repeat) return alertBox("The two keys do not match.");
 
     state.adminKey = key;
-    state.clientSecret = $("#client-secret").value.trim();
-    state.allowedIds = $("#allowed-ids")
-      .value.split(/[\s,]+/)
-      .map((id) => id.replace(/[^0-9]/g, ""))
-      .filter((id) => /^\d{5,25}$/.test(id));
-
     alertBox("");
     showStep(2);
   });
@@ -131,6 +125,7 @@
     $("#bot-token").placeholder = "configured by the server environment";
     $("#bot-token").disabled = true;
     $("#client-id").disabled = true;
+    $("#client-secret").disabled = true;
   }
 
   $("#test-bot").addEventListener("click", async () => {
@@ -160,6 +155,14 @@
     }
   });
 
+  /** Read the allowlist field; empty is fine, junk is ignored. */
+  function readAllowedIds() {
+    return $("#allowed-ids")
+      .value.split(/[\s,]+/)
+      .map((id) => id.replace(/[^0-9]/g, ""))
+      .filter((id) => /^\d{5,25}$/.test(id));
+  }
+
   $("#bot-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const field = $("#client-id");
@@ -167,7 +170,7 @@
     if (!field.disabled) {
       if (!typed) {
         return alertBox(
-          "Paste the Application (client) ID as well - Discord uses it to attribute the activity and to accept the companion. Developer Portal -> General Information."
+          "Paste the Application (client) ID - it is what Discord shows as the activity name. Developer Portal -> General Information."
         );
       }
       if (!/^\d{5,25}$/.test(typed)) {
@@ -175,13 +178,16 @@
       }
     }
     state.clientId = typed || state.clientId;
+    state.clientSecret = $("#client-secret").value.trim();
     state.botToken = $("#bot-token").value.trim();
+    state.allowedIds = readAllowedIds();
     alertBox("");
     showStep(3);
   });
 
   $("#skip-bot").addEventListener("click", () => {
     state.botToken = "";
+    state.clientSecret = "";
     alertBox("");
     showStep(3);
   });
@@ -282,8 +288,10 @@
         }
       };
       const result = await api("/api/setup/complete", "POST", payload);
-      $("#finish-hint").textContent = "Saved - opening your dashboard…";
-      location.href = result.redirect || "/";
+      $("#finish-hint").textContent = "Saved - opening your profile tab…";
+      // Straight to the tab with "Open in Discord": the whole promise is that
+      // you go live without hunting for the next step.
+      location.href = `${result.redirect || "/"}?tab=profile`;
     } catch (error) {
       if (error.needsToken) {
         showStep(1);

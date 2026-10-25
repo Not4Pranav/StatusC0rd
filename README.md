@@ -3,7 +3,7 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-119%20passing-3ddc97)
+![status: tested](https://img.shields.io/badge/tests-129%20passing-3ddc97)
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
@@ -49,17 +49,20 @@ npm start
 Open <http://localhost:3000>. On first run you land on the **setup wizard**:
 
 1. **Account** — create the dashboard key (there is a “generate a strong key”
-   button). Optionally add an OAuth2 client secret + allowed Discord user IDs to
-   enable “Continue with Discord”.
-2. **Bot** — the **Application (client) ID** (Developer Portal → General
-   Information) plus the bot token (Developer Portal → Bot → Reset Token).
-   “Test connection” verifies the token before saving. The ID is required: it is
-   what Discord attributes your activity to, and the companion cannot connect
-   without it. You can still skip the bot and run dashboard-only.
+   button).
+2. **Discord app** — the **Application (client) ID** (General Information) and
+   the **OAuth2 client secret** (OAuth2 → General). Those two values are the whole
+   no-install path: they are what the in-Discord app uses to put photos and
+   buttons on your profile. A bot token is optional and lives in a collapsed
+   section — add it only if you also want a text card that stays online 24/7.
 3. **Presence** — name, type, two lines of text, and **upload photos** (square
    cropped automatically), plus the **public URL** Discord should fetch those
    photos from (pre-filled with the address you are using). “Finish setup” saves
-   everything and signs you in.
+   everything, signs you in, and drops you on **My profile** with the
+   “Open in Discord” button.
+
+Nothing is downloaded at any point — the wizard, the dashboard and the
+in-Discord app are the whole product.
 
 Requirements: Node.js 20+ (22 LTS recommended), and for photos a **public HTTPS
 URL** (see below).
@@ -175,6 +178,26 @@ Notes:
 
 ---
 
+## The editor
+
+Everything that reaches Discord is edited on one screen:
+
+- **Templates** — ten starting points (“Focus mode”, “Listening”, “Building” …).
+  A click fills the form; the photo and target choices you already made survive.
+- **Photos inline** — drag a file onto a slot, paste a screenshot with `Ctrl`/`Cmd`
+  `+ V`, pick a file, or press **Reuse** to pull one from the library. The photo
+  slots sit in the same form as the text and the buttons.
+- **Draft → Publish** — every edit is staged and autosaved as a *draft*, and
+  nothing reaches Discord until you press **Publish**. **Discard draft** puts the
+  live card back. A half-typed line never appears on your profile.
+- **Faithful preview** — dark and light theme, full and compact card, because
+  Discord renders both and they do not look the same.
+- **Share card** — one button publishes `/c/<slug>`, a read-only page with
+  `Open Graph` tags, so the card unfurls with its photo when posted anywhere.
+  Rotate the slug or switch it off whenever you like.
+
+---
+
 ## 24/7 online
 
 The bot lives on the server, so it is online as long as the server is:
@@ -281,7 +304,8 @@ Session cookie + `x-csrf-token` for mutations. Companion endpoints use a
 
 | Method | Route | Description |
 | --- | --- | --- |
-| `GET` | `/health` | Status, setup state, bot state |
+| `GET` | `/health` | Public liveness only (`status`, `uptimeSeconds`) |
+| `GET` | `/api/health` | Full operator report (version, storage, bot, activity) — session required |
 | `GET` | `/setup` | Setup wizard |
 | `POST` | `/api/setup/verify` | Unlock setup with the setup token |
 | `POST` | `/api/setup/asset` | Upload a photo during setup |
@@ -292,6 +316,13 @@ Session cookie + `x-csrf-token` for mutations. Companion endpoints use a
 | `GET` | `/` | Dashboard |
 | `GET` | `/api/state` | Presence, bot, photos, devices, keep-alive, meta |
 | `POST` | `/api/presence` | Validate + save + apply (bot and/or companion) |
+| `POST` | `/api/presence/draft` | Stage edits without publishing |
+| `POST` | `/api/presence/publish` | Publish the stored draft (or the posted body) |
+| `DELETE` | `/api/presence/draft` | Discard the draft |
+| `POST` | `/api/templates/:id` | Merge a template into the current config |
+| `POST` | `/api/share` | Create or rotate the public card slug |
+| `DELETE` | `/api/share` | Switch the public card off |
+| `GET` | `/c/:slug` | Public read-only card with Open Graph tags |
 | `POST` | `/api/presence/clear` | Clear everywhere |
 | `GET` | `/api/events` | SSE stream of state changes |
 | `GET`/`POST` | `/api/assets` | List / upload photos |
@@ -324,6 +355,11 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 - Uploads are sniffed by magic bytes, size-capped (2 MB) and re-served from
   content-hashed filenames; only the image types Discord accepts are stored.
 - Pairing tokens are hashed at rest and revocable; each device is independent.
+- `/health` answers `{"status":"ok"}` to anyone and nothing more — version,
+  storage state, bot status and the Activity session stay behind the session at
+  `/api/health`.
+- The public card `/c/<slug>` is opt-in, carries a random slug, exposes only the
+  presence fields, and dies the moment sharing is switched off.
 - Atomic `0600` writes with corrupt-file recovery; presence updates are coalesced
   to respect Discord's rate limits.
 
@@ -334,7 +370,7 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ```sh
 npm run dev    # node --watch
 npm run check  # parse every source file
-npm test       # 119 tests (node:test only)
+npm test       # 129 tests (node:test only)
 ```
 
 `test/companion-e2e.test.js` is the proof for the headline flow: it boots a real
