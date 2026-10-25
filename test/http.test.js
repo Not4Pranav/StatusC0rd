@@ -37,7 +37,7 @@ test("the operator gets the full health report behind the session", async (t) =>
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.status, "ok");
-  assert.equal(body.version, "2.1.0");
+  assert.equal(body.version, require("../package.json").version);
   assert.equal(body.storage, "ok");
   assert.equal(body.setup, "complete");
   assert.ok("activity" in body);

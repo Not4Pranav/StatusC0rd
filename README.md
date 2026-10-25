@@ -3,13 +3,14 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-129%20passing-3ddc97)
+![status: tested](https://img.shields.io/badge/tests-131%20passing-3ddc97)
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
                      ├─▶ Discord gateway   → the bot card, always online
                      ├─▶ /assets/<id>.png  → photos Discord can fetch
-                     └─▶ companion (your PC) → your own profile, full rich presence
+                     └─▶ Discord Activity  → your own profile, photos + buttons
+                          (and, optionally, the companion on your PC)
 ```
 
 Everything is configured from the website. There is no config file to edit and
@@ -19,23 +20,26 @@ no restart needed after the first launch.
 
 ## Two places a presence can appear
 
-| | Bot card | **Your profile** |
-| --- | --- | --- |
-| Who shows it | the bot account | your own Discord account |
-| Text (name, type, state) | ✅ | ✅ |
-| Details / second line | ⚠️ gateway is limited | ✅ |
-| **Photos** | ❌ Discord drops images for bots | ✅ |
-| Buttons | ❌ | ✅ |
-| Elapsed timer | ✅ (status text only) | ✅ |
-| Needs your computer on | ❌ runs on the server | ✅ while the companion runs |
+| | Bot card | **Your profile** — in-Discord app | **Your profile** — companion |
+| --- | --- | --- | --- |
+| Who shows it | the bot account | your own Discord account | your own Discord account |
+| Text (name, type, state) | ✅ | ✅ | ✅ |
+| Details / second line | ⚠️ gateway is limited | ✅ | ✅ |
+| **Photos** | ❌ Discord drops images for bots | ✅ | ✅ |
+| Buttons | ❌ | ✅ where the client renders them | ✅ |
+| Elapsed timer | ✅ (status text only) | ✅ | ✅ |
+| How long it stays | 24/7, no browser needed | while the Activity panel is open | while the companion runs |
+| Extra download | none | **none** | one launcher file |
 
 Discord renders **only `name`, `type` and `state`** for bot accounts — images and
 buttons are stripped by the gateway. That is a Discord restriction, not a bug
-here. So photos and buttons are delivered by a tiny **companion** you run on
-your own computer (one command, no install): it talks to your local Discord
-client and follows whatever you set on the dashboard.
+here. So photos and buttons are delivered by the **in-Discord app**: a Discord
+Activity, i.e. a web page Discord loads inside the client and lets talk to the
+local user. Nothing to install, nothing to keep running beyond the window itself.
 
-The dashboard can target either place, or both.
+The dashboard can target the bot card, your own profile, or both. The companion
+under *Advanced* does the same job from your own machine for people who would
+rather not open the Activity.
 
 ---
 
@@ -80,8 +84,8 @@ URL** (see below).
 2. The server stores it in `data/assets/` (deduplicated by content hash) and
    serves it at `https://your-host/assets/<id>.png` with
    `Access-Control-Allow-Origin: *` so Discord's media proxy can fetch it.
-3. The companion asks the server for the presence and receives
-   `assets.large_image = "https://your-host/assets/<id>.png"`.
+3. The in-Discord app (or the optional companion) asks the server for the
+   presence and receives `assets.large_image = "https://your-host/assets/<id>.png"`.
 4. Discord's RPC accepts an **external HTTPS URL** for `large_image` /
    `small_image`, so the photo appears on your profile immediately.
 
@@ -94,7 +98,8 @@ Consequences worth knowing:
 - Prefer uploaded artwork? You can also paste a Discord **asset key** (the key
   from Rich Presence → Art Assets). Keys work for the companion too, but external
   URLs are what make the in-dashboard upload flow work.
-- Need a photo on the bot card? Discord does not render it. Use the companion.
+- Need a photo on the bot card? Discord never renders it. Put the photo on your
+  own profile instead (in-Discord app); the bot card stays text-only by design.
 
 ---
 
@@ -370,7 +375,7 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ```sh
 npm run dev    # node --watch
 npm run check  # parse every source file
-npm test       # 129 tests (node:test only)
+npm test       # 131 tests (node:test only)
 ```
 
 `test/companion-e2e.test.js` is the proof for the headline flow: it boots a real

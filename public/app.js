@@ -55,6 +55,16 @@
     return `${Math.round(delta / 86_400_000)}d ago`;
   }
 
+  /**
+   * True when the caret is in a field of this form. State updates must never
+   * overwrite text somebody is in the middle of typing.
+   */
+  function typingIn(form) {
+    const active = document.activeElement;
+    if (!form || !active || !form.contains(active)) return false;
+    return /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) && active.type !== "submit";
+  }
+
   function toast(message, isError = false) {
     const el = $("#toast");
     el.textContent = message;
@@ -566,7 +576,7 @@
             renderPreview(readForm());
             setDirty(true);
           }
-          toast(cleared ? "Image deleted — pick another one and apply" : "Image deleted");
+          toast(cleared ? "Image deleted — pick another one, then publish" : "Image deleted");
         } catch (error) {
           toast(error.message, true);
         }
@@ -657,10 +667,7 @@
 
     if (settings) {
       const form = $("#keepalive-form");
-      // Never overwrite a field the user is in the middle of typing into: state
-      // updates (SSE, 20s poll) must not fight with the keyboard.
-      const editing = form.contains(document.activeElement);
-      if (!editing) {
+      if (!typingIn(form)) {
         form.elements.publicUrl.value = settings.publicUrl || "";
         form.elements.enabled.checked = Boolean(settings.keepAlive?.enabled);
         form.elements.intervalMinutes.value = settings.keepAlive?.intervalMinutes || 10;
@@ -1009,7 +1016,7 @@
       }
       if (value) setImage(kind, value, value);
     }
-    toast("URLs set — press Apply presence");
+    toast("URLs applied — press Publish to go live");
   });
 
   // ----------------------------------------------------------------- profile
@@ -1043,8 +1050,20 @@
     toast(ok ? "Command copied" : "Copy failed — select the text manually", !ok);
   });
 
+  // With no application id there is no invite link to give out: hide the empty
+  // input instead of handing over a discord.com URL that only errors.
+  const inviteValue = $("#invite-url").value.trim();
+  if (!inviteValue) {
+    $("#invite-field").hidden = true;
+    $("#invite-hint").hidden = false;
+  }
+
   $("#copy-invite").addEventListener("click", async () => {
-    const ok = await copyText($("#invite-url").value);
+    if (!inviteValue) {
+      toast("Add your application id first", true);
+      return;
+    }
+    const ok = await copyText(inviteValue);
     toast(ok ? "Invite link copied" : "Copy failed", !ok);
   });
 
@@ -1149,7 +1168,8 @@
     if (token) payload.botToken = token;
     try {
       await api("/api/settings", "POST", payload);
-      event.target.reset();
+      // Only the secret goes: a full reset() would blank the id the server keeps.
+      event.target.elements.botToken.value = "";
       toast(token ? "Bot token saved — reconnecting" : "Saved");
       refresh();
     } catch (error) {
@@ -1165,8 +1185,9 @@
     if (secret) payload.clientSecret = secret;
     try {
       await api("/api/settings", "POST", payload);
-      event.target.reset();
+      event.target.elements.clientSecret.value = "";
       toast("Sign-in settings saved");
+      refresh();
     } catch (error) {
       toast(error.message, true);
     }
@@ -1195,11 +1216,15 @@
       applyState(next, { fill: !dirty });
       const settings = await api("/api/settings");
       renderKeepAlive(next.keepAlive, next.meta, settings.settings);
-      $("#app-form").elements.clientId.value = settings.settings.discord.clientId || "";
+      const appForm = $("#app-form");
+      if (!typingIn(appForm)) appForm.elements.clientId.value = settings.settings.discord.clientId || "";
       $("#bot-token-hint").textContent = settings.settings.discord.hasBotToken
         ? `Current token ${settings.settings.discord.botTokenPreview}`
         : "No bot token saved yet";
-      $("#sso-form").elements.allowedIds.value = (settings.settings.discord.allowedIds || []).join(", ");
+      const ssoForm = $("#sso-form");
+      if (!typingIn(ssoForm)) {
+        ssoForm.elements.allowedIds.value = (settings.settings.discord.allowedIds || []).join(", ");
+      }
       return next;
     } catch (error) {
       toast(error.message || "Could not load the dashboard", true);

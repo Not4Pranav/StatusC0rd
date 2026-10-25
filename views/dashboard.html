@@ -189,7 +189,7 @@
               </label>
               <label class="check">
                 <input type="checkbox" name="targetCompanion" checked />
-                <span>My own profile <small>— photos + buttons, needs the companion</small></span>
+                <span>My own profile <small>— photos + buttons, in the Discord app</small></span>
               </label>
             </fieldset>
 
@@ -426,13 +426,17 @@
               <div><dt>Uptime</dt><dd id="bot-uptime">—</dd></div>
             </dl>
             <div id="bot-error" class="alert" role="alert" hidden></div>
-            <label class="field">
+            <label class="field" id="invite-field">
               <span>Invite link</span>
               <div class="copy-row">
                 <input id="invite-url" type="text" readonly value="{{INVITE_URL}}" />
                 <button class="btn ghost small" type="button" id="copy-invite">Copy</button>
               </div>
             </label>
+            <p class="hint" id="invite-hint" hidden>
+              Add your application ID under
+              <a href="#" data-goto="settings">Settings → Application &amp; bot</a> to get an invite link.
+            </p>
           </div>
 
           <div class="card">
@@ -523,11 +527,12 @@
           <div class="card-head"><h2>Where it shows</h2></div>
           <ul class="notes numbered">
             <li><strong>Bot card</strong> — name, type and status text, 24/7 on this server.</li>
-            <li><strong>Your profile</strong> — full rich presence with photos, buttons and timer while the companion runs.</li>
+            <li><strong>Your profile</strong> — photos, buttons and the timer while the in-Discord app is open.</li>
           </ul>
           <p class="hint">
-            Discord restricts user-account rich presence to software running on the user's own
-            computer, which is why the companion exists.
+            Discord only lets a client set a <em>user's</em> photos and buttons, so those come from
+            the in-Discord app (nothing to download) — or from the optional companion under
+            <a href="#" data-goto="profile">My profile</a> if you would rather run it locally.
           </p>
         </div>
 

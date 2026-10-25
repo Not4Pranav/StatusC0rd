@@ -7,6 +7,10 @@
  */
 (() => {
   const MAX_OUTPUT_BYTES = 900 * 1024;
+  // Animated GIFs are uploaded as they are (no canvas round-trip), so the
+  // server's decoded-size cap applies directly - check it here instead of
+  // letting somebody wait out a multi-megabyte upload that cannot succeed.
+  const MAX_GIF_BYTES = 2 * 1024 * 1024;
 
   function readFile(file) {
     return new Promise((resolve, reject) => {
@@ -38,8 +42,12 @@
     }
     if (file.size > 12 * 1024 * 1024) throw new Error("That file is larger than 12 MB.");
 
+    if (file.type === "image/gif" && file.size > MAX_GIF_BYTES) {
+      throw new Error("Animated GIFs must be under 2 MB - resize or pick a still image.");
+    }
+
     const source = await readFile(file);
-    if (file.type === "image/gif") return source; // keep animation, server caps size
+    if (file.type === "image/gif") return source; // keep animation as-is
 
     const image = await loadImage(source);
     const canvas = document.createElement("canvas");

@@ -9,7 +9,8 @@
 Two audiences, two short answers:
 
 - **If you are the person using someone's StatusC0rd instance:** open the URL, sign
-  in, design your card in the browser, click *Pair this computer* once. That's it.
+  in, design your card in the browser, click *Publish*, then launch the in-Discord
+  app for the photos and buttons. Nothing to download.
 - **If you are the person running it:** one Discord app, one free host, one URL.
   Everything else is configured from the dashboard — never from a file.
 
@@ -87,7 +88,7 @@ Browser ──HTTPS──▶ your host (this repo, Node 20+)
   optional now - the Activity needs no install.
 - `data/` holds `settings.json` (mode `0600`), `assets/`, `setup-token.txt`.
   `DATA_DIR` moves it. That directory **is** the deployment's state.
-- `npm test` = 91 tests, including `test/companion-e2e.test.js`, which drives a
+- `npm test` = 131 tests, including `test/companion-e2e.test.js`, which drives a
   real dashboard (upload → pair) and runs the real companion against a fake
   Discord socket, asserting the exact `SET_ACTIVITY` frame.
 - `npm run check` = syntax/parse check across every source file.
@@ -221,7 +222,8 @@ or now, and edit the URL later.
 7. **Bot & 24/7** → confirm the public URL and *Keep the service awake* (every
    10 minutes; the minimum is 5). This is what stops the 15-minute spin-down that
    would disconnect the gateway.
-8. **Presence** tab → design, **Apply presence**. **My profile** → pair your PC.
+8. **Presence** tab → design, **Publish**. Open the in-Discord app for photos and buttons;
+the companion under *Advanced* is optional.
 
 **Render free-tier truths**
 
@@ -349,13 +351,14 @@ editing the env var and redeploying.
 ## 9. Limits worth knowing before you promise anything
 
 - **Photos and buttons cannot go on a bot card.** Discord's bot presence accepts
-  only name/type/state. They belong to the paired profile, which needs the Discord
-  desktop client running on that computer.
-- **RPC is local-only.** No server, paid or free, can push rich presence to your
-  account without something running on your machine. That's why the companion
-  exists and why pairing is the last step.
-- **Stream and Custom activity types** are downgraded to *Playing* by the
-  companion, because RPC doesn't accept them the same way.
+  only name/type/state. They belong to *your* profile, which the in-Discord app
+  sets from the web page you already have - nothing to install.
+- **Only a client can write to a user's profile.** No server, paid or free, can
+  push rich presence to your account on its own: the in-Discord app (or the
+  optional companion) is what performs the write. That is why the card appears
+  while the Activity panel is open, and why the bot card is the 24/7 part.
+- **Stream and Custom activity types** are passed through by the in-Discord app
+  where Discord accepts them; the companion downgrades them to *Playing*.
 - **Free hosts sleep.** Render spins down after 15 minutes of no traffic; the
   keep-alive ping (min 5 minutes) is what keeps the bot connected.
 
@@ -366,8 +369,9 @@ editing the env var and redeploying.
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Dashboard says *Bot offline* | wrong token, or token reset while running | Settings → paste the new token → Save |
-| Photos show as a letter/silhouette on the profile | `PUBLIC_URL` is wrong or not HTTPS, so Discord can't fetch `/assets/…` | set the real public URL, re-apply presence |
-| *Profile live* never turns green | companion not running, or Discord desktop not open | start the launcher, keep the window open |
+| Photos show as a letter/silhouette on the profile | `PUBLIC_URL` is wrong or not HTTPS, so Discord can't fetch `/assets/…` | set the real public URL, re-publish |
+| *Profile live* never turns green | the Activity is not open, or the companion is not running | open the in-Discord app (or start the launcher) and keep it open |
+| The card on my profile vanishes after a while | the Activity panel was closed - Discord only shows it while the app is open | reopen the in-Discord app; the bot card stays 24/7 |
 | macOS: "cannot be opened because the developer cannot be verified" | downloaded `.command` quarantine | right-click → Open, once |
 | Double-click does nothing on macOS | old plain `.command` download with no execute bit | download `StatusC0rd-mac.zip` instead |
 | Bot card goes offline every ~15 min | free host spinning down; keep-alive off or URL wrong | **Bot & 24/7** → set URL, enable keep-alive |

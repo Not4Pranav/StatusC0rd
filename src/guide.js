@@ -55,9 +55,4 @@ function loadGuide(file = GUIDE_FILE) {
   return value;
 }
 
-/** Top-level sections, used for the sidebar. */
-function guideSections(file = GUIDE_FILE) {
-  return loadGuide(file).headings.filter((heading) => heading.level === 2);
-}
-
-module.exports = { loadGuide, guideSections, GUIDE_FILE };
+module.exports = { loadGuide, GUIDE_FILE };

@@ -204,13 +204,22 @@ async function tick() {
       el.error.hidden = true;
       el.setupTitle.textContent = "No presence yet";
       el.setupBody.textContent =
+        body.reason ||
         "Open the dashboard, save a presence, then come back - this window follows it automatically.";
       el.openDashboard.hidden = false;
       setPill("busy", "Waiting for a presence");
       return;
     }
 
-    await push(body.activity);
+    try {
+      await push(body.activity);
+    } catch (error) {
+      // The dashboard answered - it is Discord that would not take the card.
+      fail("Discord refused the activity", error.message || "The client rejected the presence.", {
+        retry: true
+      });
+      return;
+    }
     renderPreview(body);
     show(el.preview);
     setPill("live", buttonsSupported ? "On your profile" : "On your profile · no buttons");

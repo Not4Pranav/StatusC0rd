@@ -138,26 +138,12 @@ async function fetchMe(accessToken) {
   return me;
 }
 
-/** Revoke a token (best effort, used when a session ends). */
-async function revokeToken({ token, clientId, clientSecret }) {
-  try {
-    await request(`${API_BASE}/oauth2/token/revoke`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ token, client_id: clientId, client_secret: clientSecret })
-    });
-  } catch {
-    // Revocation is best effort - never block sign-out on it.
-  }
-}
-
 module.exports = {
   DiscordApiError,
   buildAuthorizeUrl,
   exchangeCode,
   exchangeActivityCode,
   fetchMe,
-  revokeToken,
   API_BASE,
   AUTHORIZE_URL
 };

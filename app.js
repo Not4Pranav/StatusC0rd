@@ -151,7 +151,7 @@ function createApp({
   keepAlive = null,
   logger = console,
   now = Date.now,
-  version = "2.1.0",
+  version = require("./package.json").version,
   isProduction = process.env.NODE_ENV === "production"
 }) {
   if (!settings) throw new Error("createApp requires a settings store");
@@ -220,13 +220,17 @@ function createApp({
     return res.redirect(302, "/activity/");
   });
 
+  // These file names are not content-hashed, so a long max-age would pair new
+  // HTML with a stale `/app.js` after a redeploy. Revalidate instead: the ETag
+  // makes it a 304, and only the hashed `/assets/<id>` files are immutable.
   app.use(
     express.static(PUBLIC_DIR, {
       index: false,
       etag: true,
-      maxAge: "1h",
+      maxAge: 0,
       setHeaders(res) {
         res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
       }
     })
   );
@@ -520,9 +524,7 @@ function createApp({
         CARD_DETAILS: presence.details || "",
         CARD_STATE: presence.state || "",
         CARD_DESCRIPTION: lines || "A custom Discord rich presence, built in the browser.",
-        CARD_IMAGE: large,
         CARD_URL: `${origin}/c/${share.slug}`,
-        CARD_BASE: origin,
         CARD_ART_HTML: artHtml,
         OG_IMAGE_TAGS: imageTags,
         TWITTER_CARD: large ? "summary_large_image" : "summary",
@@ -547,9 +549,7 @@ function createApp({
       render("welcome.html", {
         VERSION: version,
         PRIMARY_HREF: action.href,
-        PRIMARY_LABEL: action.label,
-        SIGNED_IN: req.session?.user ? "true" : "false",
-        SETUP_REQUIRED: settings.needsSetup() ? "true" : "false"
+        PRIMARY_LABEL: action.label
       })
     );
   });
@@ -596,8 +596,7 @@ function createApp({
         VERSION: version,
         CLIENT_ID: effective.clientId,
         NEEDS_TOKEN: needsToken ? "true" : "false",
-        BOT_MANAGED: effective.managed.botToken ? "true" : "false",
-        CLIENT_MANAGED: effective.managed.clientId ? "true" : "false"
+        BOT_MANAGED: effective.managed.botToken ? "true" : "false"
       })
     );
   });
@@ -853,7 +852,11 @@ function createApp({
         CSRF: ensureCsrf(req),
         VERSION: version,
         CLIENT_ID: effective.clientId,
-        INVITE_URL: `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(effective.clientId)}&scope=bot&permissions=0`
+        // No application id means no invite link: a `client_id=` with an empty
+        // value is a dead page on discord.com, worse than no button at all.
+        INVITE_URL: effective.clientId
+          ? `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(effective.clientId)}&scope=bot&permissions=0`
+          : ""
       })
     );
   });
@@ -1276,12 +1279,16 @@ function createApp({
 
   app.get(activityApi.map((base) => `${base}/presence`), activityLimiter.middleware(), async (req, res) => {
     try {
-      const payload = await activityService.presence({ accessToken: bearer(req), origin: publicOrigin(req) });
+      const { changed, ...payload } = await activityService.presence({
+        accessToken: bearer(req),
+        origin: publicOrigin(req)
+      });
       res.setHeader("Cache-Control", "no-store");
-      broadcastState();
+      // A 5-second poll must not spam every open dashboard; only a change is news.
+      if (changed) broadcastState();
       res.json({ ok: true, ...payload });
     } catch (error) {
-      activityService.noteError(error.message);
+      if (activityService.noteError(error.message)) broadcastState();
       activityError(res, error);
     }
   });

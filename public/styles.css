@@ -175,6 +175,7 @@ body.auth {
 .fineprint {
   color: var(--muted);
   font-size: 0.78rem;
+  line-height: 1.6;
   margin: 14px 0 0;
   text-align: center;
 }
@@ -423,13 +424,14 @@ body.auth {
   font-style: normal;
 }
 
-.field small,
-.hint {
+.field small {
   color: var(--muted);
   font-size: 0.78rem;
 }
 
 .hint {
+  color: var(--muted);
+  font-size: 0.78rem;
   margin: 12px 0 0;
 }
 
@@ -728,11 +730,6 @@ select:focus {
   font-weight: 550;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.facts dd.mono {
-  font-family: var(--mono);
-  font-size: 0.78rem;
 }
 
 .notes {
@@ -1330,13 +1327,6 @@ body.site {
   border-radius: 11px;
 }
 
-.fineprint {
-  margin: 14px 0 0;
-  font-size: 0.78rem;
-  line-height: 1.6;
-  color: var(--muted);
-}
-
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1364,8 +1354,7 @@ body.site {
   color: var(--muted);
 }
 
-.how,
-.honest {
+.how {
   margin-top: clamp(40px, 6vw, 64px);
 }
 
@@ -1424,6 +1413,7 @@ body.site {
 }
 
 .honest {
+  margin-top: clamp(40px, 6vw, 64px);
   padding: 20px;
   border: 1px solid rgba(240, 178, 50, 0.28);
   background: rgba(240, 178, 50, 0.06);
@@ -1944,10 +1934,6 @@ details.card.advanced .hint:first-of-type {
 
 .picker-item:hover {
   border-color: var(--accent);
-}
-
-.hint.is-live {
-  color: var(--ok);
 }
 
 /* ------------------------------------------------------------- share card -- */
