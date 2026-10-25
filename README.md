@@ -1,7 +1,11 @@
 # StatusC0rd
 
 Set your own Discord rich presence from a web page: text, photos, buttons and a
-live timer — and a bot that keeps a card online 24/7.
+live timer — plus a bot that keeps a card online 24/7.
+
+> **The full setup is in [SETUP.md](SETUP.md).** Every step, from creating the
+> Discord application to putting the website online for free, with the catches of
+> each free host. This README is the overview.
 
 ```
 Browser ──HTTPS──▶ StatusC0rd server
@@ -51,7 +55,7 @@ resets passwords and hands them over.
 
 ---
 
-## Run it
+## Run it locally
 
 Needs Node 20+.
 
@@ -61,31 +65,25 @@ npm start          # http://localhost:3000
 ```
 
 The first visit serves a three-step wizard: dashboard key, Discord application,
-first card. Afterwards everything is configured from the dashboard.
+first card. Everything afterwards is configured from the dashboard.
 
-### Discord side, once
+> A local instance is enough to build cards, but Discord cannot fetch photos from
+> `localhost` and the Activity needs a public HTTPS URL. For a real deployment,
+> follow [SETUP.md](SETUP.md).
 
-1. <https://discord.com/developers/applications> → **New Application**.
-2. Copy the **Application ID** and the **OAuth2 client secret**; optionally reset
-   a **bot token** for the 24/7 card.
-3. **Activities → Enable Activities**.
-4. **Activities → URL Mappings** → prefix `/`, target `https://YOUR-HOST/activity/`.
-5. Invite the app to a server with the `bot applications.commands` scopes.
-6. **Activities → Publish**, then open it from the App Launcher.
+---
 
-### Free hosting
+## Deploy free
 
-**Render free tier** is the shortest path:
+The shortest path is **Render's free tier**: fork this repository, then
+<https://dashboard.render.com> → **New +** → **Blueprint** → pick the fork.
+`render.yaml` supplies Node 22, `npm ci`, `npm start` and the `/health` check.
+Set `PUBLIC_URL`, `CLIENT_ID`, `CLIENT_SECRET` and optionally `DISCORD_TOKEN` and
+`DASHBOARD_KEY` in the environment — they survive a restart, the disk does not.
 
-1. Fork this repo, then <https://dashboard.render.com> → **New +** → **Blueprint**.
-   `render.yaml` sets Node 22, `npm ci`, `npm start`, health check `/health`.
-2. Set `PUBLIC_URL`, `CLIENT_ID`, `CLIENT_SECRET` and (optionally) `DISCORD_TOKEN`
-   and `DASHBOARD_KEY` in the environment — they survive a restart, the disk does
-   not.
-3. Keep the keep-alive under 15 minutes so the free service does not spin down.
-
-Oracle Always Free and a paid VPS work the same way: any host that runs Node and
-serves HTTPS.
+Oracle Always Free and GCP's e2-micro also work, and both give you a real disk.
+[SETUP.md § 3 and Part 2](SETUP.md#3-what-is-free-and-what-is-not) has the
+step-by-step for each, the free-tier catches, and the HTTPS setup.
 
 ---
 
@@ -104,11 +102,14 @@ and the environment wins when both exist.
 | `DISCORD_TOKEN` | unset | bot token for the 24/7 card |
 | `DASHBOARD_KEY` | unset | the owner's key; setting it skips the wizard |
 | `SESSION_SECRET` | generated | cookie signing key, 32+ characters |
-| `ALLOWED_DISCORD_IDS` | unset | who may launch the app / sign in with Discord |
+| `ALLOWED_DISCORD_IDS` | unset | who may sign in with Discord / launch the app |
 | `KEEP_ALIVE` | `true` | keep this host awake (`PUBLIC_URL` required) |
 | `KEEP_ALIVE_INTERVAL_MINUTES` | `10` | ping interval, 5–60 |
 | `BOT_ENABLED` | on with a token | `false` runs without a gateway |
 | `LOG_REQUESTS` | on | one line per page/API request; `0` silences it |
+
+The complete table — including `SETUP_TOKEN`, `SETUP_REQUIRE_TOKEN`,
+`REDIRECT_URI` and `TRUST_PROXY` — is [Part 12 of SETUP.md](SETUP.md#part-12-every-setting-and-environment-variable).
 
 ---
 
@@ -131,6 +132,7 @@ and the environment wins when both exist.
 
 Everything except `GET /health`, `/assets/*`, `/activity/*` and the auth pages
 needs a session; every write also needs the CSRF token from `/api/state`.
+[Part 15 of SETUP.md](SETUP.md#part-15-appendix-every-route) lists every route.
 
 ---
 
@@ -152,6 +154,7 @@ needs a session; every write also needs the CSRF token from `/api/state`.
 ## Layout
 
 ```
+index.js            boot: env, store, bot, keep-alive, HTTP server
 app.js              routes and middleware
 src/presence.js     the card model, validation, Discord payloads
 src/settings.js     accounts, per-user cards, photos, the store

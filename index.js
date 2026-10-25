@@ -8,7 +8,7 @@ const path = require("node:path");
 
 const pkg = require("./package.json");
 const { normalizeEnv } = require("./src/env");
-const { SettingsStore } = require("./src/settings");
+const { SettingsStore, ADMIN_USER_ID } = require("./src/settings");
 const { AssetStore } = require("./src/assets");
 const { DiscordBot } = require("./src/bot");
 const { KeepAlive } = require("./src/keepalive");
@@ -45,8 +45,14 @@ async function main() {
     intervalMinutes: effective.keepAlive.intervalMinutes
   });
 
-  // Restore the last saved presence.
-  const savedPresence = settings.get().presence || DEFAULT_CONFIG;
+  /**
+   * Restore the owner's last published card for the bot.
+   *
+   * Presences are per account since v4, so reading the old single `presence`
+   * key would hand the bot the default card on every restart - the card would
+   * silently revert to "StatusC0rd" until somebody pressed Publish again.
+   */
+  const savedPresence = settings.presenceFor(ADMIN_USER_ID) || DEFAULT_CONFIG;
   if (savedPresence.enabled) bot.setPresence(savedPresence);
   else bot.clearPresence(savedPresence.status);
 

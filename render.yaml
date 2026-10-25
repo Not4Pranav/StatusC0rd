@@ -14,7 +14,10 @@ services:
       - key: NODE_ENV
         value: production
       # Everything below is optional: the setup wizard stores the same values in
-      # data/settings.json. Variables win when both are present.
+      # data/settings.json. Variables win when both are present - and they are the
+      # only thing that survives this plan, which wipes the disk on every restart.
+      # Set these four (plus DISCORD_TOKEN) and a wiped instance comes back
+      # configured. Full walkthrough: SETUP.md, Part 2.
       # Your own Discord application ID. Leave blank to enter it in the wizard.
       - key: CLIENT_ID
         sync: false
@@ -34,5 +37,9 @@ services:
         sync: false
       - key: REDIRECT_URI
         sync: false
+      # Keeps the free service awake, which is what keeps the bot online.
+      # Needs PUBLIC_URL to be set and reachable from the internet.
       - key: KEEP_ALIVE
         value: "true"
+      - key: KEEP_ALIVE_INTERVAL_MINUTES
+        value: "10"
