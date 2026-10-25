@@ -363,7 +363,9 @@ Moving to a proper server later? The `data/` folder is portable: see
 
 Everything that is not host-specific — Discord errors, wizard locks, key
 recovery, buttons, the Activity — is in the
-[troubleshooting section](setup.md#19-troubleshooting) of the guide.
+[troubleshooting section](setup.md#19-troubleshooting) of the guide, and any
+status code you hit is explained in its
+[appendix](setup.md#21-appendix-every-url-and-every-response).
 
 ---
 
