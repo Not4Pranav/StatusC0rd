@@ -19,6 +19,10 @@ const DASHBOARD_URL = document.body.dataset.dashboard || "";
 
 const POLL_MS = 5000;
 const BOOT_TIMEOUT_MS = 12000;
+// A real Discord client answers the authorize call in about a second. A plain
+// browser tab never does, and without this the page would sit on "Connecting…"
+// forever - which is exactly what happens to anyone who opens the link directly.
+const HANDSHAKE_TIMEOUT_MS = 8000;
 const TYPES = { 0: "PLAYING", 1: "STREAMING", 2: "LISTENING", 3: "WATCHING", 4: "CUSTOM STATUS", 5: "COMPETING" };
 
 const $ = (selector) => document.querySelector(selector);
@@ -45,14 +49,20 @@ const el = {
   time: $("#pv-time"),
   buttons: $("#pv-buttons"),
   buttonsNote: $("#buttons-note"),
-  dashboardLink: $("#dashboard-link")
+  dashboardLink: $("#dashboard-link"),
+  bootHint: $("#boot-hint")
 };
 
 let sdk = null;
 let accessToken = null;
 let timer = null;
+let elapsedTimer = null;
 let buttonsSupported = true;
 let startedAt = null;
+/** Set after a failure that retrying cannot fix (signed out, not linked). */
+let stopped = false;
+/** What the client is currently showing, so an unchanged card is not re-pushed. */
+let lastPushed = null;
 
 function setPill(state, text) {
   el.pill.dataset.state = state;
@@ -63,7 +73,10 @@ function show(card) {
   for (const section of [el.setup, el.preview, el.error]) section.hidden = section !== card;
 }
 
-function fail(title, message, { retry = true, dashboard = false } = {}) {
+function fail(title, message, { retry = true, dashboard = false, terminal = false } = {}) {
+  // A signed-out session or a missing link will fail identically every five
+  // seconds; say it once and stop, instead of hammering the server.
+  if (terminal) stopPolling();
   el.errorTitle.textContent = title;
   el.errorBody.textContent = message;
   el.openDashboard.hidden = !dashboard;
@@ -187,18 +200,25 @@ async function tick() {
     });
 
     if (res.status === 401) {
-      fail("Signed out", "Discord no longer accepts this session. Close and reopen the Activity.", { retry: false });
+      fail("Signed out", "Discord no longer accepts this session. Close and reopen the Activity.", {
+        retry: false,
+        terminal: true
+      });
       return;
     }
 
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      fail("Cannot load your presence", body.error || `HTTP ${res.status}`);
+      // 403 means "no account linked yet" - only the dashboard can fix that.
+      fail("Cannot load your presence", body.error || `HTTP ${res.status}`, { terminal: res.status === 403 });
       return;
     }
 
     if (!body.activity) {
-      await push(null);
+      if (lastPushed !== null) {
+        lastPushed = null;
+        await push(null);
+      }
       el.preview.hidden = true;
       el.setup.hidden = false;
       el.error.hidden = true;
@@ -211,8 +231,12 @@ async function tick() {
       return;
     }
 
+    const fingerprint = JSON.stringify(body.activity);
     try {
-      await push(body.activity);
+      if (fingerprint !== lastPushed) {
+        lastPushed = fingerprint;
+        await push(body.activity);
+      }
     } catch (error) {
       // The dashboard answered - it is Discord that would not take the card.
       fail("Discord refused the activity", error.message || "The client rejected the presence.", {
@@ -229,16 +253,27 @@ async function tick() {
 }
 
 function startPolling() {
-  if (timer) clearInterval(timer);
+  stopPolling();
+  stopped = false;
   timer = setInterval(tick, POLL_MS);
-  setInterval(drawElapsed, 1000);
+  elapsedTimer = setInterval(drawElapsed, 1000);
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") tick();
+    if (document.visibilityState === "visible" && !stopped) tick();
   });
   tick();
 }
 
+function stopPolling() {
+  stopped = true;
+  if (timer) clearInterval(timer);
+  if (elapsedTimer) clearInterval(elapsedTimer);
+  timer = null;
+  elapsedTimer = null;
+}
+
 async function boot() {
+  // Only a browser tab needs this advice; the script itself proves it loaded.
+  if (el.bootHint) el.bootHint.hidden = true;
   if (!CLIENT_ID) {
     fail(
       "No application id",
@@ -262,16 +297,24 @@ async function boot() {
 
   try {
     setPill("busy", "Connecting…");
-    const { code } = await sdk.commands.authorize({
-      client_id: CLIENT_ID,
-      response_type: "code",
-      state: "",
-      prompt: "none",
-      scope: ["identify", "rpc.activities.write"]
-    });
+    const { code } = await withTimeout(
+      sdk.commands.authorize({
+        client_id: CLIENT_ID,
+        response_type: "code",
+        state: "",
+        prompt: "none",
+        scope: ["identify", "rpc.activities.write"]
+      }),
+      HANDSHAKE_TIMEOUT_MS,
+      "Discord did not answer the sign-in request. Open this from inside the Discord app (App Launcher → StatusC0rd), not in a browser tab."
+    );
 
     accessToken = await exchangeCode(code);
-    await sdk.commands.authenticate({ access_token: accessToken });
+    await withTimeout(
+      sdk.commands.authenticate({ access_token: accessToken }),
+      HANDSHAKE_TIMEOUT_MS,
+      "Discord did not finish signing this window in. Close it and open the Activity again."
+    );
     startPolling();
   } catch (error) {
     fail("Discord refused the connection", error.message || String(error), { retry: true });

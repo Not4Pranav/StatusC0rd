@@ -19,7 +19,12 @@ const {
 } = require("./src/auth");
 const oauth = require("./src/oauth");
 const { createActivityService, ActivityError, FRAME_ANCESTORS } = require("./src/activity");
-const { ADMIN_USER_ID } = require("./src/settings");
+const {
+  ADMIN_USER_ID,
+  MIN_KEY_LENGTH,
+  MAX_USERS,
+  clampKeepAliveInterval
+} = require("./src/settings");
 const { templateList, applyTemplate } = require("./src/templates");
 
 
@@ -28,7 +33,6 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const SETUP_GRANT_TTL_MS = 30 * 60 * 1000;
-const MIN_KEY_LENGTH = 12;
 
 function isLoopback(req) {
   const address = req.socket?.remoteAddress || "";
@@ -40,7 +44,6 @@ function isLoopback(req) {
   );
 }
 
-/** Absolute origin of the current request, used for asset URLs. */
 /**
  * Proxy handling. Trusting every hop (Express' `true`) lets any direct client
  * forge `X-Forwarded-For` to dodge the login rate limiter and `X-Forwarded-Proto`
@@ -90,14 +93,20 @@ function createApp({
   if (!assets) throw new Error("createApp requires an asset store");
   if (!bot) throw new Error("createApp requires a bot instance");
 
-  const render = createRenderer(VIEWS_DIR, { cache: false });
+  // Templates never change while the process runs, so a production box caches
+  // them; development reads from disk so an edit shows up on reload.
+  const render = createRenderer(VIEWS_DIR, { cache: isProduction });
   const app = express();
   const startedAt = now();
 
   const loginLimiter = new LoginLimiter();
   const writeLimiter = new RateLimiter({ windowMs: 60_000, max: 60 });
   const setupLimiter = new RateLimiter({ windowMs: 5 * 60_000, max: 20 });
-  const activityLimiter = new RateLimiter({ windowMs: 60_000, max: 180, now });
+  // The Activity polls every 5s (12 requests/minute per person) and its traffic
+  // is proxied through Discord, so several members can arrive from one address.
+  // A per-dashboard-sized limit would throttle a whole server; this still bounds
+  // abuse without doing that.
+  const activityLimiter = new RateLimiter({ windowMs: 60_000, max: 600, now });
   const activityService = createActivityService({ settings, assets, logger, now });
 
   const streams = new Set();
@@ -286,6 +295,12 @@ function createApp({
       return asset ? assets.url(asset, origin) : "";
     };
     const activitySession = activityService.snapshot();
+    // One shared session: only its owner may see who it is or why it failed.
+    // Everyone else gets the bare connection state.
+    const sessionIsMine = admin || (userId && activitySession.userId === userId);
+    const visibleSession = sessionIsMine
+      ? activitySession
+      : { connected: activitySession.connected, lastSeenAt: activitySession.lastSeenAt, error: null };
     return {
       presence,
       activity: buildActivity(presence, { target: "profile", publicUrl: origin, resolveAsset }),
@@ -299,7 +314,7 @@ function createApp({
       draft: settings.draftFor(userId),
       templates: templateList(),
       keepAlive: keepAlive ? keepAlive.getState() : null,
-      activitySession: admin || activitySession.userId === userId ? activitySession : { ...activitySession, userId: null },
+      activitySession: visibleSession,
       meta: {
         version,
         setupComplete: !settings.needsSetup(),
@@ -515,9 +530,10 @@ function createApp({
   app.post("/api/setup/test-bot", requireSetupAccess, setupLimiter.middleware(), async (req, res) => {
     const token = String(req.body?.botToken || "").trim();
     if (!token) return res.status(400).json({ ok: false, error: "Enter the bot token first." });
+    let client = null;
     try {
       const { Client, GatewayIntentBits } = require("discord.js");
-      const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+      client = new Client({ intents: [GatewayIntentBits.Guilds] });
       const result = await Promise.race([
         client.login(token).then(() => ({
           tag: client.user?.tag,
@@ -526,22 +542,35 @@ function createApp({
         })),
         new Promise((_, reject) => setTimeout(() => reject(new Error("Discord did not answer in time.")), 15_000))
       ]);
+      return res.json({ ok: true, bot: result });
+    } catch (error) {
+      const raw = String(error.message || error);
+      // Three very different failures must not look alike: a wrong token, a
+      // server that cannot reach Discord at all, and Discord being slow.
+      const message = /token|unauthorized|401/i.test(raw)
+        ? "Discord rejected that bot token. Copy it again from Developer Portal → Bot → Reset Token."
+        : /timed? ?out|did not answer/i.test(raw)
+          ? "Discord did not answer in time. Check this server's internet access and try again."
+          : /socket|ECONN|ENOTFOUND|EAI_AGAIN|network|TLS|certificate/i.test(raw)
+            ? "This server could not reach Discord. The token was not checked - fix outbound HTTPS first."
+            : raw;
+      logger.warn?.(`[setup] bot token test failed: ${raw.slice(0, 120)}`);
+      return res.status(400).json({ ok: false, error: message });
+    } finally {
+      // A timed-out login keeps trying in the background; close it either way.
       try {
-        client.destroy();
+        client?.destroy();
       } catch {
         /* ignore */
       }
-      return res.json({ ok: true, bot: result });
-    } catch (error) {
-      const message = /token/i.test(error.message)
-        ? "Discord rejected that bot token. Copy it again from Developer Portal → Bot → Reset Token."
-        : error.message;
-      return res.status(400).json({ ok: false, error: message });
     }
   });
 
   app.post("/api/setup/complete", requireSetupAccess, setupLimiter.middleware(), async (req, res) => {
-    if (!settings.needsSetup() && req.session?.user?.role !== "admin") {
+    // One-time by design. Re-running it would rewrite the Discord application
+    // and the public URL from an endpoint that needs no CSRF token; everything
+    // it sets afterwards lives in the dashboard's Settings tab.
+    if (!settings.needsSetup()) {
       return res.status(409).json({ ok: false, error: "Setup is already complete." });
     }
 
@@ -592,7 +621,7 @@ function createApp({
     if (body.keepAlive !== undefined) {
       patch.keepAlive = {
         enabled: Boolean(body.keepAlive),
-        intervalMinutes: Number(body.keepAliveIntervalMinutes) || 10
+        intervalMinutes: clampKeepAliveInterval(body.keepAliveIntervalMinutes)
       };
     }
 
@@ -977,6 +1006,7 @@ function createApp({
 
     const draft = { ...result.value, savedAt: new Date(now()).toISOString() };
     settings.setDraft(result.userId, draft);
+    broadcastState();
     res.json({ ok: true, draft });
   });
 
@@ -1128,7 +1158,7 @@ function createApp({
     if (body.keepAlive !== undefined) {
       patch.keepAlive = {
         enabled: Boolean(body.keepAlive.enabled),
-        intervalMinutes: Math.max(5, Math.min(60, Number(body.keepAlive.intervalMinutes) || 10))
+        intervalMinutes: clampKeepAliveInterval(body.keepAlive.intervalMinutes)
       };
     }
     if (body.allowSignup !== undefined) patch.allowSignup = Boolean(body.allowSignup);
@@ -1202,7 +1232,7 @@ function createApp({
       ok: true,
       users: settings.listUsers().map(memberPayload),
       allowSignup: settings.allowSignup,
-      limit: 500
+      limit: MAX_USERS
     });
   });
 
@@ -1263,7 +1293,7 @@ function createApp({
     if (!result.removed) return res.status(404).json({ ok: false, error: "No such account." });
     // Their photos are unlisted with the account; prune() then deletes exactly
     // the files no surviving account points at (identical uploads are shared).
-    if (result.assetIds.length) assets.prune();
+    if (result.assetIds.length) assets.prune({ allowEmpty: true });
     logger.log?.(`[admin] removed account ${id}`);
     broadcastState();
     res.json({ ok: true });
@@ -1332,11 +1362,13 @@ function createApp({
   app.get(activityApi.map((base) => `${base}/status`), (req, res) => {
     const session = activityService.snapshot();
     res.setHeader("Cache-Control", "no-store");
+    // Unauthenticated: say whether the Activity machinery is live, never who
+    // used it or which account it belongs to.
     res.json({
       ok: true,
       configured: activityService.ready(),
       applicationId: activityService.config().clientId || null,
-      session
+      session: { connected: session.connected, lastSeenAt: session.lastSeenAt }
     });
   });
 

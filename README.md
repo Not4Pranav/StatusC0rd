@@ -136,6 +136,18 @@ needs a session; every write also needs the CSRF token from `/api/state`.
 
 ---
 
+## Tests
+
+```sh
+npm test           # node:test, no network, no Discord credentials
+```
+
+Covers the rules that break silently: card validation, the one-card-per-account
+store, upload sniffing and limits, key hashing, rate limiters and the keep-alive.
+`SETUP.md` Part 10 has the pre-deploy checklist.
+
+---
+
 ## Security
 
 - scrypt-hashed dashboard key and member passwords; both compared in constant
@@ -145,9 +157,12 @@ needs a session; every write also needs the CSRF token from `/api/state`.
 - Each member's card, photos and Discord link are isolated on the server: a
   member cannot write the bot's presence or read another account's data, whether
   or not the UI shows the button.
+- One owner: accounts are always members and the admin API refuses a role
+  change, so the dashboard key is the only way into the admin panel.
 - Uploads are sniffed by magic bytes, capped at 2 MB, and re-served from
   content-hashed filenames.
-- Setup cannot be claimed remotely without the one-time setup token.
+- Setup cannot be claimed remotely without the one-time setup token, and it runs
+  once — afterwards the endpoint refuses to run again.
 
 ---
 

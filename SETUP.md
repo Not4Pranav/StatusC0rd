@@ -647,6 +647,13 @@ data/
 To restore: stop the app, drop the folder back, start it. No format changes to
 worry about — the store migrates itself forward on boot.
 
+**If `settings.json` is ever damaged**, the server does not lose your photos. It
+renames the bad file to `settings.json.corrupt-<timestamp>`, starts from defaults,
+and the log says `settings.json was missing or unreadable; keeping N uploaded
+file(s) instead of pruning them`. Restore the backup file (or fix the rename) and
+restart: the photos, cards and accounts come back. Deleting that file by hand is
+what makes the photos orphans — the server will not do it for you.
+
 ---
 
 ## Part 10. Updating
@@ -658,6 +665,19 @@ worry about — the store migrates itself forward on boot.
 - **Data** survives an update. The settings file is versioned and migrates
   forward automatically; it is never migrated backwards, so keep a copy before a
   big version jump.
+
+### Checking a checkout before you deploy it
+
+```sh
+npm ci
+npm test           # unit tests: card rules, store, uploads, limits, keep-alive
+npm start          # then click through /setup once
+```
+
+`npm test` needs no network and no Discord credentials; it runs on the same Node
+20+ that serves the site. If you edited anything, run it before pushing — the
+tests cover the rules that are easy to break silently (photo validation, the one
+card per account rule, the 12-character key, the keep-alive interval).
 
 ---
 
@@ -674,9 +694,15 @@ worry about — the store migrates itself forward on boot.
 - **CSRF** tokens on every write; OAuth state is random, single-use, 10 minutes.
 - **Each account is isolated on the server**: a member cannot write the bot's
   presence or read another account's photos, whether or not the UI offers it.
+- **One owner, no promotion.** Accounts are members; the admin API refuses a role
+  change, so the dashboard key is the only way into the admin panel.
+- **The Activity never leaks who used it.** Its public status endpoint reports
+  whether the machinery is configured, never a Discord name or account id.
 - **Uploads** are sniffed by magic bytes, capped at 2 MB, and served from
   content-hashed filenames.
-- **Setup** cannot be claimed remotely without the one-time token.
+- **Setup** cannot be claimed remotely without the one-time token, and it runs
+  exactly once: afterwards `/api/setup/complete` answers `409`, so the wizard
+  cannot be replayed to rewrite your Discord application or public URL.
 - **Never share**: your client secret, your bot token, your dashboard key.
   Rotating any of them is instant — paste the new value into **Settings**.
 
@@ -702,7 +728,7 @@ managed hosts should use it.
 | `CLIENT_ID` | unset | Discord application ID (public) |
 | `CLIENT_SECRET` | unset | OAuth2 secret; enables the in-Discord app and Discord sign-in |
 | `DISCORD_TOKEN` | unset | bot token for the 24/7 text card |
-| `BOT_ENABLED` | on when a token exists | `false` runs the dashboard without a gateway |
+| `BOT_ENABLED` | on when a token exists | `false`/`0`/`no`/`off` runs the dashboard without a gateway |
 | `DASHBOARD_KEY` | unset | the owner key; setting it also marks the instance configured and skips the wizard |
 | `SESSION_SECRET` | generated | cookie signing key; 32+ characters (`openssl rand -hex 32`) |
 | `SETUP_TOKEN` | generated | a fixed setup token instead of the one in `data/setup-token.txt` |
@@ -750,7 +776,7 @@ warnings and carries on.
 | Sign-in failures | 5, then a 15-minute block |
 | Writes (publish, upload, settings, members) | 60 per minute |
 | Setup endpoints | 20 per 5 minutes |
-| In-Discord app | 180 per minute |
+| In-Discord app | 600 per minute (many people share Discord's proxy address; each poll is 12/min) |
 | Bot presence updates | serialised to ~1 per 4.5 s |
 
 Being rate-limited returns `429` with `Retry-After`; ordinary use never comes
@@ -820,9 +846,20 @@ close.
 | `DELETE` | `/api/assets/:id` | signed in | delete a photo |
 | `GET`/`POST` | `/api/settings` | **owner** | instance configuration, key rotation, sign-up switch |
 | `GET`/`POST`/`PATCH`/`DELETE` | `/api/admin/users…` | **owner** | accounts, passwords, unlinking, removal |
+| `GET` | `/api/setup/status` | anyone | what the wizard still needs |
+| `POST` | `/api/setup/verify` | wizard | checks the setup token |
+| `POST` | `/api/setup/asset` | wizard | photo upload before setup finishes |
+| `POST` | `/api/setup/test-bot` | wizard | verifies a bot token against Discord |
+| `POST` | `/api/setup/complete` | wizard | the one-time finish (then `409`) |
 | `POST` | `/activity/api/token` | Discord SDK | code → access token |
 | `GET` | `/activity/api/presence` | Activity | the card to push |
 | `GET` | `/activity/api/status` | anyone | whether the Activity is configured |
+
+The three Activity endpoints are also mounted at `/api/activity/*`, for calling
+them directly from a tool; the page itself always uses the relative
+`/activity/api/*` form so Discord's proxy mapping keeps working. `GET /activity`
+without the slash redirects to `/activity/`, and `/favicon.ico` redirects to the
+SVG.
 
 Everything except the public routes needs a session; every write also needs the
 CSRF token from `/api/state`. Errors under `/api/` are JSON:
@@ -847,6 +884,10 @@ literally a web page inside Discord writing your presence.
 
 **Can several people share one instance?**
 Yes — that is what accounts are for. One owner, up to 500 accounts, one card each.
+
+The owner is whoever holds the **dashboard key**. Accounts are always members:
+there is no promote button, and the admin API refuses a role change, so nobody
+can reach the admin panel without the key.
 Each person connects their own Discord account and publishes their own card.
 
 **Does it need a database?**

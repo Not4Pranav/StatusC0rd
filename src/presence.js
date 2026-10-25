@@ -345,6 +345,7 @@ function buildActivity(config, options = {}) {
 
 module.exports = {
   ACTIVITY_TYPES,
+  LIMITS,
   isLocalHost,
   DEFAULT_CONFIG,
   STATUSES,

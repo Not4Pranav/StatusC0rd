@@ -200,10 +200,27 @@ class AssetStore {
     return `${base}/assets/${asset.id}.${asset.ext}`;
   }
 
-  /** Remove files that no longer have metadata (e.g. after a manual edit). */
-  prune() {
+  /** How many files are on disk (used to warn before a destructive prune). */
+  countFiles() {
+    try {
+      return fs.existsSync(this.dir) ? fs.readdirSync(this.dir).length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Remove files that no longer have metadata (e.g. after a manual edit).
+   *
+   * Deliberately refuses the one case where "no metadata" means "the metadata
+   * was lost" rather than "the owner removed it": an empty asset list while
+   * files exist on disk. Callers that really mean to wipe everything pass
+   * `{ allowEmpty: true }`.
+   */
+  prune({ allowEmpty = false } = {}) {
     try {
       if (!fs.existsSync(this.dir)) return 0;
+      if (!allowEmpty && this.settings.listAssets().length === 0 && this.countFiles() > 0) return 0;
       let removed = 0;
       for (const file of fs.readdirSync(this.dir)) {
         const id = file.split(".")[0];
@@ -219,4 +236,4 @@ class AssetStore {
   }
 }
 
-module.exports = { AssetStore };
+module.exports = { AssetStore, parseUpload };

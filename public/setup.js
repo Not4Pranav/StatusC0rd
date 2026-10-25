@@ -284,7 +284,9 @@
           state: $("#presence-state").value,
           largeImage: state.imageRefs.large || state.images.large || "",
           smallImage: state.imageRefs.small || state.images.small || "",
-          targets: { bot: Boolean(state.botToken), profile: true }
+          // A bot token can come from the environment, where this page cannot
+          // see it - `botManaged` is the server telling us it is there.
+          targets: { bot: botManaged || Boolean(state.botToken), profile: true }
         }
       };
       const result = await api("/api/setup/complete", "POST", payload);
