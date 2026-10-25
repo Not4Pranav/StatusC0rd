@@ -44,10 +44,14 @@ class KeepAlive {
     const shouldRun = Boolean(enabled && publicUrl);
     const intervalChanged = nextInterval !== this.intervalMinutes;
 
+    const targetChanged = (publicUrl || null) !== this.state.target;
     this.intervalMinutes = nextInterval;
     this.state.intervalMinutes = this.intervalMinutes;
     this.state.target = publicUrl || null;
     this.state.enabled = shouldRun;
+    // A new address deserves an immediate answer: waiting out a full interval
+    // makes a typo look like a working setup for ten minutes.
+    if (targetChanged) this.state.lastPingAt = null;
 
     if (!shouldRun) {
       this.stopTimer();

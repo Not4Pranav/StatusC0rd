@@ -168,7 +168,10 @@ function requireCsrf(req, res, next) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
   const expected = req.session?.csrf;
   if (!expected) return deny(req, res, "Invalid or missing CSRF token. Reload the page and try again.", 403);
-  const supplied = req.get("x-csrf-token") || req.body?._csrf || req.query?._csrf;
+  // Header or form body only. A token in the query string leaks into server
+  // logs, browser history and Referer headers, which is exactly what a CSRF
+  // token must never do.
+  const supplied = req.get("x-csrf-token") || req.body?._csrf;
   if (typeof supplied === "string" && safeEqual(supplied, expected)) return next();
   return deny(req, res, "Invalid or missing CSRF token. Reload the page and try again.", 403);
 }

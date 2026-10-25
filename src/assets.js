@@ -16,8 +16,13 @@ const { ADMIN_USER_ID } = require("./settings");
  */
 
 const MAX_BYTES = 2 * 1024 * 1024; // 2 MB after decoding
+/** What one account may keep, so nobody can fill the disk on a free plan. */
+const MAX_PHOTOS_PER_ACCOUNT = 60;
+const MAX_BYTES_PER_ACCOUNT = 30 * 1024 * 1024; // 30 MB
+/** And a ceiling for the whole instance, because free plans have small disks. */
+const MAX_TOTAL_BYTES = 500 * 1024 * 1024; // 500 MB
 const ALLOWED = {
-  "image/png": { ext: "png", magic: [[0x89, 0x50, 0x4e, 0x47]] },
+  "image/png": { ext: "png", magic: [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]] },
   "image/jpeg": { ext: "jpg", magic: [[0xff, 0xd8, 0xff]] },
   "image/webp": { ext: "webp", magic: [[0x52, 0x49, 0x46, 0x46]] },
   "image/gif": { ext: "gif", magic: [[0x47, 0x49, 0x46, 0x38]] }
@@ -51,6 +56,13 @@ function readDimensions(buffer, mime) {
           width: buffer.readUInt16LE(26) & 0x3fff,
           height: buffer.readUInt16LE(28) & 0x3fff
         };
+      }
+      if (format === "VP8L") {
+        // Lossless: 14 bits of width-1 then 14 bits of height-1, little endian.
+        if (buffer.length > 24 && buffer[20] === 0x2f) {
+          const bits = buffer.readUInt32LE(21);
+          return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+        }
       }
     }
     if (mime === "image/jpeg") {
@@ -111,10 +123,15 @@ function parseUpload(dataUrl) {
   }
 
   const { width, height } = readDimensions(buffer, mime);
-  if (width !== null && (width < 16 || height < 16)) {
+  if (width === null || height === null) {
+    // Every accepted format carries its size in a header we parse. No size means
+    // no way to enforce the limits above, so say so instead of letting it past.
+    return { ok: false, error: "That image's size could not be read. Re-save it as a PNG or JPEG and try again." };
+  }
+  if (width < 16 || height < 16) {
     return { ok: false, error: "Images must be at least 16×16 pixels." };
   }
-  if (width !== null && (width > 4096 || height > 4096)) {
+  if (width > 4096 || height > 4096) {
     return { ok: false, error: "Images must be at most 4096×4096 pixels." };
   }
 
@@ -149,8 +166,31 @@ class AssetStore {
     if (!parsed.ok) return parsed;
 
     const id = crypto.createHash("sha256").update(parsed.buffer).digest("hex").slice(0, 20);
-    const existing = this.settings.listAssets(owner).find((asset) => asset.id === id);
+    const held = this.settings.listAssets(owner);
+    const existing = held.find((asset) => asset.id === id);
     if (existing) return { ok: true, asset: existing, duplicate: true };
+
+    // A free plan has a small disk, and photos are the only thing that grows.
+    if (held.length >= MAX_PHOTOS_PER_ACCOUNT) {
+      return {
+        ok: false,
+        error: `This account already holds ${MAX_PHOTOS_PER_ACCOUNT} photos. Delete one before uploading another.`
+      };
+    }
+    const total = this.settings.listAssets().reduce((sum, asset) => sum + (Number(asset.bytes) || 0), 0);
+    if (total + parsed.buffer.length > MAX_TOTAL_BYTES) {
+      return {
+        ok: false,
+        error: `This instance is at its ${Math.round(MAX_TOTAL_BYTES / 1024 / 1024)} MB photo budget. Delete a photo before uploading another.`
+      };
+    }
+    const bytes = held.reduce((sum, asset) => sum + (Number(asset.bytes) || 0), 0);
+    if (bytes + parsed.buffer.length > MAX_BYTES_PER_ACCOUNT) {
+      return {
+        ok: false,
+        error: `This account is at its ${Math.round(MAX_BYTES_PER_ACCOUNT / 1024 / 1024)} MB photo budget. Delete a photo before uploading another.`
+      };
+    }
 
     fs.mkdirSync(this.dir, { recursive: true });
     const file = path.join(this.dir, `${id}.${parsed.ext}`);
@@ -236,4 +276,10 @@ class AssetStore {
   }
 }
 
-module.exports = { AssetStore, parseUpload };
+module.exports = {
+  AssetStore,
+  parseUpload,
+  MAX_PHOTOS_PER_ACCOUNT,
+  MAX_BYTES_PER_ACCOUNT,
+  MAX_TOTAL_BYTES
+};

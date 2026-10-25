@@ -291,6 +291,7 @@ function createApp({
     const presence = settings.presenceFor(userId) || DEFAULT_CONFIG;
     const origin = publicOrigin(req);
     const resolveAsset = (id) => {
+      if (!settings.ownsAsset(id, userId)) return "";
       const asset = settings.findAsset(id);
       return asset ? assets.url(asset, origin) : "";
     };
@@ -630,7 +631,8 @@ function createApp({
     if (body.presence && typeof body.presence === "object") {
       const result = sanitizePresence(body.presence, {
         current: settings.presenceFor(ADMIN_USER_ID) || DEFAULT_CONFIG,
-        now: now()
+        now: now(),
+        ownsAsset: (id) => settings.ownsAsset(id, ADMIN_USER_ID)
       });
       if (!result.ok) {
         return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
@@ -956,7 +958,12 @@ function createApp({
     const payload = isAdminSession(req)
       ? body
       : { ...(body || {}), targets: { bot: false, profile: true } };
-    const result = sanitizePresence(payload, { current, now: now() });
+    const result = sanitizePresence(payload, {
+      current,
+      now: now(),
+      // A card may only point at photos its own account uploaded.
+      ownsAsset: (id) => settings.ownsAsset(id, userId)
+    });
     return { ...result, userId };
   }
 
@@ -970,6 +977,7 @@ function createApp({
     const presence = settings.presenceFor(userId) || DEFAULT_CONFIG;
     const origin = publicOrigin(req);
     const resolveAsset = (id) => {
+      if (!settings.ownsAsset(id, userId)) return "";
       const asset = settings.findAsset(id);
       return asset ? assets.url(asset, origin) : "";
     };
@@ -1110,6 +1118,8 @@ function createApp({
       return res.status(404).json({ ok: false, error: "Image not found." });
     }
     assets.remove(id, ownerId(req));
+    // The photo may still be referenced by the card that is on Discord.
+    settings.clearAssetReferences(id, ownerId(req));
     broadcastState();
     res.json({ ok: true });
   });

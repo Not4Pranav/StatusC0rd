@@ -153,14 +153,19 @@ store, upload sniffing and limits, key hashing, rate limiters and the keep-alive
 - scrypt-hashed dashboard key and member passwords; both compared in constant
   time, five failures per IP locks sign-in for 15 minutes.
 - Signed `HttpOnly`, `SameSite=Lax` cookies, `Secure` in production; CSRF
-  double-submit on every write; OAuth state is random, single-use, 10 minutes.
+  double-submit on every write (header or form field — never the query string);
+  OAuth state is random, single-use, 10 minutes.
 - Each member's card, photos and Discord link are isolated on the server: a
   member cannot write the bot's presence or read another account's data, whether
   or not the UI shows the button.
 - One owner: accounts are always members and the admin API refuses a role
   change, so the dashboard key is the only way into the admin panel.
 - Uploads are sniffed by magic bytes, capped at 2 MB, and re-served from
-  content-hashed filenames.
+  content-hashed filenames. Every format's true dimensions are read before the
+  file is stored (16×16 to 4096×4096), and each account may keep 60 photos /
+  30 MB with a 500 MB ceiling for the instance.
+- A card may only reference photos its own account uploaded, and deleting a
+  photo clears it from the card that used it.
 - Setup cannot be claimed remotely without the one-time setup token, and it runs
   once — afterwards the endpoint refuses to run again.
 
