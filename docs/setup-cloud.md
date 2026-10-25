@@ -417,12 +417,14 @@ identical to §7–§8.
 | Photos show as a letter | `PUBLIC_URL` is not the `https://` origin | fix `/etc/statusc0rd.env`, restart, re-publish |
 | Dashboard loads over `http://` and the session drops | HSTS/`Secure` cookie plus a proxy mismatch | always use the `https://` hostname |
 | Everything resets after a redeploy | `data/` is not on a volume | mount `/app/data` (§11, §12) |
-| `EADDRINUSE` | another copy is running | `systemctl stop statusc0rd`, `ps aux \| grep node` |
+| `EADDRINUSE` | another copy is running | `systemctl stop statusc0rd`, then `pgrep -af node` |
 | Out of memory on a 512 MB server | too small for Node plus a build | use 1 GB or add swap |
 | Activity opens blank | URL mapping wrong | `https://rpc.example.com/activity/` with the trailing slash |
 
 Host-independent problems — Discord, buttons, the Activity, key recovery — are in
-the [troubleshooting section](setup.md#19-troubleshooting) of the guide.
+the [troubleshooting section](setup.md#19-troubleshooting) of the guide, and every
+route and status code is in its
+[appendix](setup.md#21-appendix-every-url-and-every-response).
 
 ---
 

@@ -43,7 +43,12 @@ HTTPS, keeping it running, updating and backing up *that* kind of host.
 [update and back up](#14-step-10-updates-and-backups) ·
 [security](#15-step-11-security-and-rotation) ·
 [environment variables](#16-environment-variables) ·
-[troubleshooting](#19-troubleshooting)
+[limits](#18-limits-worth-knowing) ·
+[troubleshooting](#19-troubleshooting) ·
+[the checklist](#20-all-in-one-checklist)
+
+**Reference:** [every URL and every response](#21-appendix-every-url-and-every-response) —
+the full page and JSON surface, status codes, error shapes and rate limits.
 
 ---
 
@@ -107,9 +112,11 @@ Browser ──HTTPS──▶ your host (this repo, Node 20+)
                      └─▶ companion (opt.)    → same card without the Activity
 ```
 
-- `index.js` boots the settings store, the bot, the keep-alive and the HTTP server.
+- `index.js` boots the settings store, the bot, the keep-alive and the HTTP server,
+  then prints the banner (and the setup token on a first run).
 - `app.js` is the whole HTTP surface: views, auth, presence CRUD, photo upload,
-  pairings, launcher downloads, the generated companion script.
+  pairings, launcher downloads, the generated companion script. §21 lists every
+  route it mounts.
 - `src/activity.js` is the server half of the in-Discord app: it exchanges the
   Activity's OAuth2 code (the client secret never reaches the browser), verifies
   who is asking, and shapes the saved presence into a `setActivity` payload.
@@ -120,6 +127,31 @@ Browser ──HTTPS──▶ your host (this repo, Node 20+)
   the same bytes.
 - `data/` holds `settings.json` (mode `0600`), `assets/` and `setup-token.txt`.
   `DATA_DIR` moves it. **That directory is the deployment's state.**
+
+Every file, so nothing is a mystery later:
+
+| Path | What it does |
+| --- | --- |
+| `index.js` | boot, banner, graceful shutdown (10 s budget) |
+| `app.js` | Express app: pages, session, API, companion endpoints, error pages |
+| `src/settings.js` | `settings.json` store, scrypt dashboard key, assets list, device pairings, env overrides |
+| `src/env.js` | reads `process.env`, warns about malformed values, never throws |
+| `src/auth.js` | constant-time compare, CSRF, `RateLimiter`, `LoginLimiter`, client key |
+| `src/presence.js` | the presence model, every validation rule, per-target `buildActivity()` |
+| `src/bot.js` | gateway connection, reconnect backoff, rate-limited presence queue |
+| `src/keepalive.js` | the self-ping loop, 5-minute floor, 10 s timeout |
+| `src/assets.js` | magic-byte sniffing, size and dimension limits, hashed files, prune |
+| `src/activity.js` | the in-Discord app's server half: code exchange, identity, payload |
+| `src/oauth.js` | Discord OAuth2 (`identify`) with request timeouts |
+| `src/templates.js` | the ten starting points and how a template merges |
+| `src/guide.js` | finds and renders `docs/*.md`; the `/guide` tab strip |
+| `src/markdown.js` | the Markdown subset the docs are written in |
+| `src/views.js` | auto-escaping `{{TOKEN}}` renderer, `escapeHtml` |
+| `src/zip.js` | a minimal stored-zip writer for the macOS launcher |
+| `src/companion/agent.js` | the companion: IPC, polling, heartbeat, shutdown |
+| `views/*.html` | setup, dashboard, login, welcome, guide, card, activity, error |
+| `public/*` | styles, dashboard JS, setup JS, login JS, upload helper, activity app |
+| `docs/*.md` | these four documents; the site serves them verbatim |
 
 There is no build step: `npm ci` once, `npm start` after that. To change what
 Discord shows, edit `src/presence.js` (validation and limits) or a file in
@@ -344,23 +376,30 @@ recover it; see §15.1.
   - **Allow these Discord accounts to sign in without the key** — the optional
     allowlist from §4.7, plus the redirect URL you have to add in the portal.
 - **Skip for now** is a real option: every value can be added later under
-  **Settings**.
+  **Settings**. It discards whatever is typed on this step, so use it only when
+  you really want to leave both blank.
 
 If a value is supplied by the environment (`CLIENT_ID`, `DISCORD_TOKEN`, …) the
 matching field is disabled and shows the managed value — the environment always
 wins.
 
+**Test bot connection** logs a client in with the token you typed and prints the
+account name on success; on failure it names the reason ("Discord rejected that
+bot token" after a timeout or a 401). It changes nothing — the token is only
+stored when you press **Continue** and **Finish setup**.
+
 ### 6.4 Step 3 — Presence
 
 - **Activity name** (128 chars) — what Discord prints after "Playing".
-- **Type** — Playing, Listening, Watching, Competing. (Streaming needs a Twitch or
-  YouTube link and lives in the dashboard's full editor; Custom status is
-  text-only.)
+- **Type** — Playing, Listening, Watching, Competing here; the dashboard editor
+  adds Streaming (needs a Twitch or YouTube link) and Custom status (name only).
 - **Status** — Online, Idle, Do not disturb, Invisible.
 - **Details (line 1)** and **State (line 2)** — 128 chars each.
-- **Large / small photo** — click the slot, pick a file, or drag one onto it.
-  Photos are cropped to a square and downscaled in your browser before upload.
-- **Keep this server awake** — the 24/7 keep-alive (§10). Leave it ticked.
+- **Large / small photo** — click the slot and pick a file. (Drag-and-drop and
+  paste work in the dashboard editor, not in the wizard.) Photos are cropped to a
+  square and downscaled in your browser before upload.
+- **Keep this server awake** — the 24/7 keep-alive (§10). Leave it ticked; the
+  wizard sets a 10-minute interval, changeable later under **Bot & 24/7**.
 - **Public URL of this dashboard** — pre-filled with the address you are using.
   It must be the public `https://` origin; it is the base for photo URLs and the
   keep-alive target.
@@ -368,6 +407,11 @@ wins.
 Press **Finish setup**. StatusC0rd saves the admin key, the Discord values, the
 presence and the keep-alive settings, signs you in, and drops you on
 **My profile** with the **Open in Discord** button in front of you.
+
+> **The first presence targets itself.** *My own profile* is always on; *The bot*
+> is ticked only if you gave a bot token, so a token-less setup never leaves a
+> "bot" target waiting on a bot that does not exist. One checkbox on the
+> **Presence** tab changes both, and so does `/api/presence`.
 
 > **If `DASHBOARD_KEY` is set in the environment, this wizard never runs** — the
 > instance counts as configured from the first boot. That is the right choice for
@@ -393,19 +437,30 @@ after it are the walkthrough.
 | `/c/<slug>` | anyone holding the link | the optional public share card (§11) |
 | `/activity/` | Discord, in its iframe | the in-Discord app that puts the card on your profile (§9) |
 | `/health` | anyone | `{"status":"ok"}` and uptime, and nothing else |
+| `/assets/<hash>.<ext>` | anyone | an uploaded photo, `Access-Control-Allow-Origin: *`, cached for a year |
+| `/activity` | anyone | a 302 to `/activity/` — the trailing slash matters to Discord's proxy |
+| `/favicon.ico` | anyone | a 302 to `/favicon.svg` |
+| anything else | anyone | the 404 page (`/api/*` answers a JSON 404 instead) |
 
 Before setup, every path redirects to `/setup`. After it, `/` needs a session and
 sends you to `/login`; a session lasts 8 hours and then you sign in with the key
 again. Dashboard pages are sent `no-store`, so a shared browser never keeps a
 stale copy of your card.
 
+The in-Discord app's JSON lives at `/activity/api/*` and is mounted a second time
+at `/api/activity/*`; both answer the same thing, so the page works whether
+Discord proxies it or you open it directly. §21 has every route.
+
 ### 7.2 The top bar
 
 - **Brand and version** — the version this instance is running, the same number
   `/api/health` reports.
-- **Bot pill** — *Bot online*, *Connecting…*, *Reconnecting…* (automatic backoff
-  after a network blip), *Bot offline* (a bad token or a sleeping host) or *No
-  bot*. Hover it for the reason.
+- **Bot pill** — *Bot online*, *Connecting…* (first connection after a boot or a
+  new token), *Reconnecting…* (automatic backoff after a network blip), *Bot
+  offline* (a bad token or a sleeping host), *Bot idle* (a token is configured but
+  the gateway is not connected yet), *Bot stopped* (the process is shutting down)
+  or *No bot* (no token at all). Hover it for the reason; the **Bot & 24/7** tab
+  repeats it with the last presence update and uptime.
 - **Profile pill** — *Profile live (Discord)* while the in-Discord app is pushing,
   *Profile live* while a paired companion is, *Profile idle* when a device is
   paired but silent, *Profile not live* when neither.
@@ -418,7 +473,7 @@ stale copy of your card.
 | Tab | What it is for | Documented in |
 | --- | --- | --- |
 | **Presence** | the editor and the live preview: every field that reaches Discord | §8 |
-| **Photos** | the image library — reuse, inspect or delete what you uploaded | §8.6 |
+| **Photos** | the image library — reuse, inspect or delete what you uploaded | §8.7 |
 | **My profile** | the in-Discord app, the share card and the optional companion | §9, §11, §12 |
 | **Bot & 24/7** | the bot's connection, its invite link and the keep-alive | §10 |
 | **Settings** | application ID, client secret, bot token, allowlist, dashboard key | §7.4 |
@@ -444,6 +499,18 @@ stale copy of your card.
 Choose a new key of 12 or more characters; the current one is required. The
 session you are using survives the change, other devices sign in again. Lost the
 old key? §15.1.
+
+Three details that surprise people:
+
+- **The bot token field is write-only.** It shows `Current token MTA…AbCd` (first
+  six and last four characters) and accepts blank to keep what is stored. A bad
+  token is replaced by pasting the new one, never by clearing the field.
+- **The allowlist is capped at 50 IDs** and anything that is not 5–25 digits is
+  silently dropped, so a typo can never lock you out by accident.
+- **`DASHBOARD_KEY` in the environment wins over this form.** The form still
+  accepts a new key, but sign-in keeps checking the environment value; change the
+  variable instead. The other environment-managed values — public URL, client ID,
+  client secret, bot token, allowlist — appear disabled in their forms.
 
 Any value supplied by the environment shows up in the form but is disabled,
 because the environment always wins.
@@ -484,10 +551,13 @@ Everything that reaches Discord is edited on one screen: the **Presence** tab.
 
 ### 8.1 Start from a template (optional)
 
-Ten starting points: **Focus mode, Listening, Building, Watching, Gaming,
-Studying, Reading, On a break, In the studio, Ranked**. Clicking one fills the
-form; the photo you already picked and your target choices survive. Nothing is
-published by clicking a template — you still press **Publish**.
+Ten starting points under **Start from a template**: **Focus mode, Listening,
+Building, Watching, Gaming, Studying, Reading, On a break, In the studio,
+Ranked**. Clicking a template chip fills the form and toasts *“…” applied —
+publish when you like it*; the photo you already picked and your target choices
+survive. Nothing is published by clicking a template — you still press
+**Publish**. (The chips are served by `/api/templates`, so a template can also
+be applied over the API.)
 
 ### 8.2 The fields, with their real limits
 
@@ -503,12 +573,27 @@ published by clicking a template — you still press **Publish**.
 | Small image | same as large | overlaid in the corner |
 | Small hover text | 128 chars | |
 | Buttons | at most **2**; label 32 chars; URL must be `https://` | Discord renders them under the card |
-| Timer | on/off plus "restart from now" | counts up from the moment you publish |
+| Timer | **Elapsed timer** on/off plus **Restart from now** | counts up from publication; leave *Restart from now* off to keep the original start time |
+
+Two rules the form enforces before it sends anything:
+
+- **A button without a label and an `https://` link is dropped**, and if that was
+  the only button you get *"Buttons need a label and an https:// link."* rather
+  than a silently empty card.
+- **Custom status (type 4) hides Details, State, the timer and the buttons**, because
+  Discord renders only one line for it: the activity name is used as the state
+  text. That is why an empty "State" on a custom status is not a bug.
+
+Image fields accept three things: a photo you uploaded (`asset:<hash>`), an
+`https://` URL, or a Discord asset key (letters, numbers, `_` and `-`). `http://`
+image URLs are rejected — Discord will not fetch them.
 
 ### 8.3 Photos
 
 - Use **drag and drop**, **paste** (`Ctrl`/`Cmd` + `V`), the file picker, or
-  **Reuse** to pull one out of your library.
+  **Reuse** to pull one out of your library. Each slot has **Remove** next to it,
+  and a collapsed **Use an image URL instead** box takes a plain `https://` link
+  (handy for an image you already host).
 - Accepted: PNG, JPEG, WebP, animated GIF. Minimum 16×16, maximum 4096×4096,
   2 MB per image after decoding. Animated GIFs are uploaded untouched, so they
   must be under 2 MB *before* upload.
@@ -521,18 +606,42 @@ published by clicking a template — you still press **Publish**.
   Discord. If the photo shows as a letter or a silhouette, the public URL is the
   usual suspect.
 
-### 8.4 Draft, publish, discard
+### 8.4 Draft, publish, discard, clear
+
+Four buttons sit under the form, and each one has exactly one job:
+
+| Button | What it does |
+| --- | --- |
+| **Publish** | validates, saves and applies. The bot card changes immediately and the in-Discord app picks it up within about 5 seconds |
+| **Discard draft** | throws the staged edits away and puts the live card back in the form |
+| **Clear** | asks once, then switches the presence off everywhere — the bot card goes away and the Activity reports "no presence is live" |
+| **Put it on my profile** | jumps to the **My profile** tab; it does not publish |
 
 - Every edit is staged and autosaved as a **draft** — on any device — and nothing
   reaches Discord until you press **Publish**.
-- **Publish** validates, saves and applies: the bot card updates immediately and
-  the in-Discord app picks the new card up within about 5 seconds.
-- **Discard draft** throws the staged edits away and puts the live card back in
-  the form.
+- The tag next to **Live preview** says where the card currently is: **Saved**
+  (stored, bot not connected), **On bot**, **Live** (a companion is reporting it)
+  or **Cleared**.
+- Validation errors appear above the form and the first one is also the reason the
+  draft hint shows; Discord's own refusal arrives as a toast.
 - Closing the tab with a save in flight asks for confirmation; everything else is
   already saved.
 
-### 8.5 Where it shows
+### 8.5 The preview tools
+
+The **Live preview** card is the same markup Discord draws, so it can be checked
+in the two shapes that actually differ:
+
+- **Dark / Light** — Discord has both themes, and the small text on a photo reads
+  very differently on each.
+- **Compact** — the narrow form of the card Discord uses in some views; buttons
+  and the timer are the first things to disappear there.
+
+Both choices are remembered in the browser only (nothing is stored on the server,
+and nothing about them reaches Discord). The elapsed timer in the preview ticks
+live from the moment you publish.
+
+### 8.6 Where it shows
 
 Two checkboxes under **Show this presence on**:
 
@@ -543,7 +652,7 @@ Pick one or both; at least one is required. Un-ticking *My own profile* is why a
 Activity can legitimately show "no presence" while the dashboard looks fine — the
 Activity names that reason explicitly.
 
-### 8.6 The Photos tab
+### 8.7 The Photos tab
 
 Uploads are not thrown away when you publish: every image you ever uploaded is
 in the library, and the **Photos** tab is where you manage it.
@@ -560,6 +669,12 @@ Identical files are de-duplicated by content hash, so re-uploading the same phot
 does not fill the disk. Uploads are capped at 2 MB and 4096×4096; the browser
 already shrinks ordinary phone photos well below that.
 
+The library is the list in `settings.json`, and the files live in `data/assets/`.
+At boot StatusC0rd deletes any file in that folder that is not in the list, so a
+half-finished upload or a hand-copied file cannot linger. Deleting a photo in the
+dashboard removes both the entry and the file, and any card that used it falls
+back to the letter — re-pick or re-upload it and publish again.
+
 If the tab shows a yellow **"This dashboard is not on HTTPS"** warning, Discord
 will refuse to load your images — fix `PUBLIC_URL` first (§16), then publish
 again.
@@ -568,7 +683,8 @@ again.
 
 ## 9. Step 5: on your own profile, no install
 
-1. **My profile** tab → **Open in Discord**. That link is
+1. **My profile** tab → **Open in Discord** (with **Copy link** beside it, if you
+   would rather paste the URL somewhere). That link is
    `https://discord.com/activities/<your-app-id>`; the same app is in Discord's
    **App Launcher** inside a voice channel, and as `/launch` if you installed the
    commands scope.
@@ -594,6 +710,23 @@ again.
 | Not on `ALLOWED_DISCORD_IDS` | `403 not_allowed`, message in the panel |
 | Discord rejects the payload | "Discord refused the activity" with Discord's reason |
 
+**What the panel itself does**
+
+- It polls the dashboard every 5 seconds (and immediately when you switch back to
+  it), so an edit made in the browser is on your profile without a reload.
+- Errors have their own cards with a **Try again** button: *Open this inside
+  Discord* (the page was opened in a browser instead), *Discord refused the
+  connection* (the authorisation prompt was declined or timed out), *Could not
+  reach the dashboard* (the server is down or the URL mapping is wrong) and
+  *Discord refused the activity* (Discord rejected one field — the message says
+  which).
+- *No application id* adds an **Open the dashboard** button that jumps straight to
+  **Settings → Application & bot**.
+- The authorisation prompt appears once per install; after that the panel opens
+  straight into the card. Everything it needs is a browser session inside
+  Discord — no token, no file and no account access beyond `identify` and
+  `rpc.activities.write`.
+
 The bot card (§10) is the part that stays after you close the panel.
 
 ---
@@ -618,9 +751,10 @@ things make that true:
 
 **Turning it on** — **Bot & 24/7 → 24/7 online**:
 
-- **Keep this server awake** (ticked by default).
-- **Interval** — 5 to 60 minutes, default 10. Keep it under the host's idle
-  timeout (Render: 15 minutes).
+- **Keep the service awake** (ticked by default; the wizard calls the same
+  checkbox *Keep this server awake*).
+- **Ping every (minutes)** — 5 to 60, default 10, clamped by the server. Keep it
+  under the host's idle timeout (Render: 15 minutes).
 
 The card shows **Active** with "Last ping … · N pings" once a ping succeeds. If it
 says **Waiting**, the URL is unreachable from the server. If it says **Paused**,
@@ -629,13 +763,19 @@ the URL is missing.
 Environment equivalents: `KEEP_ALIVE=true|false`,
 `KEEP_ALIVE_INTERVAL_MINUTES=10`. Keep-alive only starts when `PUBLIC_URL` is set.
 
-**The bot status panel** shows connection state, the bot account, the last
-presence update and uptime. The expected states are *Bot online*, *Connecting…*,
+**The bot status panel** shows connection state, the bot account (**Account**),
+**Last presence update** and **Uptime**. Below it the **Invite link** field holds
+the ready-made authorise URL with a **Copy** button; it is hidden, with a hint
+instead, until an application ID is configured. The expected states are *Bot online*, *Connecting…*,
 *Reconnecting…* (network blip, automatic exponential backoff), *Bot offline*
 (bad token or a sleeping host) and *No bot*.
 
 > A bot card can only carry **name, type and state**. Discord strips images and
 > buttons for bot accounts; that is a platform limit, not a bug here.
+>
+> It also means the **State (line 2)** field is the text people read on the bot
+> card — **Details (line 1)** exists only on your own profile. Put the sentence
+> you want on the bot card in *State* and leave *Details* for the richer card.
 
 ---
 
@@ -650,8 +790,25 @@ unfurls with its photo anywhere.
 - The page carries the presence fields and nothing else: no email, no token, no
   session, no dashboard link.
 - Slugs are random 10-character lowercase, and only a matching slug resolves —
-  anything else is a 404.
+  anything else is a 404. The API also takes a slug you choose (6–32 letters and
+  numbers) if you want `/c/myname`; the dashboard always generates one.
 - The card is regenerated from the live presence, so it updates when you publish.
+
+**What the page actually contains** — it is one HTML response, no JavaScript, so
+crawlers and phone cameras get the whole thing:
+
+| Tag | Value |
+| --- | --- |
+| `<title>` | `<activity name> · StatusC0rd` |
+| `og:type` / `og:site_name` | `website` / `StatusC0rd` |
+| `og:url` + `link rel=canonical` | `https://YOUR-HOST/c/<slug>` |
+| `og:title` / `og:description` | the activity name / details · state, or a fallback line if both are empty |
+| `og:image` + `og:image:alt` + `twitter:image` | the large photo and its hover text — **omitted entirely** when there is no photo, rather than emitted empty |
+| `twitter:card` | `summary_large_image` with a photo, `summary` without |
+
+The response is `no-store`, so a rotated slug dies at the CDN too, and it is
+served `X-Robots-Tag: all` — the link is meant to be shared, and the slug is the
+only secret.
 
 ---
 
@@ -692,6 +849,37 @@ Notes that matter:
 - Tokens are stored hashed; nothing about your Discord account is stored.
 - Discord RPC does not support the *Streaming* or *Custom status* types; the
   companion renders those as **Playing** instead of failing.
+- **Ten devices maximum** per instance. The pairing list shows each one's name,
+  when it was created and when it last checked in; removing one invalidates its
+  token immediately, and a running companion notices within a second and exits.
+
+**What it does while it runs**
+
+| | |
+| --- | --- |
+| Poll interval | 5 seconds; the dashboard's config endpoint answers `304 Not Modified` when nothing changed, so the poll costs almost nothing |
+| Heartbeat | every 60 seconds, which is what turns the dashboard's profile pill green |
+| Reconnect | 2 seconds, doubling to 30, whenever Discord restarts or the socket drops |
+| On `Ctrl`+`C` | clears the presence first, then exits — no stale card is left behind |
+| If the device was unpaired | prints "This computer was unpaired in the dashboard" and exits with code `2` |
+| Socket lookup | Windows named pipes `\\.\pipe\discord-ipc-0…9`; on Linux/macOS `$XDG_RUNTIME_DIR`, `$TMPDIR`, `/tmp` and the Flatpak/Snap sandbox equivalents (`app/com.discordapp.Discord`, `snap.discord`, `.flatpak/dev.vencord.Vesktop`) |
+
+**Running it by hand** (for a server, a script or a diagnosis). The generated
+script carries its config inline; the raw script reads these instead:
+
+```sh
+STATUSC0RD_SERVER=https://YOUR-HOST \
+STATUSC0RD_TOKEN=<pairing token> \
+STATUSC0RD_APP_ID=<application id> \
+STATUSC0RD_LABEL="My computer" node statusc0rd-companion.js
+
+node statusc0rd-companion.js --dry-run        # print what the server would send
+node statusc0rd-companion.js --print-config   # print the config it was given
+```
+
+`--dry-run` fetches `/api/companion/config` and prints the payload without
+talking to Discord — the fastest way to tell a dashboard problem from a Discord
+one.
 
 ---
 
@@ -702,8 +890,8 @@ mistake.
 
 | # | Check | Expected |
 | --- | --- | --- |
-| 1 | `https://YOUR-HOST/health` | `{"status":"ok","uptimeSeconds":…}` (nothing else — that is deliberate) |
-| 2 | Sign in, then `https://YOUR-HOST/api/health` | `status: ok`, `storage: ok`, `setup: complete`, `version` |
+| 1 | `https://YOUR-HOST/health` | `{"status":"ok","uptimeSeconds":…,"timestamp":…}` (nothing else — that is deliberate). `503` plus `"status":"degraded"` means the data directory is not writable |
+| 2 | Sign in, then `https://YOUR-HOST/api/health` | `status: ok`, `version`, `uptimeSeconds`, `storage: ok`, `setup: complete`, plus `bot`, `keepAlive` and `activity` blocks |
 | 3 | **Bot & 24/7** | *Bot online*, account name, a recent presence update |
 | 4 | **Bot & 24/7 → Keep-alive** | **Active**, "Last ping …", pings counting up |
 | 5 | Upload a photo, **Publish**, open the photo URL from the asset list | the image loads, `https://` and no login |
@@ -713,9 +901,13 @@ mistake.
 | 9 | Change the state text in the dashboard | panel and profile update within ~5 s |
 | 10 | Close the panel | the card disappears; the bot card is still there |
 | 11 | **Share card → Create**, open `/c/<slug>` in a private window | the card renders; no dashboard |
-| 12 | Restart the host | with env values set, the dashboard comes back without the wizard; on an ephemeral disk, photos are gone — that is the host, not a bug |
+| 12 | Open `/guide`, `/guide/local`, `/guide/cloud`, `/guide/free-cloud` | four pages, each with its own tab strip and contents list |
+| 13 | `/welcome` and `/c/<slug>` in a private window | both load with no session; the card shows no dashboard link |
+| 14 | Restart the host | with env values set, the dashboard comes back without the wizard; on an ephemeral disk, photos are gone — that is the host, not a bug |
+| 15 | Optional: the companion | its window prints "Ready… syncs every 5s", and **Paired devices** turns green |
 
-If a check fails, §19 has the symptom-to-cause table.
+If a check fails, §19 has the symptom-to-cause table and §21 has every expected
+status code.
 
 ---
 
@@ -799,7 +991,39 @@ stops working.
 - **`/health`** — public and minimal; version, storage, bot and Activity state are
   behind the session at `/api/health`.
 
-### 15.5 Deployment hygiene
+**What the sign-in page can tell you.** Every failure is a redirect back to
+`/login?error=…`, so the message you see is the whole diagnosis:
+
+| Message | Meaning |
+| --- | --- |
+| *That dashboard key is not correct.* | wrong key |
+| *Too many failed attempts…* | five wrong keys from this IP; 15-minute block |
+| *Dashboard key sign-in is disabled on this server.* | `admin.keyHash` is empty and there is no `DASHBOARD_KEY`; sign in with Discord or run the wizard (§15.1) |
+| *Discord sign-in is not configured on this server.* | no client secret, or an empty allowlist — both are required |
+| *That Discord account is not on the allowlist for this dashboard.* | the account is fine, the instance is not open to it |
+| *That sign-in attempt was invalid or expired.* | the OAuth `state` did not match, or you waited too long (10 minutes) |
+| *Discord sign-in was cancelled.* | the prompt was declined |
+| *Discord sign-in failed. Please try again in a moment.* | the token exchange failed — usually a wrong client secret or a redirect URL that does not match |
+
+### 15.5 Rate limits
+
+Every limit is per client IP and resets on its own — nothing has to be unlocked
+by hand:
+
+| Scope | Limit |
+| --- | --- |
+| Dashboard sign-in | 5 failures, then 15 minutes |
+| Writes (publish, upload, settings, pairings, share) | 60 per minute |
+| Setup endpoints (token, photo, bot test, finish) | 20 per 5 minutes |
+| Companion (`/companion.js`, launchers, config, heartbeat) | 120 per minute |
+| In-Discord app (`/activity/`, token exchange, presence) | 180 per minute |
+
+Over the line you get `429` with a `Retry-After` header and *"Too many requests.
+Please slow down."* Ordinary use — a 5-second poll, a draft every second while
+you type to a limit of 60 a minute — is nowhere near any of them. The
+authenticated endpoints also send `RateLimit-Remaining`.
+
+### 15.6 Deployment hygiene
 
 - Serve over HTTPS. Photos need it anyway, and the session cookie is marked
   `Secure` when the request arrives over TLS.
@@ -812,6 +1036,19 @@ stops working.
   old v1 token store and is no longer used.
 - Back up `data/` before you upgrade (§14). It is the only thing that cannot be
   rebuilt from the repository.
+
+The headers the app sends, for the record: `Content-Security-Policy` with no
+inline scripts and `form-action 'self'` (framing is `frame-ancestors *` while
+`NODE_ENV` is not `production`, which is what lets a hosted preview embed the
+dashboard — set `NODE_ENV=production` on a real deployment); `X-Content-Type-Options: nosniff`;
+`Referrer-Policy: same-origin`; `Permissions-Policy` denying camera, microphone
+and geolocation; `Cross-Origin-Opener-Policy: same-origin` everywhere except the
+Activity; HSTS in production over TLS. Framing is `frame-ancestors 'self'` in
+production (so the dashboard cannot be clickjacked) and `https://discord.com` for
+`/activity/` only. Uploaded photos are the one thing served with
+`Access-Control-Allow-Origin: *` and `Cross-Origin-Resource-Policy: cross-origin`,
+because Discord's media proxy fetches them from another origin. Static files are
+revalidated on every load; only `/assets/<hash>` is `immutable` for a year.
 
 ---
 
@@ -887,7 +1124,22 @@ being silently deleted.
 - **Free hosts sleep.** Render does after 15 minutes without traffic; the
   keep-alive (minimum 5 minutes) is what keeps the bot connected.
 - **Photo limits:** 16×16 to 4096×4096, 2 MB after decoding, PNG/JPEG/WebP/GIF.
+  The upload body may be up to 8 MB (that is the base64 of a 2 MB image plus
+  slack); forms are capped at 64 KB.
 - **Sessions last 8 hours.** Re-sign-in after that; the dashboard key still works.
+- **Ten paired devices**, and **50 allowlisted Discord IDs**, are the caps. Both
+  are per instance, both can be trimmed in the dashboard.
+- **A setup grant lasts 30 minutes.** After that the wizard asks for the token
+  again; nothing you already typed is lost until the page is closed.
+- **Rate limits** are per IP and per minute-ish: 60 writes, 20 setup calls per
+  5 minutes, 120 companion calls, 180 Activity calls, 5 sign-in failures. §15.5
+  has the table.
+- **The dashboard pushes over SSE with a 25-second heartbeat.** A proxy that
+  buffers responses will hide it, which is why the page falls back to a 20-second
+  poll — one wasted request per 20 s, not a broken page.
+- **Discord is the final judge.** Everything here is validated twice (browser,
+  then `src/presence.js`), and a third time by Discord; a payload it rejects shows
+  up as a toast and in the Activity panel, never as a silent failure.
 
 ---
 
@@ -918,6 +1170,18 @@ being silently deleted.
 | macOS: double-click does nothing | an old plain `.command` without the execute bit | download `StatusC0rd-mac.zip` instead |
 | Companion says "no longer paired" | the device was removed in the dashboard | pair again |
 | `[config] …` warnings at boot | a malformed environment variable | fix the value; the server keeps running |
+| "Too many requests. Please slow down." | a rate limit (§15.5) | wait for the `Retry-After` seconds; a scripted client should back off |
+| "That upload is too large" | the image is over 2 MB after decoding, or the request body over 8 MB | use the browser's own crop/downscale, or shrink the file first |
+| "Request body was not valid JSON" | a scripted `POST` without `Content-Type: application/json` | send the header; the dashboard never hits this |
+| A photo URL answers 404 | the photo was deleted, or the file is gone while its entry remains | re-upload it (the library entry is what counts, not the file) |
+| Every `/api/…` call answers 401 | the session expired (8 hours) or cookies are blocked | sign in again; check that nothing strips `statusc0rd.sid` |
+| "Setup is already complete" | someone (or an env value) finished setup | sign in at `/login` instead; to redo it, see §15.1 |
+| "This pairing link is invalid or was revoked" | the token was rotated, or the device was removed | pair again from **My profile** |
+| The dashboard says *Bot idle* | the gateway is connected but the presence is not on the bot | check that **The bot** is ticked on the Presence tab and publish |
+| `/api/health` says `degraded` | `data/` is not writable (permissions, full disk, read-only mount) | fix the mount or ownership; `/health` returns 503 until then |
+| `/guide` answers "No such guide" | a typo in the path; only `local`, `cloud` and `free-cloud` exist | start at `/guide` |
+| Browser console: 429 or `EventSource` errors | a proxy is rate-limiting or buffering | the page falls back to polling on its own; a 429 on writes means the limit in §15.5 |
+| Keep-alive says **Waiting** | the server cannot reach `PUBLIC_URL` — DNS, TLS, or a sleeping host | open `https://YOUR-HOST/health` from outside; fix `PUBLIC_URL` |
 
 Host-specific problems — tunnels, sleeping laptops, firewall ports, Docker,
 systemd — are in the troubleshooting section of the path file you used.
@@ -968,3 +1232,191 @@ systemd — are in the troubleshooting section of the path file you used.
 
 Total cost: **$0** on the free paths. Total downloads for the person using the
 card: **none**.
+
+---
+
+## 21. Appendix: every URL and every response
+
+You do not need this page to get running — §1–§20 do that. It is here for the
+other two jobs: **debugging with `curl`** and **knowing whether a route exists
+before you script against it**. Everything below is what the code in `app.js`
+actually mounts, not an idealised version.
+
+### 21.1 What proves who you are
+
+| Credential | How it travels | Opens |
+| --- | --- | --- |
+| dashboard session | `statusc0rd.sid` cookie — signed, `HttpOnly`, `SameSite=Lax`, `Secure` over TLS, 8 hours | `/` and every `/api/*` except setup, companion and Activity |
+| CSRF token | `x-csrf-token` header, or `_csrf` in the body/query | every non-GET on a session route — take it from `/api/state` → `csrf` or the page's `<meta name="csrf-token">` |
+| setup token | `x-setup-token` header, `setupToken` in the body, or `?setupToken=` | `/api/setup/*` while setup is incomplete, from anywhere that is not loopback |
+| pairing token | `Authorization: Bearer <token>` (the companion sends this) | `/api/companion/config`, `/api/companion/heartbeat` |
+| Activity token | `Authorization: Bearer <access token>` from the Discord SDK | `/activity/api/presence` |
+| nothing | — | `/welcome`, `/guide*`, `/c/:slug`, `/health`, `/assets/*`, `/activity*` (status only), setup status |
+
+Loopback requests (`127.0.0.1`, `::1`) may use `/api/setup/*` without the token
+unless `SETUP_REQUIRE_TOKEN=1`; a setup grant, once given, lasts 30 minutes.
+
+### 21.2 Pages
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| `GET` | `/welcome` | `200` the overview page |
+| `GET` | `/guide` | `200` this document, rendered from `docs/setup.md` |
+| `GET` | `/guide/:slug` | `200` for `local`, `cloud`, `free-cloud`; `404` page otherwise |
+| `GET` | `/` | `200` dashboard with a session, else `302` → `/login` (or `/setup` before setup) |
+| `GET` | `/login` | `200` sign-in page; `302` → `/` when already signed in |
+| `GET` | `/setup` | `200` wizard while unconfigured; afterwards `302` → `/` or `/login` |
+| `GET` | `/c/:slug` | `200` public card; `404` page for a wrong, rotated or disabled slug |
+| `GET` | `/activity` | `302` → `/activity/` |
+| `GET` | `/activity/` | `200` the in-Discord app; `frame-ancestors https://discord.com` |
+| `GET` | `/assets/:hash.:ext` | `200` the image (`immutable`, `ACAO: *`); `404` text if the hash is unknown or the file is gone |
+| `GET` | `/favicon.ico` | `302` → `/favicon.svg` |
+| `GET` | anything else | `404` HTML error page — or `{"ok":false,"error":"Not found."}` under `/api/` |
+
+`/?tab=profile` (and `photos`, `bot`, `settings`) opens the dashboard on that tab;
+that is how the wizard hands you over.
+
+### 21.3 Health
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| `GET` | `/health` | `200` `{"status":"ok","uptimeSeconds":N,"timestamp":"…"}` — or `503` with `"status":"degraded"` when `data/` is not writable. Nothing else, ever |
+| `GET` | `/api/health` | `200`/`503` with `status`, `version`, `uptimeSeconds`, `storage` (`ok`/`unwritable`), `setup` (`complete`/`required`), `bot`, `keepAlive`, `activity`. Session required |
+
+### 21.4 Setup (only while unconfigured)
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| `GET` | `/api/setup/status` | `200` `needsSetup`, `authenticated`, `needsToken`, `managed`, `defaults` |
+| `POST` | `/api/setup/verify` | `200` with a correct setup token; `403` wrong, `409` setup already done |
+| `POST` | `/api/setup/asset` | `200` `{asset:{id,url,…}}`; `400` for a bad image; needs setup access |
+| `POST` | `/api/setup/test-bot` | `200` `{bot:{tag,id,username}}`; `400` if Discord rejects the token or does not answer within 15 s |
+| `POST` | `/api/setup/complete` | `200` `{redirect:"/"}`; `400` bad input, `403` locked (add `needsToken`), `409` already complete |
+
+### 21.5 Sign-in
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| `POST` | `/login` | `303` → `/` on success; `303` → `/login?error=…` otherwise (`invalid`, `locked` or `key_disabled`) |
+| `POST` | `/logout` | `303` → `/login` (CSRF required) |
+| `GET` | `/auth/discord` | `302` to Discord, or back to `/login?error=discord_disabled` |
+| `GET` | `/auth/discord/callback` | `302` → `/` on success; `?error=…` otherwise (`cancelled`, `state`, `expired`, `not_allowed`, `discord_failed`) |
+
+§15.4 translates each `error=` code.
+
+### 21.6 The dashboard's JSON
+
+All of these need the session; everything that is not a `GET` also needs the CSRF
+token.
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| `GET` | `/api/state` | `200` the whole picture: `user`, `csrf`, `presence`, `activity`, `botActivity`, `bot`, `assets`, `draft`, `share`, `templates`, `pairings`, `keepAlive`, `activitySession`, `meta` |
+| `GET` | `/api/events` | `200` `text/event-stream`: one `state` event immediately, then one per change, `: ping` every 25 s |
+| `GET` | `/api/presence` | `200` `presence`, `activity` (profile payload), `botActivity` (gateway payload) — both fully resolved to URLs |
+| `POST` | `/api/presence` | `200` saved **and applied**; `400` with `error` + `errors[]` |
+| `POST` | `/api/presence/draft` | `200` `{draft}` staged; `400` same validation |
+| `POST` | `/api/presence/publish` | `200` publishes the body, or the stored draft when the body is empty; `400` when there is nothing staged |
+| `DELETE` | `/api/presence/draft` | `200` `{draft:null}` |
+| `POST` | `/api/presence/clear` | `200` presence switched off everywhere, bot card cleared |
+| `POST` | `/api/templates/:id` | `200` `{presence}` merged but **not** saved; `404` unknown template |
+| `GET` | `/api/assets` | `200` `{assets:[{id,ext,mime,width,height,bytes,createdAt,url}]}` |
+| `POST` | `/api/assets` | `200` `{asset}` from `{dataUrl,name}`; `400` for too large, too small, or not an image |
+| `DELETE` | `/api/assets/:id` | `200`; `404` unknown |
+| `POST` | `/api/share` | `200` `{share:{slug,url,createdAt}}`; `400` when there is no live presence or the slug is invalid |
+| `DELETE` | `/api/share` | `200` `{share:null}` |
+| `GET` | `/api/settings` | `200` `{settings}` — non-secret values plus `hasBotToken`, `botTokenPreview`, `hasClientSecret`, `managed`, `keyFromEnv` |
+| `POST` | `/api/settings` | `200`; `400` bad URL/ID or a short key; `403` wrong current key when rotating |
+| `GET` | `/api/companion/pairings` | `200` `{pairings}` (no tokens — only labels, times and status) |
+| `POST` | `/api/companion/pairings` | `200` `{pairing, token, command, scriptUrl, launchers}` — the only time the token is returned; `400` at ten devices |
+| `DELETE` | `/api/companion/pairings/:id` | `200`, token invalidated immediately |
+
+**The presence payload**, whether it goes to `/api/presence`, `/draft` or
+`/publish`:
+
+| Field | Type | Rule |
+| --- | --- | --- |
+| `name` | string | required, 128 chars |
+| `type` | number | 0 Playing · 1 Streaming · 2 Listening · 3 Watching · 4 Custom · 5 Competing |
+| `status` | string | `online`, `idle`, `dnd`, `invisible` |
+| `details`, `state` | string | 128 chars each |
+| `url` | string | required for Streaming, must be `https://twitch.tv/…` or `https://youtube.com/…` |
+| `largeImage`, `smallImage` | string | `asset:<hash>`, an `https://` URL, or a Discord asset key |
+| `largeText`, `smallText` | string | 128 chars each |
+| `buttons` | array | max 2 × `{label (32), url (https://)}`; invalid entries are dropped |
+| `startedAt` | boolean | turns the elapsed timer on |
+| `restartTimer` | boolean | re-bases the timer on this save instead of keeping the old start |
+| `targets` | object | `{bot, companion}`; at least one must be true |
+| `enabled` | boolean | `false` is what **Clear** sets |
+
+There is **no PATCH semantics**: send the whole card. Only `type`, `status`,
+`targets`, `enabled` and the timer fields fall back to what is stored; text and
+images default to empty, and `name` is required. The one exception is `publish`
+with an empty body, which publishes the stored draft as-is.
+
+### 21.7 The in-Discord app
+
+Mounted twice — `/activity/api/*` (the page's own, relative URLs) and
+`/api/activity/*` (the same thing for a direct call).
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| `POST` | `/activity/api/token` | `200` `{accessToken, expiresIn}` from `{code}`; `400` missing code; `503 not_configured` with no client id or secret |
+| `GET` | `/activity/api/presence` | `200` `{user, activity, assets, buttons, presence, reason, publicUrl, updatedAt}`; `401` no bearer token; `403 not_allowed`; `503 not_configured` |
+| `GET` | `/activity/api/status` | `200` `{configured, applicationId, session:{connected, userId, username, lastSeenAt, error}}` — no auth needed |
+
+`reason` is the sentence the panel shows when `activity` is `null`: no live
+presence, *My own profile* unticked, or a card Discord cannot render.
+
+### 21.8 The companion
+
+| Method | Path | Answer |
+| --- | --- | --- |
+| `GET` | `/companion.js?pair=…` | `200` the agent with this device's config prepended (`no-store`); `404` text when the pairing is gone |
+| `GET` | `/companion/start.sh?pair=…` | `200` the Linux launcher |
+| `GET` | `/companion/start.command?pair=…` | `200` the macOS launcher |
+| `GET` | `/companion/start.bat?pair=…` | `200` the Windows launcher |
+| `GET` | `/companion/start-mac.zip?pair=…` | `200` `StatusC0rd-mac.zip` with the launcher at mode `0755` and a READ ME |
+| `GET` | `/api/companion/config` | `200` `{label, appId, activity, updatedAt, status}`; `304` when `If-None-Match` matches; `401` not paired |
+| `POST` | `/api/companion/heartbeat` | `200` `{ok:true}`; `401` not paired. Body may carry `discordConnected` or `error` |
+
+### 21.9 Errors, in one shape
+
+Anything under `/api/` answers JSON: `{"ok": false, "error": "…"}`, plus
+`errors[]` on a presence validation failure. Everything else gets the HTML error
+page with the same sentence on it.
+
+| Status | Means | Typical cause |
+| --- | --- | --- |
+| `400` | the request was understood and refused | validation, bad image, nothing staged, invalid slug |
+| `401` | no session, or no bearer token | expired session, revoked pairing |
+| `403` | authenticated but not allowed | CSRF mismatch, not on the allowlist, setup locked, wrong current key |
+| `404` | no such thing | unknown slug, unknown asset, revoked pairing, unknown guide |
+| `409` | already done | setup completed twice |
+| `413` | body too large | an upload over 8 MB (or a form over 64 KB) |
+| `429` | rate limited | §15.5; `Retry-After` says how long |
+| `500` | a real bug or an unwritable disk | the log has the stack trace |
+| `503` | not configured, or storage is down | no client secret, unwritable `data/`, Discord unreachable |
+
+### 21.10 Three commands worth having
+
+```sh
+# Is it alive, and can the world see it?
+curl -s https://YOUR-HOST/health
+
+# What does the operator side think? (paste the cookie from the browser)
+curl -s -H "Cookie: statusc0rd.sid=$COOKIE" https://YOUR-HOST/api/health
+
+# Watch the dashboard's own event stream, exactly as the page does
+curl -N -H "Cookie: statusc0rd.sid=$COOKIE" https://YOUR-HOST/api/events
+```
+
+The companion's view of the same state, without touching Discord:
+
+```sh
+curl -s -H "Authorization: Bearer $PAIR_TOKEN" https://YOUR-HOST/api/companion/config
+```
+
+That is the whole surface — 52 routes: **12 page and file routes, 2 health,
+5 setup, 4 sign-in, 19 dashboard, 3 Activity and 7 companion.** If a path is not
+in this section, this build does not have it.

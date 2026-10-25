@@ -316,7 +316,9 @@ For Oracle and GCP the backup one-liner from
 | Any: Activity opens blank | URL mapping missing | prefix `/` → `https://YOUR-HOST/activity/` |
 
 Everything host-independent — Discord errors, buttons, key recovery — is in the
-[troubleshooting section](setup.md#19-troubleshooting) of the guide.
+[troubleshooting section](setup.md#19-troubleshooting) of the guide, and every
+route and status code is in its
+[appendix](setup.md#21-appendix-every-url-and-every-response).
 
 ---
 

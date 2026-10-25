@@ -48,7 +48,7 @@ rather not open the Activity.
 >
 > | File | Covers |
 > | --- | --- |
-> | [`docs/setup.md`](docs/setup.md) | the shared steps: the Discord application, the wizard, the editor, your profile, the 24/7 bot, verification, security, environment variables, troubleshooting |
+> | [`docs/setup.md`](docs/setup.md) | the shared steps: the Discord application, the wizard, the dashboard tab by tab, the editor, your profile, the 24/7 bot, verification, security, environment variables, troubleshooting, and an appendix covering every route |
 > | [`docs/setup-local.md`](docs/setup-local.md) | your own PC, Mac or Raspberry Pi, start to finish — including the tunnel that gives you a public HTTPS URL |
 > | [`docs/setup-cloud.md`](docs/setup-cloud.md) | a VPS or managed platform you pay for: DNS, firewall, systemd, Caddy, Docker, backups |
 > | [`docs/setup-free-cloud.md`](docs/setup-free-cloud.md) | Render free tier, Oracle Always Free, GCP free tier — with the catch of each |
@@ -80,7 +80,9 @@ rather not open the Activity.
 | update, back up, move hosts | [`§14`](docs/setup.md#14-step-10-updates-and-backups) |
 | rotate keys and lock down access | [`§15`](docs/setup.md#15-step-11-security-and-rotation) |
 | look up an environment variable | [`§16`](docs/setup.md#16-environment-variables) |
+| check a limit (devices, photos, rate limits) | [`§18`](docs/setup.md#18-limits-worth-knowing) |
 | fix a problem | [`§19`](docs/setup.md#19-troubleshooting) |
+| look up any URL, response or status code | [`§21`](docs/setup.md#21-appendix-every-url-and-every-response) |
 
 Just want it on localhost to poke at it?
 
@@ -141,7 +143,9 @@ of host — is [`§10`](docs/setup.md#10-step-6-the-bot-card-always-online).
 ## HTTP API
 
 Session cookie + `x-csrf-token` for mutations. Companion endpoints use a
-`Authorization: Bearer <pairing token>` header instead.
+`Authorization: Bearer <pairing token>` header instead. The in-app copy of this
+table — with every status code, error shape and rate limit — is
+[`§21`](docs/setup.md#21-appendix-every-url-and-every-response).
 
 | Method | Route | Description |
 | --- | --- | --- |
