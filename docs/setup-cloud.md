@@ -348,6 +348,7 @@ services:
 
 ```sh
 cp /etc/statusc0rd.env .env            # or write a fresh .env
+mkdir -p data && sudo chown -R 1000:1000 data   # the image runs as uid 1000
 sudo docker compose up -d --build
 sudo docker compose logs -f
 ```
