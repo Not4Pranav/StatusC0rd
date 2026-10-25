@@ -104,15 +104,42 @@ function imageKind(value) {
   return { kind: "key", value: text };
 }
 
+/**
+ * Is this host only reachable from the machine or the local network?
+ *
+ * Discord can only fetch an image over public HTTPS, but a local install cannot
+ * serve HTTPS without extra work. Allowing http:// for these hosts keeps the
+ * whole photo flow testable on localhost; `buildActivity` still drops such URLs
+ * before anything is sent to Discord.
+ */
+function isLocalHost(hostname) {
+  const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host) return false;
+  if (host === "localhost" || host === "::1" || host === "0.0.0.0") return true;
+  if (host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (/^127\./.test(host)) return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!v4) return false;
+  const [a, b] = [Number(v4[1]), Number(v4[2])];
+  if (a === 10) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 169 && b === 254) return true;
+  return false;
+}
+
 function imageError(value, label) {
   const info = imageKind(value);
   if (info.kind === "empty") return null;
   if (info.kind === "url") {
+    let url;
     try {
-      const url = new URL(info.value);
-      if (url.protocol !== "https:") return `${label}: image URLs must use https://.`;
+      url = new URL(info.value);
     } catch {
       return `${label}: that does not look like a valid URL.`;
+    }
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocalHost(url.hostname))) {
+      return `${label}: image URLs must use https://.`;
     }
     if (info.value.length > LIMITS.image) return `${label} URL is too long.`;
     return null;
@@ -241,12 +268,20 @@ function sanitizePresence(input, options = {}) {
 function resolveImage(value, options = {}) {
   const info = imageKind(value);
   if (info.kind === "empty") return "";
-  if (info.kind === "url") return info.value;
+  if (info.kind === "url") {
+    // Discord only fetches public HTTPS images. A localhost/private URL is kept
+    // in the stored card so the dashboard preview works, but it is never sent:
+    // an unusable asset makes the gateway reject the whole presence update.
+    if (!/^https:\/\//i.test(info.value)) return "";
+    return info.value;
+  }
   if (info.kind === "asset") {
     // Only an asset lookup knows the file extension; without it the image
     // cannot be served, so fail closed instead of emitting a broken URL.
-    if (options.resolveAsset) return options.resolveAsset(info.id) || "";
-    return "";
+    const url = options.resolveAsset ? options.resolveAsset(info.id) || "" : "";
+    // Same rule as a pasted URL: if this deployment has no public HTTPS origin
+    // the upload is a preview-only image. Sending it would fail the update.
+    return /^https:\/\//i.test(url) ? url : "";
   }
   return info.value; // Discord asset key
 }
@@ -310,6 +345,7 @@ function buildActivity(config, options = {}) {
 
 module.exports = {
   ACTIVITY_TYPES,
+  isLocalHost,
   DEFAULT_CONFIG,
   STATUSES,
   buildActivity,

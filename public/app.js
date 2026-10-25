@@ -194,6 +194,12 @@
     $("#preview-small-wrap").hidden = !small;
     if (small) $("#preview-small").src = small;
 
+    // Discord only fetches public HTTPS images. A local URL is fine for the
+    // preview, and the server strips it from what it sends - say so, rather than
+    // leaving someone wondering why the photo is missing in Discord.
+    const photoHint = $("#photo-hint");
+    if (photoHint) photoHint.hidden = !/^http:\/\//.test(large) && !/^http:\/\//.test(small);
+
     previewStart = config.startedAt ? Number(config.startTimestamp) || Date.now() : null;
     tickTimer();
 
