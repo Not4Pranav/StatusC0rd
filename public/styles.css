@@ -197,6 +197,48 @@ body.auth {
   background: var(--border);
 }
 
+/* The owner's door, folded away: members should never have to wonder which
+   password the top form wants. */
+.auth-owner {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+  padding: 0 14px;
+}
+
+.auth-owner > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.auth-owner > summary::-webkit-details-marker {
+  display: none;
+}
+
+.auth-owner > summary::after {
+  content: "▾";
+  float: right;
+  opacity: 0.6;
+}
+
+.auth-owner[open] > summary {
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.auth-owner[open] > summary::after {
+  content: "▴";
+}
+
+.auth-owner .stack {
+  padding-bottom: 14px;
+}
+
 /* ------------------------------------------------------------------ layout */
 
 .topbar {
@@ -784,6 +826,91 @@ select:focus {
 .error-title {
   font-size: 1.3rem;
   margin-bottom: 6px;
+}
+
+/* ------------------------------------------------------- role (admin-only) */
+
+/*
+ * Two doorways, one page: the server renders the admin panes for everyone and
+ * this decides whether they are reachable. Hiding is not the security boundary
+ * (the API checks the role again) - it just keeps a member's dashboard to the
+ * three tabs that are theirs.
+ */
+[data-role="member"] .admin-only {
+  display: none !important;
+}
+
+.link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 15px;
+  margin: 16px 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+
+.link-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+
+.link-row .hint {
+  margin: 0;
+}
+
+.members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+  flex-wrap: wrap;
+}
+
+.member-main {
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.member-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-meta {
+  font-size: 0.76rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.member-badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 /* ------------------------------------------------------------------- toast */

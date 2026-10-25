@@ -110,20 +110,45 @@ function createActivityService({ settings, assets, logger = console, now = Date.
   }
 
   /**
+   * Which StatusC0rd account is this Discord user?
+   *
+   * The Activity only ever learns a Discord user id, so "Connect Discord" writes
+   * a link and this resolves it. A single-tenant instance that predates accounts
+   * keeps working: with no links and no member accounts, the one card is the
+   * admin's, exactly as before.
+   */
+  function ownerForDiscordUser(discordId) {
+    const linked = settings.userIdForDiscord(discordId);
+    if (linked) return { userId: linked, via: "link" };
+    if (settings.countUsers() === 0 && Object.keys(settings.get().discordLinks || {}).length === 0) {
+      return { userId: settings.adminUserId, via: "legacy" };
+    }
+    return { userId: null, via: null };
+  }
+
+  /**
    * The payload the Activity pushes with setActivity(), plus who it belongs to.
    * @param {{accessToken: string, origin: string}} params
    */
   async function presence({ accessToken, origin }) {
     const user = await identify(accessToken);
-    if (!allowed(user.id)) {
+    const resolved = ownerForDiscordUser(user.id);
+    if (!resolved.userId) {
+      throw new ActivityError(
+        "This Discord account is not connected to a StatusC0rd account yet. Open the dashboard, go to My profile and press “Connect Discord” once.",
+        { status: 403, code: "not_linked" }
+      );
+    }
+    // An explicit link is the whole authorisation: the account exists on this
+    // instance. The allowlist only still gates the pre-accounts fallback.
+    if (resolved.via === "legacy" && !allowed(user.id)) {
       throw new ActivityError(
         "This Discord account is not on the allowlist for this StatusC0rd instance.",
         { status: 403, code: "not_allowed" }
       );
     }
 
-    const current = settings.get();
-    const presenceConfig = current.presence || null;
+    const presenceConfig = settings.presenceFor(resolved.userId) || null;
     const publicUrl = config().publicUrl || origin;
     const resolveAsset = (id) => {
       const asset = settings.findAsset(id);
@@ -152,7 +177,8 @@ function createActivityService({ settings, assets, logger = console, now = Date.
 
     const next = {
       connected: Boolean(activity),
-      userId: user.id,
+      userId: resolved.userId,
+      discordId: user.id,
       username: user.username,
       lastSeenAt: new Date(now()).toISOString(),
       error: reason

@@ -15,7 +15,17 @@ const path = require("node:path");
  * starts in "setup needed" mode and serves the wizard.
  */
 
-const SETTINGS_VERSION = 3;
+const SETTINGS_VERSION = 4;
+
+/**
+ * The account the dashboard key signs in as.
+ *
+ * It is a principal, not a row in `users`: the key is the owner's way back in
+ * even if every member account is gone, and it must never be editable from the
+ * member list. Everything per-user (presence, draft, share card, photos,
+ * devices) is keyed by a user id, and the admin key uses this one.
+ */
+const ADMIN_USER_ID = "admin";
 
 const DEFAULT_SETTINGS = Object.freeze({
   version: SETTINGS_VERSION,
@@ -24,6 +34,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   updatedAt: null,
   publicUrl: "",
   sessionSecret: "",
+  // The admin panel key. Distinct from a member password on purpose.
   admin: { keyHash: "", keySalt: "", updatedAt: null },
   discord: {
     clientId: "",
@@ -32,18 +43,34 @@ const DEFAULT_SETTINGS = Object.freeze({
     botToken: "",
     redirectUri: ""
   },
-  presence: null,
-  // Unpublished edits. `presence` is what Discord shows right now; `draft` is
-  // whatever the dashboard has staged. Publishing copies draft -> presence.
-  draft: null,
-  // Public read-only view of the presence card (`/c/<slug>`), opt-in.
-  share: null,
+  // Open sign-up for server members. The admin panel can turn it off.
+  allowSignup: true,
+  // Member accounts. The admin key is NOT in here - see ADMIN_USER_ID.
+  users: [],
+  // Everything below is keyed by user id, with the admin key's data under
+  // "admin". One instance, many cards: the bot card belongs to the admin,
+  // every member's card goes to their own profile through the in-Discord app.
+  presences: {},
+  drafts: {},
+  shares: {},
+  // discord user id -> StatusC0rd user id, written by "Connect Discord".
+  discordLinks: {},
   keepAlive: { enabled: true, intervalMinutes: 10 },
   assets: [],
   pairings: []
 });
 
 const SCRYPT_KEYLEN = 32;
+
+/** Member passwords are the second way in (the dashboard key is the first). */
+const MIN_PASSWORD = 10;
+const MAX_USERS = 500;
+const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
+
+function normalizeEmail(value) {
+  const email = String(value ?? "").trim().toLowerCase();
+  return EMAIL_RE.test(email) && email.length <= 254 ? email : "";
+}
 
 /** Share slugs appear in URLs, so keep them boringly safe. */
 const SHARE_SLUG_RE = /^[a-z0-9]{6,32}$/;
@@ -74,18 +101,88 @@ function merge(base, patch) {
 
 /** Fill in any keys added by a newer version of the app. */
 function migrate(raw) {
-  const migrated = merge(DEFAULT_SETTINGS, isPlainObject(raw) ? raw : {});
+  const source = isPlainObject(raw) ? raw : {};
+  const migrated = merge(DEFAULT_SETTINGS, source);
   migrated.version = SETTINGS_VERSION;
   migrated.assets = Array.isArray(migrated.assets) ? migrated.assets.filter(isPlainObject) : [];
   migrated.pairings = Array.isArray(migrated.pairings) ? migrated.pairings.filter(isPlainObject) : [];
   migrated.discord.allowedIds = Array.isArray(migrated.discord.allowedIds)
     ? migrated.discord.allowedIds.filter((id) => /^\d{5,25}$/.test(String(id)))
     : [];
-  migrated.draft = isPlainObject(migrated.draft) ? migrated.draft : null;
-  migrated.share =
-    isPlainObject(migrated.share) && SHARE_SLUG_RE.test(String(migrated.share.slug || ""))
-      ? migrated.share
+
+  // v3 -> v4: one presence per instance became one per user. The instance's
+  // existing card, draft, share link, photos and devices belong to the admin
+  // key's principal, so nobody loses anything on upgrade.
+  const legacyPresence = isPlainObject(source.presence) ? source.presence : null;
+  const legacyDraft = isPlainObject(source.draft) ? source.draft : null;
+  const legacyShare =
+    isPlainObject(source.share) && SHARE_SLUG_RE.test(String(source.share.slug || ""))
+      ? { slug: String(source.share.slug), createdAt: source.share.createdAt || null }
       : null;
+
+  migrated.presences = isPlainObject(migrated.presences) ? migrated.presences : {};
+  if (legacyPresence && !isPlainObject(migrated.presences[ADMIN_USER_ID])) {
+    migrated.presences[ADMIN_USER_ID] = legacyPresence;
+  }
+  migrated.drafts = isPlainObject(migrated.drafts) ? migrated.drafts : {};
+  if (legacyDraft && !isPlainObject(migrated.drafts[ADMIN_USER_ID])) {
+    migrated.drafts[ADMIN_USER_ID] = legacyDraft;
+  }
+
+  // Cards are opt-in per user and the slug has to stay unique, so keep the first
+  // valid one and drop everything that would collide or 404.
+  const shares = {};
+  const sourceShares = isPlainObject(migrated.shares) ? migrated.shares : {};
+  if (legacyShare && !isPlainObject(sourceShares[ADMIN_USER_ID])) {
+    sourceShares[ADMIN_USER_ID] = legacyShare;
+  }
+  for (const [userId, share] of Object.entries(sourceShares)) {
+    if (!isPlainObject(share)) continue;
+    const slug = String(share.slug || "");
+    if (!SHARE_SLUG_RE.test(slug)) continue;
+    if (Object.values(shares).some((kept) => kept.slug === slug)) continue;
+    shares[userId] = { slug, createdAt: share.createdAt || null };
+  }
+  migrated.shares = shares;
+
+  // Everything a person can own carries an owner; pre-v4 data is the admin's.
+  const withOwner = (item) => ({ ...item, owner: String(item.owner || ADMIN_USER_ID) });
+  migrated.assets = migrated.assets.map(withOwner);
+  migrated.pairings = migrated.pairings.map(withOwner);
+
+  migrated.users = (Array.isArray(migrated.users) ? migrated.users : [])
+    .filter(
+      (user) =>
+        isPlainObject(user) &&
+        /^u_[a-f0-9]{6,20}$/.test(String(user.id || "")) &&
+        normalizeEmail(user.email) === user.email &&
+        Boolean(user.passHash) &&
+        Boolean(user.passSalt)
+    )
+    .map((user) => ({
+      ...user,
+      role: user.role === "admin" ? "admin" : "member",
+      disabled: Boolean(user.disabled),
+      discordId: /^\d{5,25}$/.test(String(user.discordId || "")) ? String(user.discordId) : null
+    }))
+    .slice(0, MAX_USERS);
+
+  const links = {};
+  for (const [discordId, userId] of Object.entries(
+    isPlainObject(migrated.discordLinks) ? migrated.discordLinks : {}
+  )) {
+    if (!/^\d{5,25}$/.test(discordId)) continue;
+    if (String(userId) !== ADMIN_USER_ID && !migrated.users.some((user) => user.id === userId)) continue;
+    links[discordId] = String(userId);
+  }
+  migrated.discordLinks = links;
+
+  migrated.allowSignup = migrated.allowSignup !== false;
+
+  // The v3 keys are gone; keeping them would let stale data win on the next read.
+  delete migrated.presence;
+  delete migrated.draft;
+  delete migrated.share;
   return migrated;
 }
 
@@ -275,6 +372,278 @@ class SettingsStore {
     this._forgetSetupToken();
   }
 
+  // ------------------------------------------------------------------ users
+
+  /**
+   * Commit the per-user maps.
+   *
+   * These must NOT go through `update()`: it deep-merges, so publishing a card
+   * without a button would keep the previous button alive. A whole-map write is
+   * the only correct semantics here.
+   */
+  _commit() {
+    this.data = migrate(this.data);
+    this.data.updatedAt = new Date(this.now()).toISOString();
+    this._write();
+    return this;
+  }
+
+  /** The principal the dashboard key signs in as. Never a row in `users`. */
+  get adminUserId() {
+    return ADMIN_USER_ID;
+  }
+
+  get allowSignup() {
+    return this.data.allowSignup !== false;
+  }
+
+  setAllowSignup(value) {
+    this.update({ allowSignup: Boolean(value) });
+  }
+
+  /** Public shape: hashes never leave the store. */
+  static publicUser(user) {
+    if (!user) return null;
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      disabled: Boolean(user.disabled),
+      discordId: user.discordId || null,
+      linked: Boolean(user.discordId),
+      createdAt: user.createdAt || null,
+      lastLoginAt: user.lastLoginAt || null
+    };
+  }
+
+  listUsers() {
+    return this.data.users.map((user) => SettingsStore.publicUser(user));
+  }
+
+  countUsers() {
+    return this.data.users.length;
+  }
+
+  findUserById(id) {
+    return this.data.users.find((user) => user.id === id) ?? null;
+  }
+
+  findUserByEmail(email) {
+    const wanted = normalizeEmail(email);
+    if (!wanted) return null;
+    return this.data.users.find((user) => user.email === wanted) ?? null;
+  }
+
+  /**
+   * Create a member account. Throws with a human message on bad input, so both
+   * the admin panel and the sign-up form can show it verbatim.
+   */
+  createUser({ email, name, password, role = "member", discordId = null }) {
+    const normalized = normalizeEmail(email);
+    if (!normalized) throw new Error("That email address does not look right.");
+    if (this.findUserByEmail(normalized)) throw new Error("An account with that email already exists.");
+    if (String(password ?? "").length < MIN_PASSWORD) {
+      throw new Error(`Passwords need at least ${MIN_PASSWORD} characters.`);
+    }
+    if (this.data.users.length >= MAX_USERS) {
+      throw new Error(`This instance holds ${MAX_USERS} accounts. Remove one first.`);
+    }
+    const { keyHash, keySalt } = hashKey(password);
+    const stamp = new Date(this.now()).toISOString();
+    const user = {
+      id: `u_${crypto.randomBytes(5).toString("hex")}`,
+      email: normalized,
+      name:
+        String(name ?? "").trim().slice(0, 60) ||
+        normalized.split("@")[0].replace(/[._-]+/g, " ").slice(0, 60),
+      role: role === "admin" ? "admin" : "member",
+      passHash: keyHash,
+      passSalt: keySalt,
+      createdAt: stamp,
+      updatedAt: stamp,
+      passwordChangedAt: stamp,
+      lastLoginAt: null,
+      disabled: false,
+      discordId: /^\d{5,25}$/.test(String(discordId || "")) ? String(discordId) : null
+    };
+    this.data.users.push(user);
+    this._commit();
+    return SettingsStore.publicUser(user);
+  }
+
+  /** Email + password check. Returns the row (hashes included), or null. */
+  verifyCredentials(email, password) {
+    const user = this.findUserByEmail(email);
+    if (!user || user.disabled) return null;
+    if (!password) return null;
+    if (!verifyKey(String(password), { keyHash: user.passHash, keySalt: user.passSalt })) return null;
+    return user;
+  }
+
+  touchUserLogin(id) {
+    const users = this.data.users.map((user) =>
+      user.id === id ? { ...user, lastLoginAt: new Date(this.now()).toISOString() } : user
+    );
+    this.data.users = users;
+    this._commit();
+  }
+
+  setUserPassword(id, password) {
+    if (String(password ?? "").length < MIN_PASSWORD) {
+      throw new Error(`Passwords need at least ${MIN_PASSWORD} characters.`);
+    }
+    const { keyHash, keySalt } = hashKey(password);
+    const stamp = new Date(this.now()).toISOString();
+    const users = this.data.users.map((user) =>
+      user.id === id
+        ? { ...user, passHash: keyHash, passSalt: keySalt, updatedAt: stamp, passwordChangedAt: stamp }
+        : user
+    );
+    this.data.users = users;
+    this._commit();
+  }
+
+  /** Patch a member: name, email, role, disabled. Ids and hashes stay put. */
+  updateUser(id, patch = {}) {
+    const current = this.findUserById(id);
+    if (!current) throw new Error("No such account.");
+    const next = { ...current };
+    if (patch.name !== undefined) next.name = String(patch.name).trim().slice(0, 60) || current.name;
+    if (patch.email !== undefined) {
+      const email = normalizeEmail(patch.email);
+      if (!email) throw new Error("That email address does not look right.");
+      const clash = this.findUserByEmail(email);
+      if (clash && clash.id !== id) throw new Error("An account with that email already exists.");
+      next.email = email;
+    }
+    if (patch.role !== undefined) next.role = patch.role === "admin" ? "admin" : "member";
+    if (patch.disabled !== undefined) next.disabled = Boolean(patch.disabled);
+    next.updatedAt = new Date(this.now()).toISOString();
+    this.data.users = this.data.users.map((user) => (user.id === id ? next : user));
+    this._commit();
+    return SettingsStore.publicUser(next);
+  }
+
+  /**
+   * Remove an account and everything it owns. The files go too, otherwise the
+   * photos keep occupying the disk with nothing pointing at them.
+   */
+  deleteUser(id) {
+    const before = this.data.users.length;
+    this.data.users = this.data.users.filter((user) => user.id !== id);
+    if (this.data.users.length === before) return { removed: false, assetIds: [] };
+
+    const assetIds = this.data.assets.filter((asset) => asset.owner === id).map((asset) => asset.id);
+    this.data.assets = this.data.assets.filter((asset) => asset.owner !== id);
+    this.data.pairings = this.data.pairings.filter((pairing) => pairing.owner !== id);
+    delete this.data.presences[id];
+    delete this.data.drafts[id];
+    delete this.data.shares[id];
+    for (const [discordId, userId] of Object.entries(this.data.discordLinks)) {
+      if (userId === id) delete this.data.discordLinks[discordId];
+    }
+    this._commit();
+    return { removed: true, assetIds };
+  }
+
+  // ------------------------------------------------------- discord account link
+
+  /**
+   * Tie a Discord account to a StatusC0rd account.
+   *
+   * This is what lets the in-Discord app know whose card to push: the Activity
+   * only ever learns the Discord user id, so the mapping has to be stored here.
+   */
+  linkDiscord(discordId, userId) {
+    const id = String(discordId || "");
+    if (!/^\d{5,25}$/.test(id)) throw new Error("That Discord account id does not look right.");
+    if (userId !== ADMIN_USER_ID && !this.findUserById(userId)) throw new Error("No such account.");
+    const existing = this.data.discordLinks[id];
+    if (existing && existing !== userId) {
+      throw new Error("That Discord account is already linked to a different StatusC0rd account.");
+    }
+    const users = this.data.users.map((user) =>
+      user.id === userId ? { ...user, discordId: id, updatedAt: new Date(this.now()).toISOString() } : user
+    );
+    this.data.users = users;
+    this.data.discordLinks[id] = userId;
+    this._commit();
+    return userId;
+  }
+
+  unlinkDiscord(userId) {
+    for (const [discordId, linked] of Object.entries(this.data.discordLinks)) {
+      if (linked === userId) delete this.data.discordLinks[discordId];
+    }
+    this.data.users = this.data.users.map((user) =>
+      user.id === userId ? { ...user, discordId: null, updatedAt: new Date(this.now()).toISOString() } : user
+    );
+    this._commit();
+  }
+
+  /** Discord user id -> StatusC0rd user id, or null. */
+  userIdForDiscord(discordId) {
+    const id = String(discordId || "");
+    if (!/^\d{5,25}$/.test(id)) return null;
+    const linked = this.data.discordLinks[id];
+    if (!linked) return null;
+    if (linked !== ADMIN_USER_ID && !this.findUserById(linked)) return null;
+    return linked;
+  }
+
+  discordIdForUser(userId) {
+    if (userId === ADMIN_USER_ID) {
+      const found = Object.entries(this.data.discordLinks).find(([, linked]) => linked === ADMIN_USER_ID);
+      return found ? found[0] : null;
+    }
+    return this.data.users.find((user) => user.id === userId)?.discordId ?? null;
+  }
+
+  // ------------------------------------------------------- per-user presence
+
+  presenceFor(userId = ADMIN_USER_ID) {
+    return this.data.presences[userId] ?? null;
+  }
+
+  setPresence(userId, presence) {
+    if (presence) this.data.presences[userId] = presence;
+    else delete this.data.presences[userId];
+    this._commit();
+    return this.presenceFor(userId);
+  }
+
+  draftFor(userId = ADMIN_USER_ID) {
+    return this.data.drafts[userId] ?? null;
+  }
+
+  setDraft(userId, draft) {
+    if (draft) this.data.drafts[userId] = draft;
+    else delete this.data.drafts[userId];
+    this._commit();
+    return this.draftFor(userId);
+  }
+
+  shareFor(userId = ADMIN_USER_ID) {
+    return this.data.shares[userId] ?? null;
+  }
+
+  setShare(userId, share) {
+    if (share) this.data.shares[userId] = share;
+    else delete this.data.shares[userId];
+    this._commit();
+    return this.shareFor(userId);
+  }
+
+  /** Public card lookup: a slug belongs to exactly one account. */
+  findShareBySlug(slug) {
+    const wanted = String(slug || "");
+    for (const [userId, share] of Object.entries(this.data.shares)) {
+      if (share.slug === wanted) return { userId, share };
+    }
+    return null;
+  }
+
   // ---------------------------------------------------------------- runtime
 
   /**
@@ -326,25 +695,41 @@ class SettingsStore {
 
   // ----------------------------------------------------------------- assets
 
-  listAssets() {
-    return this.data.assets.map((asset) => ({ ...asset }));
+  /** Every photo, or one owner's. */
+  listAssets(owner = null) {
+    const assets = owner ? this.data.assets.filter((asset) => asset.owner === owner) : this.data.assets;
+    return assets.map((asset) => ({ ...asset }));
+  }
+
+  /** Does this owner hold this photo? Used before serving or deleting it. */
+  ownsAsset(id, owner) {
+    return this.data.assets.some((asset) => asset.id === id && asset.owner === owner);
   }
 
   findAsset(id) {
     return this.data.assets.find((asset) => asset.id === id) ?? null;
   }
 
-  addAsset(asset) {
-    if (this.data.assets.some((existing) => existing.id === asset.id)) return asset;
-    this.update({ assets: [...this.data.assets, asset] });
-    return asset;
+  /**
+   * Record an upload. A file is stored once (content-hashed), so an identical
+   * photo uploaded by two members is one file with two owners' entries.
+   */
+  addAsset(asset, owner = ADMIN_USER_ID) {
+    const existing = this.data.assets.find((item) => item.id === asset.id && item.owner === owner);
+    if (existing) return existing;
+    this.data.assets = [...this.data.assets, { ...asset, owner }];
+    this._commit();
+    return { ...asset, owner };
   }
 
-  removeAsset(id) {
-    const next = this.data.assets.filter((asset) => asset.id !== id);
-    if (next.length === this.data.assets.length) return false;
-    this.update({ assets: next });
-    return true;
+  /** Remove one owner's entry; the file survives while another owner has it. */
+  removeAsset(id, owner = ADMIN_USER_ID) {
+    const next = this.data.assets.filter((asset) => !(asset.id === id && asset.owner === owner));
+    if (next.length === this.data.assets.length) return { removed: false, fileUnused: false };
+    this.data.assets = next;
+    this._commit();
+    const fileUnused = !this.data.assets.some((asset) => asset.id === id);
+    return { removed: true, fileUnused };
   }
 
   // --------------------------------------------------------------- pairings
@@ -354,23 +739,27 @@ class SettingsStore {
   }
 
   /** Create a device pairing; the plaintext token is returned exactly once. */
-  createPairing(label) {
+  createPairing(label, owner = ADMIN_USER_ID) {
     const token = crypto.randomBytes(24).toString("hex");
     const pairing = {
       id: crypto.randomBytes(6).toString("hex"),
       label: String(label || "My computer").slice(0, 60),
+      owner,
       tokenHash: this.hashPairingToken(token),
       createdAt: new Date(this.now()).toISOString(),
       lastSeenAt: null,
       lastStatus: null,
       revokedAt: null
     };
-    this.update({ pairings: [...this.data.pairings, pairing] });
+    this.data.pairings = [...this.data.pairings, pairing];
+    this._commit();
     return { pairing: { ...pairing, tokenHash: undefined }, token };
   }
 
-  listPairings() {
-    return this.data.pairings.map(({ tokenHash, ...pairing }) => pairing);
+  /** One person's devices, or every device on the instance. */
+  listPairings(owner = null) {
+    const pairings = owner ? this.data.pairings.filter((pairing) => pairing.owner === owner) : this.data.pairings;
+    return pairings.map(({ tokenHash, ...pairing }) => pairing);
   }
 
   findPairingByToken(token) {
@@ -384,7 +773,7 @@ class SettingsStore {
   }
 
   touchPairing(id, status) {
-    const pairings = this.data.pairings.map((pairing) =>
+    this.data.pairings = this.data.pairings.map((pairing) =>
       pairing.id === id
         ? {
             ...pairing,
@@ -393,15 +782,21 @@ class SettingsStore {
           }
         : pairing
     );
-    this.update({ pairings });
+    this._commit();
   }
 
-  revokePairing(id) {
-    const pairings = this.data.pairings.map((pairing) =>
-      pairing.id === id ? { ...pairing, revokedAt: new Date(this.now()).toISOString() } : pairing
-    );
-    this.update({ pairings });
+  /** Revoke one device, and only if it belongs to that account. */
+  revokePairing(id, owner = null) {
+    let changed = false;
+    this.data.pairings = this.data.pairings.map((pairing) => {
+      if (pairing.id !== id) return pairing;
+      if (owner && pairing.owner !== owner) return pairing;
+      changed = true;
+      return { ...pairing, revokedAt: new Date(this.now()).toISOString() };
+    });
+    if (changed) this._commit();
+    return changed;
   }
 }
 
-module.exports = { SettingsStore };
+module.exports = { SettingsStore, ADMIN_USER_ID, MIN_PASSWORD, normalizeEmail };
