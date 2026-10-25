@@ -6,7 +6,7 @@ const express = require("express");
 const cookieSession = require("cookie-session");
 
 const { createRenderer, escapeHtml } = require("./src/views");
-const { sanitizePresence, buildActivity, DEFAULT_CONFIG } = require("./src/presence");
+const { sanitizePresence, buildActivity, ACTIVITY_TYPES, DEFAULT_CONFIG } = require("./src/presence");
 const {
   safeEqual,
   randomToken,
@@ -19,8 +19,9 @@ const {
 } = require("./src/auth");
 const oauth = require("./src/oauth");
 const { createZip } = require("./src/zip");
-const { loadGuide } = require("./src/guide");
+const { loadGuide, guideNav, findDoc } = require("./src/guide");
 const { createActivityService, ActivityError, FRAME_ANCESTORS } = require("./src/activity");
+const { templateList, applyTemplate } = require("./src/templates");
 
 
 /** Personalized double-click launchers for people who never open a terminal. */
@@ -150,7 +151,7 @@ function createApp({
   keepAlive = null,
   logger = console,
   now = Date.now,
-  version = "2.1.0",
+  version = require("./package.json").version,
   isProduction = process.env.NODE_ENV === "production"
 }) {
   if (!settings) throw new Error("createApp requires a settings store");
@@ -219,13 +220,17 @@ function createApp({
     return res.redirect(302, "/activity/");
   });
 
+  // These file names are not content-hashed, so a long max-age would pair new
+  // HTML with a stale `/app.js` after a redeploy. Revalidate instead: the ETag
+  // makes it a 304, and only the hashed `/assets/<id>` files are immutable.
   app.use(
     express.static(PUBLIC_DIR, {
       index: false,
       etag: true,
-      maxAge: "1h",
+      maxAge: 0,
       setHeaders(res) {
         res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
       }
     })
   );
@@ -285,6 +290,17 @@ function createApp({
     return settings.effective().publicUrl || originOf(req);
   }
 
+  /** Public card details, or null when sharing is off. */
+  function shareInfo(req) {
+    const share = settings.get().share;
+    if (!share?.slug) return null;
+    return {
+      slug: share.slug,
+      url: `${publicOrigin(req)}/c/${share.slug}`,
+      createdAt: share.createdAt || null
+    };
+  }
+
   function snapshotFor(req) {
     const presence = settings.get().presence || DEFAULT_CONFIG;
     const origin = publicOrigin(req);
@@ -301,6 +317,9 @@ function createApp({
         ...asset,
         url: assets.url(asset, origin)
       })),
+      draft: settings.get().draft || null,
+      share: shareInfo(req),
+      templates: templateList(),
       pairings: settings.listPairings(),
       keepAlive: keepAlive ? keepAlive.getState() : null,
       activitySession: activityService.snapshot(),
@@ -389,16 +408,129 @@ function createApp({
 
   // ----------------------------------------------------------------- public
 
+  /**
+   * Health check. The public response says only whether the instance is up -
+   * versions, storage paths, setup state and bot status are operational detail
+   * and belong behind the session (`/api/health`).
+   */
   app.get("/health", (req, res) => {
     const storageOk = settings.checkWritable();
+    res.status(storageOk ? 200 : 503).json({
+      status: storageOk ? "ok" : "degraded",
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date(now()).toISOString()
+    });
+  });
+
+  /** Full operational picture for the operator. */
+  app.get("/api/health", requireAuthApi, (req, res) => {
+    const storageOk = settings.checkWritable();
+    res.setHeader("Cache-Control", "no-store");
     res.status(storageOk ? 200 : 503).json({
       status: storageOk ? "ok" : "degraded",
       version,
       uptimeSeconds: Math.floor(process.uptime()),
       storage: storageOk ? "ok" : "unwritable",
       setup: settings.needsSetup() ? "required" : "complete",
-      bot: bot.getState().status
+      bot: bot.getState().status,
+      keepAlive: keepAlive ? keepAlive.getState() : null,
+      activity: activityService.snapshot()
     });
+  });
+
+  // ------------------------------------------------------------- share card
+  // An opt-in, read-only rendering of the presence for posting elsewhere. The
+  // slug is random and can be rotated or switched off at any time.
+
+  app.post("/api/share", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    const presence = settings.get().presence;
+    if (!presence?.enabled || !presence.name) {
+      return res.status(400).json({ ok: false, error: "Apply a presence first - there is nothing to share." });
+    }
+
+    const requested = String(req.body?.slug || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+    const slug = requested || randomToken(5);
+    if (!/^[a-z0-9]{6,32}$/.test(slug)) {
+      return res.status(400).json({ ok: false, error: "A share link needs 6-32 letters and numbers." });
+    }
+
+    const existing = settings.get().share;
+    settings.update({
+      share: {
+        slug,
+        createdAt: existing?.createdAt && existing.slug === slug ? existing.createdAt : new Date(now()).toISOString()
+      }
+    });
+    broadcastState();
+    res.json({ ok: true, share: shareInfo(req) });
+  });
+
+  app.delete("/api/share", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    settings.update({ share: null });
+    broadcastState();
+    res.json({ ok: true, share: null });
+  });
+
+  /**
+   * The public card. No session, no JS: a crawler or a phone camera gets the
+   * whole thing from the HTML, including the Open Graph tags.
+   */
+  app.get("/c/:slug", (req, res) => {
+    const share = settings.get().share;
+    if (!share?.slug || share.slug !== req.params.slug) {
+      return sendErrorPage(res, 404, "Card not found", "This card does not exist or its owner turned sharing off.");
+    }
+
+    const presence = settings.get().presence || DEFAULT_CONFIG;
+    if (!presence.enabled || !presence.name) {
+      return sendErrorPage(res, 404, "Card not found", "This card is not being shared right now.");
+    }
+
+    const origin = publicOrigin(req);
+    const resolveAsset = (id) => {
+      const asset = settings.findAsset(id);
+      return asset ? assets.url(asset, origin) : "";
+    };
+    const activity = buildActivity(presence, { target: "companion", publicUrl: origin, resolveAsset });
+    const large = activity?.assets?.large_image || "";
+    const buttons = (activity?.buttons || [])
+      .map((label, index) => {
+        const url = activity?.metadata?.button_urls?.[index];
+        if (!url) return "";
+        return `<a class="card-btn" href="${escapeHtml(url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(label)}</a>`;
+      })
+      .join("");
+    const lines = [presence.details, presence.state].filter(Boolean).join(" · ");
+    // Social tags are assembled here: an empty og:image would be worse than none.
+    const imageTags = large
+      ? `<meta property="og:image" content="${escapeHtml(large)}" />\n    ` +
+        `<meta property="og:image:alt" content="${escapeHtml(presence.largeText || presence.name)}" />\n    ` +
+        `<meta name="twitter:image" content="${escapeHtml(large)}" />`
+      : "";
+    const artHtml = large
+      ? `<img src="${escapeHtml(large)}" alt="" />`
+      : `<span class="discord-art-fallback" aria-hidden="true">S</span>`;
+
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Robots-Tag", "all");
+    res.type("html").send(
+      render("card.html", {
+        VERSION: version,
+        CARD_NAME: presence.name,
+        CARD_TYPE: String(ACTIVITY_TYPES[Number(presence.type)] || "Playing").toUpperCase(),
+        CARD_DETAILS: presence.details || "",
+        CARD_STATE: presence.state || "",
+        CARD_DESCRIPTION: lines || "A custom Discord rich presence, built in the browser.",
+        CARD_URL: `${origin}/c/${share.slug}`,
+        CARD_ART_HTML: artHtml,
+        OG_IMAGE_TAGS: imageTags,
+        TWITTER_CARD: large ? "summary_large_image" : "summary",
+        BUTTONS_HTML: buttons
+      })
+    );
   });
 
   // -------------------------------------------------------------- public site
@@ -417,23 +549,29 @@ function createApp({
       render("welcome.html", {
         VERSION: version,
         PRIMARY_HREF: action.href,
-        PRIMARY_LABEL: action.label,
-        SIGNED_IN: req.session?.user ? "true" : "false",
-        SETUP_REQUIRED: settings.needsSetup() ? "true" : "false"
+        PRIMARY_LABEL: action.label
       })
     );
   });
 
   /**
-   * The $0 deployment guide, rendered from `docs/free-setup.md` so the website
-   * and the repository can never disagree.
+   * The setup documentation, rendered from `docs/*.md` so the website and the
+   * repository can never disagree. One page per deployment path:
+   * `/guide` (shared steps), `/guide/local`, `/guide/cloud`, `/guide/free-cloud`.
    */
-  app.get("/guide", (req, res) => {
-    const guide = loadGuide();
+  function sendGuide(req, res, doc) {
+    const guide = loadGuide(doc.slug);
     const action = primaryAction(req);
     const toc = guide.headings
       .filter((heading) => heading.level === 2)
       .map((heading) => `<a href="#${heading.id}">${escapeHtml(heading.text)}</a>`)
+      .join("");
+    const nav = guideNav(doc.slug)
+      .map((item) =>
+        item.active
+          ? `<a class="guide-tab is-active" href="${item.href}" aria-current="page">${escapeHtml(item.label)}</a>`
+          : `<a class="guide-tab" href="${item.href}">${escapeHtml(item.label)}</a>`
+      )
       .join("");
     const updated = guide.updatedAt
       ? `Last updated ${new Date(guide.updatedAt).toISOString().slice(0, 10)}`
@@ -444,12 +582,29 @@ function createApp({
         VERSION: version,
         GUIDE_TITLE: guide.title,
         GUIDE_HTML: guide.html,
+        GUIDE_NAV: nav,
+        GUIDE_FILE: `docs/${guide.file}`,
         TOC_HTML: toc,
         GUIDE_UPDATED: updated,
         BACK_HREF: action.href,
         BACK_LABEL: action.label
       })
     );
+  }
+
+  app.get("/guide", (req, res) => sendGuide(req, res, findDoc("")));
+
+  app.get("/guide/:slug", (req, res) => {
+    const doc = findDoc(req.params.slug);
+    if (!doc) {
+      return sendErrorPage(
+        res,
+        404,
+        "No such guide",
+        "That setup document does not exist. Start at /guide to see every path."
+      );
+    }
+    return sendGuide(req, res, doc);
   });
 
   // ------------------------------------------------------------------- setup
@@ -466,8 +621,7 @@ function createApp({
         VERSION: version,
         CLIENT_ID: effective.clientId,
         NEEDS_TOKEN: needsToken ? "true" : "false",
-        BOT_MANAGED: effective.managed.botToken ? "true" : "false",
-        CLIENT_MANAGED: effective.managed.clientId ? "true" : "false"
+        BOT_MANAGED: effective.managed.botToken ? "true" : "false"
       })
     );
   });
@@ -723,7 +877,11 @@ function createApp({
         CSRF: ensureCsrf(req),
         VERSION: version,
         CLIENT_ID: effective.clientId,
-        INVITE_URL: `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(effective.clientId)}&scope=bot&permissions=0`
+        // No application id means no invite link: a `client_id=` with an empty
+        // value is a dead page on discord.com, worse than no button at all.
+        INVITE_URL: effective.clientId
+          ? `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(effective.clientId)}&scope=bot&permissions=0`
+          : ""
       })
     );
   });
@@ -753,17 +911,64 @@ function createApp({
     const result = sanitizePresence(req.body, { current: settings.get().presence || DEFAULT_CONFIG, now: now() });
     if (!result.ok) return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
 
-    settings.update({ presence: result.value });
+    settings.update({ presence: result.value, draft: null });
     applyPresenceToBot();
     broadcastState();
     logger.log?.(`[presence] "${result.value.name}" -> ${result.value.targets.bot ? "bot" : ""}${result.value.targets.bot && result.value.targets.companion ? "+" : ""}${result.value.targets.companion ? "profile" : ""}`);
     res.json({ ok: true, presence: result.value, bot: bot.getState() });
   });
 
+  /**
+   * Draft endpoints: the editor stages changes here without touching what
+   * Discord is showing. `POST /api/presence` still means "save and apply now",
+   * so anything scripted against the old API keeps working.
+   */
+  app.post("/api/presence/draft", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    const current = settings.get().presence || DEFAULT_CONFIG;
+    const result = sanitizePresence(req.body, { current, now: now() });
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
+
+    const draft = { ...result.value, savedAt: new Date(now()).toISOString() };
+    settings.update({ draft });
+    res.json({ ok: true, draft });
+  });
+
+  app.post("/api/presence/publish", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    const stored = settings.get();
+    const source = req.body && Object.keys(req.body).length > 0 ? req.body : stored.draft;
+    if (!source) return res.status(400).json({ ok: false, error: "There is nothing staged to publish." });
+
+    const result = sanitizePresence(source, { current: stored.presence || DEFAULT_CONFIG, now: now() });
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
+
+    settings.update({ presence: result.value, draft: null });
+    applyPresenceToBot();
+    broadcastState();
+    logger.log?.(`[presence] published "${result.value.name}"`);
+    res.json({ ok: true, presence: result.value, bot: bot.getState() });
+  });
+
+  app.delete("/api/presence/draft", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    settings.update({ draft: null });
+    broadcastState();
+    res.json({ ok: true, draft: null });
+  });
+
+  /** A template, merged into the current config and validated the same way. */
+  app.post("/api/templates/:id", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    const current = settings.get().draft || settings.get().presence || DEFAULT_CONFIG;
+    const merged = applyTemplate(req.params.id, current);
+    if (!merged) return res.status(404).json({ ok: false, error: "Unknown template." });
+
+    const result = sanitizePresence(merged, { current, now: now() });
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.errors[0], errors: result.errors });
+    res.json({ ok: true, presence: result.value });
+  });
+
   app.post("/api/presence/clear", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
     const current = settings.get().presence || DEFAULT_CONFIG;
     const next = { ...current, enabled: false, updatedAt: new Date(now()).toISOString() };
-    settings.update({ presence: next });
+    settings.update({ presence: next, draft: null });
     applyPresenceToBot();
     broadcastState();
     res.json({ ok: true, presence: next, bot: bot.getState() });
@@ -1099,12 +1304,16 @@ function createApp({
 
   app.get(activityApi.map((base) => `${base}/presence`), activityLimiter.middleware(), async (req, res) => {
     try {
-      const payload = await activityService.presence({ accessToken: bearer(req), origin: publicOrigin(req) });
+      const { changed, ...payload } = await activityService.presence({
+        accessToken: bearer(req),
+        origin: publicOrigin(req)
+      });
       res.setHeader("Cache-Control", "no-store");
-      broadcastState();
+      // A 5-second poll must not spam every open dashboard; only a change is news.
+      if (changed) broadcastState();
       res.json({ ok: true, ...payload });
     } catch (error) {
-      activityService.noteError(error.message);
+      if (activityService.noteError(error.message)) broadcastState();
       activityError(res, error);
     }
   });

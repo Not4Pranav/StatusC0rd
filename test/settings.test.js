@@ -67,6 +67,25 @@ test("setup token verification, completion and file cleanup", () => {
   assert.equal(fs.existsSync(path.join(dir, "setup-token.txt")), false);
 });
 
+test("losing the admin key brings the setup token back", () => {
+  const { store, dir } = makeStore();
+  store.setAdminKey("a-good-dashboard-key");
+  store.completeSetup();
+  assert.equal(store.setupToken, "", "a finished install keeps no token around");
+
+  // Hand-edited or half-restored settings.json: setup is "complete" but there is
+  // no key, so the wizard must be reachable again - including from the internet.
+  const file = path.join(dir, "settings.json");
+  const data = store.get();
+  data.admin = { keyHash: "", keySalt: "", updatedAt: null };
+  fs.writeFileSync(file, JSON.stringify(data));
+
+  const recovered = new SettingsStore(file, { logger: silent });
+  assert.equal(recovered.needsSetup(), true);
+  assert.ok(recovered.setupToken.length >= 16);
+  assert.ok(fs.existsSync(path.join(dir, "setup-token.txt")));
+});
+
 test("persists values across instances", () => {
   const dir = tmpDir();
   const file = path.join(dir, "settings.json");

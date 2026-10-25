@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>{{CARD_NAME}} · StatusC0rd</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+
+    <meta name="description" content="{{CARD_DESCRIPTION}}" />
+    <link rel="canonical" href="{{CARD_URL}}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StatusC0rd" />
+    <meta property="og:url" content="{{CARD_URL}}" />
+    <meta property="og:title" content="{{CARD_NAME}}" />
+    <meta property="og:description" content="{{CARD_DESCRIPTION}}" />
+    {{{OG_IMAGE_TAGS}}}
+    <meta name="twitter:card" content="{{TWITTER_CARD}}" />
+    <meta name="twitter:title" content="{{CARD_NAME}}" />
+    <meta name="twitter:description" content="{{CARD_DESCRIPTION}}" />
+  </head>
+  <body class="site card-page">
+    <header class="site-header">
+      <a class="brand" href="/welcome">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span>StatusC<strong>0</strong>rd</span>
+      </a>
+      <nav class="site-nav">
+        <a href="/welcome">What is this?</a>
+        <a href="/guide">Setup guide</a>
+      </nav>
+    </header>
+
+    <main class="share">
+      <p class="eyebrow">Discord rich presence</p>
+      <h1 class="share-name">{{CARD_NAME}}</h1>
+
+      <div class="discord-card">
+        <div class="discord-art">
+          {{{CARD_ART_HTML}}}
+          <span class="discord-live" title="Shared live"></span>
+        </div>
+        <div class="discord-body">
+          <p class="discord-type">{{CARD_TYPE}}</p>
+          <p class="discord-title">{{CARD_NAME}}</p>
+          <p class="discord-line">{{CARD_DETAILS}}</p>
+          <p class="discord-line">{{CARD_STATE}}</p>
+          <div class="discord-buttons">{{{BUTTONS_HTML}}}</div>
+        </div>
+      </div>
+
+      <p class="share-note">
+        This card is published by its owner from a self-hosted StatusC0rd instance. It shows what
+        Discord displays on their profile while the presence is live.
+      </p>
+
+      <div class="hero-actions">
+        <a class="btn primary lg" href="/welcome">Make your own</a>
+        <a class="btn ghost lg" href="/guide">Setup guide</a>
+      </div>
+
+      <p class="fineprint">
+        Photos and buttons are set through StatusC0rd's in-Discord app — nothing to install.
+      </p>
+    </main>
+
+    <footer class="site-footer">
+      <span>StatusC0rd v{{VERSION}}</span>
+      <span>Shared card</span>
+    </footer>
+  </body>
+</html>

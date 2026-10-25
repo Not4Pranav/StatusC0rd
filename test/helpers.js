@@ -16,6 +16,7 @@ const { AssetStore } = require("../src/assets");
 const silent = { log() {}, warn() {}, error() {} };
 const ADMIN_KEY = "integration-test-key";
 const PUBLIC_URL = "https://status.example.com";
+const PKG = require("../package.json");
 
 class FakeBot extends EventEmitter {
   constructor() {
@@ -121,7 +122,7 @@ async function startApp({ env = {}, completeSetup = true, publicUrl = PUBLIC_URL
   const settings = new SettingsStore(path.join(dataDir, "settings.json"), { env, logger: silent });
   const assets = new AssetStore(path.join(dataDir, "assets"), settings);
   const bot = new FakeBot();
-  const app = createApp({ settings, assets, bot, logger: silent, version: "2.1.0", isProduction });
+  const app = createApp({ settings, assets, bot, logger: silent, version: PKG.version, isProduction });
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 

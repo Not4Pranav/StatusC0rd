@@ -12,7 +12,7 @@ const {
   PUBLIC_URL
 } = require("./helpers");
 
-test("health reports setup state", async (t) => {
+test("the public health check reveals nothing but uptime", async (t) => {
   const ctx = await startApp({ completeSetup: false });
   t.after(() => ctx.close());
 
@@ -20,7 +20,27 @@ test("health reports setup state", async (t) => {
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.status, "ok");
-  assert.equal(body.setup, "required");
+  assert.ok(body.uptimeSeconds >= 0);
+  for (const secret of ["version", "storage", "setup", "bot"]) {
+    assert.equal(secret in body, false, `${secret} should not be public`);
+  }
+});
+
+test("the operator gets the full health report behind the session", async (t) => {
+  const ctx = await startApp();
+  t.after(() => ctx.close());
+
+  assert.equal((await ctx.request("/api/health")).status, 401);
+
+  await ctx.signIn();
+  const res = await ctx.request("/api/health");
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.status, "ok");
+  assert.equal(body.version, require("../package.json").version);
+  assert.equal(body.storage, "ok");
+  assert.equal(body.setup, "complete");
+  assert.ok("activity" in body);
 });
 
 test("a fresh instance redirects to the setup wizard", async (t) => {
@@ -529,8 +549,10 @@ test("the wizard rejects a public URL that is not a URL", async (t) => {
   });
   assert.equal(res.status, 400);
   assert.match((await res.json()).error, /must start with https/);
-  assert.equal((await ctx.request("/health")).status, 200);
-  assert.equal((await (await ctx.request("/health")).json()).setup, "required", "setup stays open");
+  // The wizard must still be reachable: a rejected payload cannot lock setup.
+  const setup = await ctx.request("/setup");
+  assert.equal(setup.status, 200);
+  assert.match(await setup.text(), /Create your dashboard login/);
 });
 
 test("uploaded photos resolve to public URLs in every presence payload", async (t) => {
@@ -601,20 +623,59 @@ test("the setup guide is readable without signing in", async (t) => {
   assert.match(res.headers.get("content-type"), /text\/html/);
 
   const html = await res.text();
-  // Rendered from docs/free-setup.md, so a heading from that file must be here.
+  // Rendered from docs/setup.md, so a heading from that file must be here.
   assert.match(html, /<h1 id="[^"]*"/);
-  assert.match(html, /Path A/);
+  assert.match(html, /Pick where it runs/);
   assert.match(html, /href="#1-what-the-user-gets"/);
   assert.match(html, /<div class="md-table">/);
+  // Links between the Markdown files are rewritten to /guide routes.
+  assert.ok(!/href="[^"]*\.md[^"]*"/.test(html), "no raw .md links survive");
+  assert.match(html, /href="\/guide\/local"/);
   // No template tokens may survive the render.
   assert.ok(!html.includes("{{{"));
   assert.ok(!html.includes("{{"));
 });
 
+test("every host path is a page of its own", async (t) => {
+  const ctx = await startApp({ completeSetup: false });
+  t.after(() => ctx.close());
+
+  const hub = await (await ctx.request("/guide")).text();
+  assert.match(hub, /class="guide-tab is-active" href="\/guide"/);
+  for (const slug of ["local", "cloud", "free-cloud"]) {
+    assert.match(hub, new RegExp(`href="/guide/${slug}"`), slug);
+  }
+
+  const pages = [
+    ["local", /cloudflared/, "docs/setup-local.md"],
+    ["cloud", /Caddy/, "docs/setup-cloud.md"],
+    ["free-cloud", /onrender\.com/, "docs/setup-free-cloud.md"]
+  ];
+  for (const [slug, needle, file] of pages) {
+    const res = await ctx.request(`/guide/${slug}`);
+    assert.equal(res.status, 200, slug);
+    const html = await res.text();
+    assert.match(html, needle, slug);
+    assert.match(html, new RegExp(`class="guide-tab is-active" href="/guide/${slug}"`), slug);
+    assert.ok(html.includes(file), `${slug} names its source file`);
+    assert.ok(!html.includes("{{"), `${slug} has no template tokens`);
+    assert.ok(!/href="[^"]*\.md[^"]*"/.test(html), `${slug} has no raw .md links`);
+  }
+});
+
+test("an unknown guide route is a 404, not a crash", async (t) => {
+  const ctx = await startApp({ completeSetup: false });
+  t.after(() => ctx.close());
+
+  const res = await ctx.request("/guide/nope");
+  assert.equal(res.status, 404);
+  assert.match(await res.text(), /No such guide/);
+});
+
 test("the guide survives an unreadable docs folder", async (t) => {
   const { renderMarkdown } = require("../src/markdown");
   const { loadGuide } = require("../src/guide");
-  const guide = loadGuide("/nonexistent/free-setup.md");
+  const guide = loadGuide("/nonexistent/setup.md");
   assert.equal(guide.available, false);
   assert.match(guide.html, /missing from this deployment/);
   assert.deepEqual(guide.headings, []);
@@ -651,5 +712,5 @@ test("the login page links to the free guide", async (t) => {
   t.after(() => ctx.close());
 
   const html = await (await ctx.request("/login")).text();
-  assert.match(html, /href="\/guide">Free setup guide</);
+  assert.match(html, /href="\/guide">Setup guide</);
 });

@@ -144,6 +144,36 @@ test("a disabled presence yields no activity", async (t) => {
   assert.match(svc.snapshot().error, /No presence/);
 });
 
+test("a presence switched off for the profile says so instead of \"build one\"", async (t) => {
+  stubDiscord(t);
+  const svc = createActivityService({
+    settings: {
+      effective: () => ({ clientId: "1", clientSecret: "s", publicUrl: "", allowedDiscordIds: [] }),
+      get: () => ({
+        presence: { enabled: true, name: "Live card", targets: { bot: true, companion: false } }
+      }),
+      findAsset: () => null
+    },
+    assets: { url: () => "" },
+    logger: { log() {}, warn() {}, error() {} }
+  });
+  const payload = await svc.presence({ accessToken: "tok_live", origin: "https://x.test" });
+  assert.equal(payload.activity, null);
+  assert.match(payload.reason, /My own profile/);
+  assert.equal(svc.snapshot().error, payload.reason);
+});
+
+test("polling reports a change once, so the dashboard is not spammed", async (t) => {
+  stubDiscord(t);
+  const svc = service();
+  const first = await svc.presence({ accessToken: "tok_live", origin: "https://x.test" });
+  const second = await svc.presence({ accessToken: "tok_live", origin: "https://x.test" });
+  assert.equal(first.changed, true);
+  assert.equal(second.changed, false);
+  assert.equal(svc.noteError("Discord said no"), true);
+  assert.equal(svc.noteError("Discord said no"), false);
+});
+
 // ------------------------------------------------------------------ HTTP layer
 
 test("the activity page is served without a session and may be framed by Discord", async (t) => {

@@ -53,9 +53,16 @@
           <div class="card">
             <div class="card-head">
               <h2>Live preview</h2>
-              <span id="preview-note" class="tag">Saved</span>
+              <div class="preview-tools">
+                <div class="seg" role="group" aria-label="Preview theme">
+                  <button type="button" class="seg-btn is-active" data-preview-theme="dark">Dark</button>
+                  <button type="button" class="seg-btn" data-preview-theme="light">Light</button>
+                </div>
+                <button type="button" class="btn ghost small" id="preview-density" aria-pressed="false">Compact</button>
+                <span id="preview-note" class="tag">Saved</span>
+              </div>
             </div>
-            <div class="preview">
+            <div class="preview" id="preview">
               <div class="preview-art">
                 <span class="preview-art-fallback" id="preview-fallback" aria-hidden="true">S</span>
                 <img id="preview-large" alt="" hidden />
@@ -81,6 +88,11 @@
               <span id="form-note" class="tag" hidden>Unsaved changes</span>
             </div>
             <div id="form-errors" class="alert" role="alert" hidden></div>
+
+            <div class="template-row" id="template-row" hidden>
+              <p class="template-title">Start from a template</p>
+              <div class="template-chips" id="template-chips"></div>
+            </div>
 
             <label class="field">
               <span>Activity name <em>*</em></span>
@@ -127,6 +139,48 @@
               <small>Streaming needs a Twitch or YouTube link.</small>
             </label>
 
+            <div class="row photo-row">
+              <div class="field">
+                <span>Large image</span>
+                <div class="upload-slot" id="slot-large" data-size="large" role="button" tabindex="0" aria-label="Upload large image">
+                  <img alt="" hidden />
+                  <span>Drop, paste or choose</span>
+                  <input type="file" accept="image/*" hidden />
+                </div>
+                <div class="slot-links">
+                  <button class="btn ghost small" type="button" data-clear-image="large">Remove</button>
+                  <button class="btn ghost small" type="button" data-pick-asset="large">Reuse</button>
+                </div>
+              </div>
+              <div class="field">
+                <span>Small image</span>
+                <div class="upload-slot" id="slot-small" data-size="small" role="button" tabindex="0" aria-label="Upload small image">
+                  <img alt="" hidden />
+                  <span>Drop, paste or choose</span>
+                  <input type="file" accept="image/*" hidden />
+                </div>
+                <div class="slot-links">
+                  <button class="btn ghost small" type="button" data-clear-image="small">Remove</button>
+                  <button class="btn ghost small" type="button" data-pick-asset="small">Reuse</button>
+                </div>
+              </div>
+            </div>
+
+            <details class="advanced" id="image-urls">
+              <summary>Use an image URL instead</summary>
+              <div class="row">
+                <label class="field">
+                  <span>Large image URL</span>
+                  <input id="url-large" type="url" placeholder="https://…" />
+                </label>
+                <label class="field">
+                  <span>Small image URL</span>
+                  <input id="url-small" type="url" placeholder="https://…" />
+                </label>
+              </div>
+              <button class="btn ghost small" type="button" id="use-urls">Use these URLs</button>
+            </details>
+
             <fieldset class="targets" data-when="targets">
               <legend>Show this presence on</legend>
               <label class="check">
@@ -135,7 +189,7 @@
               </label>
               <label class="check">
                 <input type="checkbox" name="targetCompanion" checked />
-                <span>My own profile <small>— photos + buttons, needs the companion</small></span>
+                <span>My own profile <small>— photos + buttons, in the Discord app</small></span>
               </label>
             </fieldset>
 
@@ -185,64 +239,30 @@
             </details>
 
             <div class="actions">
-              <button class="btn primary" type="submit" id="apply-btn">Apply presence</button>
+              <button class="btn primary" type="submit" id="apply-btn">Publish</button>
+              <button class="btn ghost" type="button" id="discard-btn" hidden>Discard draft</button>
               <button class="btn ghost" type="button" id="clear-btn">Clear</button>
-              <a class="btn link" href="#" data-goto="photos">Add photos</a>
               <a class="btn link" href="#" data-goto="profile">Put it on my profile</a>
             </div>
+            <p class="hint" id="draft-hint" hidden></p>
           </form>
         </div>
 
         <!-- =============================================== photos ========== -->
         <div class="pane" data-pane="photos" id="pane-photos" role="tabpanel">
           <div class="card">
-            <div class="card-head"><h2>Presence photos</h2></div>
+            <div class="card-head"><h2>Image library</h2></div>
             <p class="hint">
-              Upload images here and they are served from this server, so they work on your profile
-              and for the bot's card art. Discord needs the URL to be publicly reachable over HTTPS.
+              Every upload lives here so you can reuse it — pick <strong>Large</strong> or
+              <strong>Small</strong> and publish. Images are served from this server, so Discord can
+              fetch them on any device.
             </p>
             <div class="alert is-warn" id="https-warning" hidden>
               This dashboard is not on HTTPS, so Discord cannot fetch your images yet. Add a domain
               or a tunnel and set the public URL in <a href="#" data-goto="bot">Bot &amp; 24/7</a>.
             </div>
 
-            <div class="row photo-row">
-              <div class="field">
-                <span>Large image</span>
-                <div class="upload-slot" id="slot-large" data-size="large" role="button" tabindex="0" aria-label="Upload large image">
-                  <img alt="" hidden />
-                  <span>Choose image</span>
-                  <input type="file" accept="image/*" hidden />
-                </div>
-                <button class="btn ghost small" type="button" data-clear-image="large">Remove</button>
-              </div>
-              <div class="field">
-                <span>Small image</span>
-                <div class="upload-slot" id="slot-small" data-size="small" role="button" tabindex="0" aria-label="Upload small image">
-                  <img alt="" hidden />
-                  <span>Choose image</span>
-                  <input type="file" accept="image/*" hidden />
-                </div>
-                <button class="btn ghost small" type="button" data-clear-image="small">Remove</button>
-              </div>
-            </div>
 
-            <details class="advanced">
-              <summary>Use an image URL instead</summary>
-              <div class="row">
-                <label class="field">
-                  <span>Large image URL</span>
-                  <input id="url-large" type="url" placeholder="https://…" />
-                </label>
-                <label class="field">
-                  <span>Small image URL</span>
-                  <input id="url-small" type="url" placeholder="https://…" />
-                </label>
-              </div>
-              <button class="btn ghost small" type="button" id="use-urls">Use these URLs</button>
-            </details>
-
-            <div class="card-head" style="margin-top: 24px"><h2>Library</h2></div>
             <div id="asset-grid" class="asset-grid"></div>
             <p class="hint" id="asset-empty">Nothing uploaded yet.</p>
           </div>
@@ -295,6 +315,32 @@
                 <code>ALLOWED_DISCORD_IDS</code> if this instance is not just for you.
               </p>
             </details>
+          </div>
+
+          <div class="card" id="share-card">
+            <div class="card-head">
+              <h2>Share card</h2>
+              <span class="tag" id="share-tag" hidden>Public</span>
+            </div>
+            <p class="hint">
+              A read-only page with the same card and proper link previews — handy for profiles,
+              servers and bios. The link is random, and you can rotate it or switch it off whenever
+              you want.
+            </p>
+            <div id="share-empty">
+              <button class="btn primary" type="button" id="share-create">Create share link</button>
+            </div>
+            <div id="share-live" hidden>
+              <div class="copy-row">
+                <input id="share-url" type="text" readonly aria-label="Share link" />
+                <button class="btn ghost small" type="button" id="share-copy">Copy</button>
+              </div>
+              <div class="actions">
+                <a class="btn ghost small" id="share-open" href="#" target="_blank" rel="noreferrer noopener">Open</a>
+                <button class="btn ghost small" type="button" id="share-rotate">New link</button>
+                <button class="btn ghost small danger" type="button" id="share-off">Switch off</button>
+              </div>
+            </div>
           </div>
 
           <details class="card advanced" id="companion-card">
@@ -379,13 +425,17 @@
               <div><dt>Uptime</dt><dd id="bot-uptime">—</dd></div>
             </dl>
             <div id="bot-error" class="alert" role="alert" hidden></div>
-            <label class="field">
+            <label class="field" id="invite-field">
               <span>Invite link</span>
               <div class="copy-row">
                 <input id="invite-url" type="text" readonly value="{{INVITE_URL}}" />
                 <button class="btn ghost small" type="button" id="copy-invite">Copy</button>
               </div>
             </label>
+            <p class="hint" id="invite-hint" hidden>
+              Add your application ID under
+              <a href="#" data-goto="settings">Settings → Application &amp; bot</a> to get an invite link.
+            </p>
           </div>
 
           <div class="card">
@@ -476,11 +526,12 @@
           <div class="card-head"><h2>Where it shows</h2></div>
           <ul class="notes numbered">
             <li><strong>Bot card</strong> — name, type and status text, 24/7 on this server.</li>
-            <li><strong>Your profile</strong> — full rich presence with photos, buttons and timer while the companion runs.</li>
+            <li><strong>Your profile</strong> — photos, buttons and the timer while the in-Discord app is open.</li>
           </ul>
           <p class="hint">
-            Discord restricts user-account rich presence to software running on the user's own
-            computer, which is why the companion exists.
+            Discord only lets a client set a <em>user's</em> photos and buttons, so those come from
+            the in-Discord app (nothing to download) — or from the optional companion under
+            <a href="#" data-goto="profile">My profile</a> if you would rather run it locally.
           </p>
         </div>
 
@@ -494,6 +545,15 @@
         </div>
       </aside>
     </main>
+
+    <dialog id="asset-picker" class="picker" aria-label="Choose an image">
+      <div class="picker-head">
+        <h2>Choose an image</h2>
+        <button class="btn ghost small" type="button" id="picker-close">Close</button>
+      </div>
+      <div id="picker-grid" class="asset-grid"></div>
+      <p class="hint" id="picker-empty" hidden>No uploads yet — drop an image on a slot instead.</p>
+    </dialog>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>

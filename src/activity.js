@@ -27,6 +27,9 @@ const { buildActivity } = require("./presence");
 /** Discord embeds the Activity in an iframe served from these origins. */
 const FRAME_ANCESTORS = "https://discord.com https://*.discord.com";
 
+/** Fields worth telling the dashboard about; `lastSeenAt` changes on every poll. */
+const OBSERVABLE_FIELDS = ["connected", "userId", "username", "error"];
+
 /** How long a verified access token is trusted without asking Discord again. */
 const USER_CACHE_MS = 10 * 60_000;
 const USER_CACHE_MAX = 200;
@@ -134,13 +137,30 @@ function createActivityService({ settings, assets, logger = console, now = Date.
       resolveAsset
     });
 
-    status = {
+    // An empty activity has three different causes; say which one, otherwise a
+    // user with a perfectly good presence gets told to "build one".
+    let reason = null;
+    if (!activity) {
+      if (!presenceConfig || !presenceConfig.enabled || !presenceConfig.name) {
+        reason = "No presence is live yet - save one on the Presence tab and press Publish.";
+      } else if (presenceConfig.targets && presenceConfig.targets.companion === false) {
+        reason = "Your presence is live, but \u201cMy own profile\u201d is switched off on the Presence tab.";
+      } else {
+        reason = "This presence cannot be shown on your profile - check the activity type and images.";
+      }
+    }
+
+    const next = {
       connected: Boolean(activity),
       userId: user.id,
       username: user.username,
       lastSeenAt: new Date(now()).toISOString(),
-      error: activity ? null : "No presence is enabled yet - build one on the Presence tab."
+      error: reason
     };
+    // The Activity polls every few seconds; only a real change is worth an SSE
+    // broadcast to every open dashboard.
+    const changed = OBSERVABLE_FIELDS.some((key) => status[key] !== next[key]);
+    status = next;
 
     return {
       user: { id: user.id, username: user.username },
@@ -148,6 +168,8 @@ function createActivityService({ settings, assets, logger = console, now = Date.
       assets: activity?.assets || {},
       buttons: activity?.buttons || [],
       presence: presenceConfig,
+      reason,
+      changed,
       publicUrl,
       updatedAt: new Date(now()).toISOString()
     };
@@ -157,9 +179,15 @@ function createActivityService({ settings, assets, logger = console, now = Date.
     return { ...status };
   }
 
-  /** Called when Discord rejects the activity payload so the dashboard can say why. */
+  /**
+   * Called when Discord rejects the activity payload so the dashboard can say why.
+   * @returns {boolean} whether anything the dashboard shows actually changed
+   */
   function noteError(message) {
-    status = { ...status, error: String(message || "Discord rejected the presence.").slice(0, 200) };
+    const error = String(message || "Discord rejected the presence.").slice(0, 200);
+    const changed = status.error !== error;
+    status = { ...status, error };
+    return changed;
   }
 
   function reset() {

@@ -79,7 +79,7 @@ test("horizontal rules and blockquotes render", () => {
 });
 
 test("blocks indented under a list item still render", () => {
-  // `docs/free-setup.md` places its variable table and invite URL this way.
+  // `docs/setup.md` places its variable table and invite URL this way.
   const table = renderMarkdown(
     ["3. Fill these in:", "", "   | Variable | Value |", "   | --- | --- |", "   | `CLIENT_ID` | 123 |"].join("\n")
   );
@@ -88,26 +88,87 @@ test("blocks indented under a list item still render", () => {
 
   const code = renderMarkdown(["4. Invite the bot:", "", "   ```bash", "   npm start", "   ```"].join("\n"));
   assert.match(code.html, /<pre><code class="language-bash">npm start<\/code><\/pre>/);
+
+  // The block belongs to the item, so the list must not be broken in two -
+  // otherwise the steps after it would start again at 1.
+  assert.equal(table.html.match(/<ol>/g).length, 1);
+  assert.equal(code.html.match(/<ol>/g).length, 1);
+  assert.match(table.html, /<\/div><\/li><\/ol>/);
+});
+
+test("numbered steps keep counting across code, tables and prose", () => {
+  const { html } = renderMarkdown(
+    [
+      "1. First:",
+      "",
+      "   ```sh",
+      "   echo one",
+      "   ```",
+      "",
+      "2. Second:",
+      "",
+      "   | a | b |",
+      "   | --- | --- |",
+      "   | 1 | 2 |",
+      "",
+      "3. Third."
+    ].join("\n")
+  );
+  assert.equal(html.match(/<ol>/g).length, 1);
+  assert.equal(html.match(/<li>/g).length, 3);
+  assert.match(html, /<li>First:<pre><code class="language-sh">echo one<\/code><\/pre><\/li>/);
+  assert.match(html, /<li>Second:<div class="md-table">/);
+  assert.match(html, /<li>Third\.<\/li><\/ol>$/);
+});
+
+test("a list that changes type still ends where it ends", () => {
+  // Bullets followed by numbers are two lists, not one list that switched tag.
+  const { html } = renderMarkdown(["- a", "- b", "", "1. one", "2. two"].join("\n"));
+  assert.match(html, /^<ul><li>a<\/li><li>b<\/li><\/ul>\n<ol><li>one<\/li><li>two<\/li><\/ol>$/);
+});
+
+test("a tab-indented code block inside a step loses its indentation", () => {
+  const { html } = renderMarkdown(["1. Run:", "", "\t```sh", "\techo hi", "\t```", "", "2. Done."].join("\n"));
+  assert.match(html, /<pre><code class="language-sh">echo hi<\/code><\/pre>/);
+  assert.equal(html.match(/<ol>/g).length, 1);
 });
 
 test("empty input is empty output", () => {
   assert.deepEqual(renderMarkdown(""), { html: "", headings: [] });
 });
 
-test("the deployment guide renders with working anchors and no raw html", () => {
-  const guide = require("../src/guide").loadGuide();
-  assert.equal(guide.available, true);
-  assert.ok(guide.html.length > 2000);
-  assert.ok(guide.headings.length >= 5);
+test("every setup document renders with working anchors and no raw html", () => {
+  const { loadGuide, DOCS } = require("../src/guide");
 
-  // Every table of contents link points at a real heading id.
-  const ids = new Set(guide.headings.map((heading) => heading.id));
-  for (const match of guide.html.matchAll(/href="#([^"]+)"/g)) {
-    assert.ok(ids.has(match[1]), `dangling anchor #${match[1]}`);
-  }
+  for (const doc of DOCS) {
+    const guide = loadGuide(doc.slug);
+    assert.equal(guide.available, true, doc.file);
+    assert.ok(guide.html.length > 2000, `${doc.file} is substantial`);
+    assert.ok(guide.headings.length >= 5, `${doc.file} has headings`);
+    assert.equal(guide.file, doc.file, "loadGuide reports the file it rendered");
 
-  // No raw html tags from the source leaked through.
-  for (const tag of ["<script", "<iframe", "onerror="]) {
-    assert.ok(!guide.html.includes(tag), `guide html contains ${tag}`);
+    // Every same-page link points at a real heading id.
+    const ids = new Set(guide.headings.map((heading) => heading.id));
+    for (const match of guide.html.matchAll(/href="#([^"]+)"/g)) {
+      assert.ok(ids.has(match[1]), `dangling anchor #${match[1]} in ${doc.file}`);
+    }
+
+    // No raw html tags from the source leaked through.
+    for (const tag of ["<script", "<iframe", "onerror="]) {
+      assert.ok(!guide.html.includes(tag), `${doc.file} contains ${tag}`);
+    }
   }
+});
+
+test("links between the guide files survive rendering and get routed", () => {
+  const { renderMarkdown } = require("../src/markdown");
+  const { html } = renderMarkdown(
+    "See [the wizard](setup.md#6-step-3-first-boot-and-the-wizard) and [local](setup-local.md)."
+  );
+  assert.match(html, /href="setup\.md#6-step-3-first-boot-and-the-wizard"/);
+  assert.match(html, /href="setup-local\.md"/);
+
+  // Unsafe schemes never become hrefs.
+  const unsafe = renderMarkdown("[click](javascript:void)").html;
+  assert.ok(!unsafe.includes("javascript:"), "javascript: urls are stripped");
 });

@@ -33,12 +33,20 @@ const DEFAULT_SETTINGS = Object.freeze({
     redirectUri: ""
   },
   presence: null,
+  // Unpublished edits. `presence` is what Discord shows right now; `draft` is
+  // whatever the dashboard has staged. Publishing copies draft -> presence.
+  draft: null,
+  // Public read-only view of the presence card (`/c/<slug>`), opt-in.
+  share: null,
   keepAlive: { enabled: true, intervalMinutes: 10 },
   assets: [],
   pairings: []
 });
 
 const SCRYPT_KEYLEN = 32;
+
+/** Share slugs appear in URLs, so keep them boringly safe. */
+const SHARE_SLUG_RE = /^[a-z0-9]{6,32}$/;
 
 function hashKey(key, salt = crypto.randomBytes(16).toString("hex")) {
   const hash = crypto.scryptSync(String(key), salt, SCRYPT_KEYLEN).toString("hex");
@@ -73,6 +81,11 @@ function migrate(raw) {
   migrated.discord.allowedIds = Array.isArray(migrated.discord.allowedIds)
     ? migrated.discord.allowedIds.filter((id) => /^\d{5,25}$/.test(String(id)))
     : [];
+  migrated.draft = isPlainObject(migrated.draft) ? migrated.draft : null;
+  migrated.share =
+    isPlainObject(migrated.share) && SHARE_SLUG_RE.test(String(migrated.share.slug || ""))
+      ? migrated.share
+      : null;
   return migrated;
 }
 
@@ -166,7 +179,11 @@ class SettingsStore {
       this.setupToken = String(this.env.SETUP_TOKEN);
       return;
     }
-    if (this.data.setupComplete || this.keyFromEnv) return;
+    // Normally the token is only for a first run. But an instance can lose its
+    // dashboard key (a hand-edited or half-restored settings.json) while still
+    // being marked complete - then the wizard is the only way back in, and it
+    // needs a token when the request comes from the internet.
+    if (this.keyFromEnv || (this.data.setupComplete && this.data.admin.keyHash)) return;
     // Written next to the settings file so the owner can read it from the
     // filesystem even if logs are not accessible.
     const tokenFile = path.join(path.dirname(this.file), "setup-token.txt");
@@ -391,6 +408,7 @@ module.exports = {
   SettingsStore,
   DEFAULT_SETTINGS,
   SETTINGS_VERSION,
+  SHARE_SLUG_RE,
   hashKey,
   verifyKey,
   migrate

@@ -55,6 +55,16 @@
     return `${Math.round(delta / 86_400_000)}d ago`;
   }
 
+  /**
+   * True when the caret is in a field of this form. State updates must never
+   * overwrite text somebody is in the middle of typing.
+   */
+  function typingIn(form) {
+    const active = document.activeElement;
+    if (!form || !active || !form.contains(active)) return false;
+    return /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) && active.type !== "submit";
+  }
+
   function toast(message, isError = false) {
     const el = $("#toast");
     el.textContent = message;
@@ -123,13 +133,20 @@
   }
 
   for (const tab of $$(".tab")) tab.addEventListener("click", () => showTab(tab.dataset.tab));
+  // `/?tab=profile` is where the setup wizard drops you, and it is linkable.
+  const tabParam = new URLSearchParams(location.search).get("tab");
   for (const link of $$("[data-goto]")) {
     link.addEventListener("click", (event) => {
       event.preventDefault();
       showTab(link.dataset.goto);
     });
   }
-  if (location.hash.length > 1) showTab(location.hash.slice(1));
+  if (tabParam) {
+    showTab(tabParam);
+    history.replaceState(null, "", `${location.pathname}#${tabParam}`);
+  } else if (location.hash.length > 1) {
+    showTab(location.hash.slice(1));
+  }
 
   // ---------------------------------------------------------------- preview
 
@@ -196,6 +213,96 @@
   function tickTimer() {
     $("#preview-time").textContent = previewStart ? `${formatDuration(Date.now() - previewStart)} elapsed` : "";
   }
+
+  // ------------------------------------------------------- templates & chrome
+
+  let draftTimer = null;
+  let draftSavedAt = null;
+  let pendingSave = false;
+
+  /** Presets come from the server, so the list has one definition. */
+  function renderTemplates(templates) {
+    const row = $("#template-row");
+    const chips = $("#template-chips");
+    if (!row || !chips) return;
+    // State arrives over SSE too; rebuilding the same chips would only steal
+    // focus and flicker, so redraw when the list actually changes.
+    const signature = Array.isArray(templates)
+      ? templates.map((template) => `${template.id}:${template.name}`).join("|")
+      : "";
+    if (chips.dataset.signature === signature) return;
+    chips.dataset.signature = signature;
+    chips.textContent = "";
+    if (!Array.isArray(templates) || templates.length === 0) {
+      row.hidden = true;
+      return;
+    }
+    for (const template of templates) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "template-chip";
+      chip.dataset.templateId = template.id;
+      chip.innerHTML = "";
+      const dot = document.createElement("span");
+      dot.className = "template-dot";
+      dot.style.background = template.accent || "var(--accent)";
+      const label = document.createElement("strong");
+      label.textContent = template.name;
+      const blurb = document.createElement("small");
+      blurb.textContent = template.blurb;
+      chip.append(dot, label, blurb);
+      chip.addEventListener("click", async () => {
+        try {
+          const result = await api(`/api/templates/${encodeURIComponent(template.id)}`, "POST", {});
+          fillForm(result.presence);
+          renderPreview(result.presence);
+          markEdited();
+          toast(`“${template.name}” applied — publish when you like it`);
+        } catch (error) {
+          toast(error.message, true);
+        }
+      });
+      chips.append(chip);
+    }
+    row.hidden = false;
+  }
+
+  /**
+   * Preview fidelity: Discord has a light theme and a compact card, and the
+   * card looks wrong if you only ever check one of them.
+   */
+  function applyPreviewAppearance() {
+    const preview = $("#preview");
+    if (!preview) return;
+    const theme = localStorage.getItem("statusc0rd.previewTheme") === "light" ? "light" : "dark";
+    const compact = localStorage.getItem("statusc0rd.previewDensity") === "compact";
+    preview.classList.toggle("is-light", theme === "light");
+    preview.classList.toggle("is-compact", compact);
+    for (const button of $$("[data-preview-theme]")) {
+      button.classList.toggle("is-active", button.dataset.previewTheme === theme);
+      button.setAttribute("aria-pressed", button.dataset.previewTheme === theme ? "true" : "false");
+    }
+    const density = $("#preview-density");
+    if (density) {
+      density.textContent = compact ? "Full" : "Compact";
+      density.setAttribute("aria-pressed", compact ? "true" : "false");
+    }
+  }
+
+  for (const button of $$("[data-preview-theme]")) {
+    button.addEventListener("click", () => {
+      localStorage.setItem("statusc0rd.previewTheme", button.dataset.previewTheme);
+      applyPreviewAppearance();
+    });
+  }
+
+  $("#preview-density")?.addEventListener("click", () => {
+    const compact = localStorage.getItem("statusc0rd.previewDensity") === "compact";
+    localStorage.setItem("statusc0rd.previewDensity", compact ? "full" : "compact");
+    applyPreviewAppearance();
+  });
+
+  applyPreviewAppearance();
 
   // -------------------------------------------------------------- form sync
 
@@ -271,6 +378,55 @@
   function setDirty(value) {
     dirty = value;
     $("#form-note").hidden = !value;
+    $("#form-note").textContent = "Unpublished changes";
+    $("#discard-btn").hidden = !value && !draftSavedAt;
+  }
+
+  /** Everything the editor changes funnels through here: mark dirty, autosave. */
+  function markEdited() {
+    setDirty(true);
+    scheduleDraftSave();
+  }
+
+  function setDraftHint(text, kind = "") {
+    const hint = $("#draft-hint");
+    if (!hint) return;
+    hint.hidden = !text;
+    hint.textContent = text || "";
+    hint.className = `hint${kind ? ` is-${kind}` : ""}`;
+  }
+
+  /**
+   * Draft = "staged but not live". Discord keeps showing the published card
+   * until the person presses Publish, so a half-typed line never leaks onto
+   * their profile.
+   */
+  function scheduleDraftSave() {
+    if (draftTimer) clearTimeout(draftTimer);
+    pendingSave = true;
+    draftTimer = setTimeout(() => void saveDraft(), 1200);
+  }
+
+  async function saveDraft() {
+    const payload = readForm();
+    if (!String(payload.name || "").trim()) {
+      setDraftHint("Give it a name and this saves itself as a draft.");
+      return;
+    }
+    try {
+      const result = await api("/api/presence/draft", "POST", payload);
+      draftSavedAt = result.draft?.savedAt || new Date().toISOString();
+      if (state) state.draft = result.draft;
+      setDraftHint(`Draft saved ${timeAgo(draftSavedAt)} — not live until you publish.`);
+      $("#discard-btn").hidden = false;
+    } catch (error) {
+      if (error.details?.length) {
+        // Validation problems are the person's business only when publishing.
+        setDraftHint(error.details[0]);
+      }
+    } finally {
+      pendingSave = false;
+    }
   }
 
   // ------------------------------------------------------------- state sync
@@ -420,7 +576,7 @@
             renderPreview(readForm());
             setDirty(true);
           }
-          toast(cleared ? "Image deleted — pick another one and apply" : "Image deleted");
+          toast(cleared ? "Image deleted — pick another one, then publish" : "Image deleted");
         } catch (error) {
           toast(error.message, true);
         }
@@ -430,6 +586,7 @@
       card.append(img, caption, actions);
       grid.append(card);
     }
+    renderPickerAssets(assets);
   }
 
   function syncSlotImages() {
@@ -510,10 +667,7 @@
 
     if (settings) {
       const form = $("#keepalive-form");
-      // Never overwrite a field the user is in the middle of typing into: state
-      // updates (SSE, 20s poll) must not fight with the keyboard.
-      const editing = form.contains(document.activeElement);
-      if (!editing) {
+      if (!typingIn(form)) {
         form.elements.publicUrl.value = settings.publicUrl || "";
         form.elements.enabled.checked = Boolean(settings.keepAlive?.enabled);
         form.elements.intervalMinutes.value = settings.keepAlive?.intervalMinutes || 10;
@@ -540,9 +694,21 @@
     renderPairings(next.pairings || []);
     renderKeepAlive(next.keepAlive, next.meta);
     if (fill && !dirty) {
-      fillForm(next.presence);
-      renderPreview(next.presence);
+      // A staged draft is what the person was last editing, on any device.
+      const source = next.draft || next.presence;
+      fillForm(source);
+      renderPreview(source);
+      draftSavedAt = next.draft?.savedAt || null;
+      if (next.draft) {
+        setDirty(true);
+        setDraftHint(`Draft from ${timeAgo(next.draft.savedAt)} — publish to put it on your profile.`);
+      } else {
+        setDirty(false);
+        setDraftHint("");
+      }
     }
+    renderTemplates(next.templates);
+    renderShare(next.share);
     renderPreviewNote(next.presence);
     renderUser(next.user);
     const redirect = $("#redirect-hint");
@@ -609,8 +775,23 @@
     box.hidden = false;
   }
 
+  for (const input of $$("input, select, textarea", form)) {
+    input.addEventListener("input", () => {
+      updateVisibility();
+      renderPreview(readForm());
+      markEdited();
+    });
+    input.addEventListener("change", () => {
+      updateVisibility();
+      renderPreview(readForm());
+      markEdited();
+    });
+  }
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    // Publishing pushes the form as it stands; the server also accepts the
+    // stored draft when the body is empty (see POST /api/presence/publish).
     const payload = readForm();
     $("#form-errors").hidden = true;
 
@@ -622,23 +803,55 @@
 
     const button = $("#apply-btn");
     button.disabled = true;
-    button.textContent = "Applying…";
+    button.textContent = "Publishing…";
     try {
-      const result = await api("/api/presence", "POST", payload);
+      // Cancel any queued autosave: it would immediately recreate the draft we
+      // are about to publish.
+      if (draftTimer) {
+        clearTimeout(draftTimer);
+        draftTimer = null;
+      }
+      pendingSave = false;
+      const result = await api("/api/presence/publish", "POST", payload);
       setDirty(false);
+      draftSavedAt = null;
+      if (state) state.draft = null;
+      setDraftHint("Published — this is what Discord shows now.");
+      $("#discard-btn").hidden = true;
       field("restartTimer").checked = false;
       state.presence = result.presence;
       state.bot = result.bot;
       renderPreview(result.presence);
       renderBot(result.bot);
       renderPreviewNote(result.presence);
-      toast("Presence applied");
+      toast("Published");
     } catch (error) {
       showErrors(error);
       toast(error.message, true);
     } finally {
       button.disabled = false;
-      button.textContent = "Apply presence";
+      button.textContent = "Publish";
+    }
+  });
+
+  $("#discard-btn").addEventListener("click", async () => {
+    try {
+      if (draftTimer) {
+        clearTimeout(draftTimer);
+        draftTimer = null;
+      }
+      pendingSave = false;
+      await api("/api/presence/draft", "DELETE");
+      state.draft = null;
+      draftSavedAt = null;
+      fillForm(state.presence);
+      renderPreview(state.presence);
+      setDirty(false);
+      setDraftHint("Draft discarded — back to what is live.");
+      $("#discard-btn").hidden = true;
+      toast("Draft discarded");
+    } catch (error) {
+      toast(error.message, true);
     }
   });
 
@@ -666,10 +879,31 @@
     const el = $(`#url-${kind}`);
     if (el) el.value = /^https?:\/\//.test(value) ? value : "";
     syncSlotImages();
-    setDirty(true);
+    markEdited();
     renderPreview({ ...readForm(), largeImage: draft.largeImage, smallImage: draft.smallImage });
-    if (url) toast(`Set as ${kind} image — press Apply presence to publish`);
+    if (url) toast(`Set as ${kind} image — publish to show it`);
   }
+
+  /** Upload one file into a slot: resize, POST, stage it. */
+  async function uploadToSlot(slot, file) {
+    if (!slot || !file) return;
+    const size = slot.dataset.size === "small" ? 256 : 512;
+    slot.classList.add("is-busy");
+    try {
+      const dataUrl = await upload.prepare(file, size);
+      const result = await api("/api/assets", "POST", { dataUrl, name: file.name });
+      state.assets = [result.asset, ...state.assets.filter((asset) => asset.id !== result.asset.id)];
+      renderAssets(state.assets);
+      renderPickerAssets(state.assets);
+      setImage(slot.dataset.size, `asset:${result.asset.id}`, result.asset.url);
+    } catch (error) {
+      toast(error.message, true);
+    } finally {
+      slot.classList.remove("is-busy");
+    }
+  }
+
+  let activeSlot = null;
 
   for (const slot of $$(".upload-slot")) {
     const input = slot.querySelector("input[type=file]");
@@ -680,30 +914,90 @@
       if (event.target === input) return;
       open();
     });
+    slot.addEventListener("focus", () => {
+      activeSlot = slot;
+    });
     slot.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
       open();
     });
+
+    // Drag and drop
+    slot.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      slot.classList.add("is-drop");
+    });
+    slot.addEventListener("dragleave", () => slot.classList.remove("is-drop"));
+    slot.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      slot.classList.remove("is-drop");
+      const file = [...(event.dataTransfer?.files || [])].find((item) => item.type.startsWith("image/"));
+      if (!file) return toast("Drop an image file (PNG, JPEG, WebP or GIF).", true);
+      activeSlot = slot;
+      await uploadToSlot(slot, file);
+    });
+
     input.addEventListener("change", async () => {
       const file = input.files?.[0];
       if (!file) return;
-      const size = slot.dataset.size === "small" ? 256 : 512;
-      slot.classList.add("is-busy");
-      try {
-        const dataUrl = await upload.prepare(file, size);
-        const result = await api("/api/assets", "POST", { dataUrl, name: file.name });
-        state.assets = [result.asset, ...state.assets.filter((asset) => asset.id !== result.asset.id)];
-        renderAssets(state.assets);
-        setImage(slot.dataset.size, `asset:${result.asset.id}`, result.asset.url);
-      } catch (error) {
-        toast(error.message, true);
-      } finally {
-        slot.classList.remove("is-busy");
-        input.value = "";
-      }
+      activeSlot = slot;
+      await uploadToSlot(slot, file);
+      input.value = "";
     });
   }
+
+  // Paste a screenshot straight in: ctrl/cmd+V anywhere on the dashboard goes to
+  // the slot you last touched (the large image by default).
+  document.addEventListener("paste", async (event) => {
+    const items = [...(event.clipboardData?.items || [])];
+    const item = items.find((entry) => entry.type.startsWith("image/"));
+    if (!item) return;
+    const file = item.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    const slot = activeSlot || $("#slot-large");
+    if (slot) slot.focus();
+    await uploadToSlot(slot, file);
+  });
+
+  // Reuse picker: the same library, without leaving the editor.
+  function renderPickerAssets(assets) {
+    const grid = $("#picker-grid");
+    if (!grid) return;
+    grid.textContent = "";
+    const list = Array.isArray(assets) ? assets : [];
+    $("#picker-empty").hidden = list.length > 0;
+    for (const asset of list) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "picker-item";
+      const img = document.createElement("img");
+      img.src = asset.url;
+      img.alt = asset.name;
+      img.loading = "lazy";
+      button.append(img);
+      button.addEventListener("click", () => {
+        setImage(pickerTarget, `asset:${asset.id}`, asset.url);
+        $("#asset-picker")?.close();
+      });
+      grid.append(button);
+    }
+  }
+
+  let pickerTarget = "large";
+
+  for (const button of $$("[data-pick-asset]")) {
+    button.addEventListener("click", () => {
+      pickerTarget = button.dataset.pickAsset;
+      renderPickerAssets(state?.assets || []);
+      const dialog = $("#asset-picker");
+      if (dialog?.showModal) dialog.showModal();
+      else toast("Upload an image first", true);
+    });
+  }
+
+  $("#picker-close")?.addEventListener("click", () => $("#asset-picker")?.close());
 
   for (const button of $$("[data-clear-image]")) {
     button.addEventListener("click", () => setImage(button.dataset.clearImage, "", ""));
@@ -722,7 +1016,7 @@
       }
       if (value) setImage(kind, value, value);
     }
-    toast("URLs set — press Apply presence");
+    toast("URLs applied — press Publish to go live");
   });
 
   // ----------------------------------------------------------------- profile
@@ -756,8 +1050,20 @@
     toast(ok ? "Command copied" : "Copy failed — select the text manually", !ok);
   });
 
+  // With no application id there is no invite link to give out: hide the empty
+  // input instead of handing over a discord.com URL that only errors.
+  const inviteValue = $("#invite-url").value.trim();
+  if (!inviteValue) {
+    $("#invite-field").hidden = true;
+    $("#invite-hint").hidden = false;
+  }
+
   $("#copy-invite").addEventListener("click", async () => {
-    const ok = await copyText($("#invite-url").value);
+    if (!inviteValue) {
+      toast("Add your application id first", true);
+      return;
+    }
+    const ok = await copyText(inviteValue);
     toast(ok ? "Invite link copied" : "Copy failed", !ok);
   });
 
@@ -769,6 +1075,69 @@
     }
     const ok = await copyText(href);
     toast(ok ? "Activity link copied" : "Copy failed", !ok);
+  });
+
+  // ------------------------------------------------------------- share card
+
+  function renderShare(share) {
+    const live = $("#share-live");
+    const empty = $("#share-empty");
+    const tag = $("#share-tag");
+    if (!live || !empty) return;
+
+    if (share?.url) {
+      live.hidden = false;
+      empty.hidden = true;
+      tag.hidden = false;
+      tag.textContent = "Public";
+      $("#share-url").value = share.url;
+      $("#share-open").href = share.url;
+    } else {
+      live.hidden = true;
+      empty.hidden = false;
+      tag.hidden = true;
+      $("#share-url").value = "";
+    }
+  }
+
+  $("#share-create")?.addEventListener("click", async () => {
+    try {
+      const result = await api("/api/share", "POST", {});
+      renderShare(result.share);
+      state.share = result.share;
+      const ok = await copyText(result.share.url);
+      toast(ok ? "Share link created and copied" : "Share link created");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+
+  $("#share-rotate")?.addEventListener("click", async () => {
+    try {
+      const result = await api("/api/share", "POST", {});
+      renderShare(result.share);
+      state.share = result.share;
+      toast("New link — the old one stopped working");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+
+  $("#share-off")?.addEventListener("click", async () => {
+    if (!confirm("Switch sharing off? The link stops working immediately.")) return;
+    try {
+      await api("/api/share", "DELETE");
+      renderShare(null);
+      state.share = null;
+      toast("Sharing switched off");
+    } catch (error) {
+      toast(error.message, true);
+    }
+  });
+
+  $("#share-copy")?.addEventListener("click", async () => {
+    const ok = await copyText($("#share-url").value);
+    toast(ok ? "Share link copied" : "Copy failed", !ok);
   });
 
   // ---------------------------------------------------------------- settings
@@ -799,7 +1168,8 @@
     if (token) payload.botToken = token;
     try {
       await api("/api/settings", "POST", payload);
-      event.target.reset();
+      // Only the secret goes: a full reset() would blank the id the server keeps.
+      event.target.elements.botToken.value = "";
       toast(token ? "Bot token saved — reconnecting" : "Saved");
       refresh();
     } catch (error) {
@@ -815,8 +1185,9 @@
     if (secret) payload.clientSecret = secret;
     try {
       await api("/api/settings", "POST", payload);
-      event.target.reset();
+      event.target.elements.clientSecret.value = "";
       toast("Sign-in settings saved");
+      refresh();
     } catch (error) {
       toast(error.message, true);
     }
@@ -845,11 +1216,15 @@
       applyState(next, { fill: !dirty });
       const settings = await api("/api/settings");
       renderKeepAlive(next.keepAlive, next.meta, settings.settings);
-      $("#app-form").elements.clientId.value = settings.settings.discord.clientId || "";
+      const appForm = $("#app-form");
+      if (!typingIn(appForm)) appForm.elements.clientId.value = settings.settings.discord.clientId || "";
       $("#bot-token-hint").textContent = settings.settings.discord.hasBotToken
         ? `Current token ${settings.settings.discord.botTokenPreview}`
         : "No bot token saved yet";
-      $("#sso-form").elements.allowedIds.value = (settings.settings.discord.allowedIds || []).join(", ");
+      const ssoForm = $("#sso-form");
+      if (!typingIn(ssoForm)) {
+        ssoForm.elements.allowedIds.value = (settings.settings.discord.allowedIds || []).join(", ");
+      }
       return next;
     } catch (error) {
       toast(error.message || "Could not load the dashboard", true);
@@ -897,7 +1272,8 @@
   })();
 
   window.addEventListener("beforeunload", (event) => {
-    if (!dirty) return undefined;
+    // Drafts autosave, so only an in-flight save is worth a prompt.
+    if (!pendingSave) return undefined;
     event.preventDefault();
     event.returnValue = "";
     return "";

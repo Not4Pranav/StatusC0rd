@@ -175,6 +175,7 @@ body.auth {
 .fineprint {
   color: var(--muted);
   font-size: 0.78rem;
+  line-height: 1.6;
   margin: 14px 0 0;
   text-align: center;
 }
@@ -423,13 +424,14 @@ body.auth {
   font-style: normal;
 }
 
-.field small,
-.hint {
+.field small {
   color: var(--muted);
   font-size: 0.78rem;
 }
 
 .hint {
+  color: var(--muted);
+  font-size: 0.78rem;
   margin: 12px 0 0;
 }
 
@@ -728,11 +730,6 @@ select:focus {
   font-weight: 550;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.facts dd.mono {
-  font-family: var(--mono);
-  font-size: 0.78rem;
 }
 
 .notes {
@@ -1330,13 +1327,6 @@ body.site {
   border-radius: 11px;
 }
 
-.fineprint {
-  margin: 14px 0 0;
-  font-size: 0.78rem;
-  line-height: 1.6;
-  color: var(--muted);
-}
-
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1364,8 +1354,7 @@ body.site {
   color: var(--muted);
 }
 
-.how,
-.honest {
+.how {
   margin-top: clamp(40px, 6vw, 64px);
 }
 
@@ -1424,6 +1413,7 @@ body.site {
 }
 
 .honest {
+  margin-top: clamp(40px, 6vw, 64px);
   padding: 20px;
   border: 1px solid rgba(240, 178, 50, 0.28);
   background: rgba(240, 178, 50, 0.06);
@@ -1527,6 +1517,41 @@ body.site {
 }
 
 /* Rendered markdown (`docs/free-setup.md`) */
+
+/* The four setup documents share one layout; these tabs switch between them. */
+
+.guide-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 clamp(18px, 3vw, 30px);
+}
+
+.md a.guide-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.md a.guide-tab:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.md a.guide-tab.is-active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  text-decoration: none;
+}
 
 .md {
   min-width: 0;
@@ -1710,4 +1735,488 @@ details.card.advanced[open] > summary {
 
 details.card.advanced .hint:first-of-type {
   margin-top: 0;
+}
+
+/* ----------------------------------------------------- editor refinements -- */
+
+.preview-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--surface-3);
+  border-radius: 999px;
+}
+
+.seg-btn {
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 650;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.seg-btn.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Discord's light theme, so the preview is not a dark-only guess. */
+.preview.is-light {
+  background: #ffffff;
+  border-color: #e3e5e8;
+}
+
+.preview.is-light .preview-name {
+  color: #060607;
+}
+
+.preview.is-light .preview-type,
+.preview.is-light .preview-line,
+.preview.is-light .preview-time {
+  color: #4e5058;
+}
+
+.preview.is-light .preview-button {
+  background: #f2f3f5;
+  border-color: #e3e5e8;
+  color: #060607;
+}
+
+.preview.is-light .preview-art {
+  background: linear-gradient(145deg, #e6e8fd, #f4f5fd);
+  border-color: #e3e5e8;
+}
+
+.preview.is-light .preview-art-fallback {
+  color: rgba(6, 6, 7, 0.35);
+}
+
+.preview.is-light .preview-small {
+  border-color: #ffffff;
+}
+
+/* The compact card Discord uses in the member list. */
+.preview.is-compact {
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.preview.is-compact .preview-art {
+  flex-basis: 56px;
+  width: 56px;
+  height: 56px;
+  border-radius: 9px;
+}
+
+.preview.is-compact .preview-name {
+  font-size: 0.92rem;
+}
+
+.preview.is-compact .preview-line {
+  font-size: 0.8rem;
+}
+
+.preview.is-compact .preview-time,
+.preview.is-compact .preview-buttons {
+  display: none;
+}
+
+/* Template gallery */
+
+.template-row {
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.template-title {
+  margin: 0 0 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.template-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.template-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 132px;
+  padding: 9px 12px 10px 30px;
+  position: relative;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: transform 0.08s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.template-chip:hover {
+  background: var(--surface-3);
+  border-color: #454b5a;
+}
+
+.template-chip:active {
+  transform: translateY(1px);
+}
+
+.template-chip strong {
+  font-size: 0.85rem;
+  font-weight: 620;
+}
+
+.template-chip small {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.template-dot {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+/* Upload slots: drop state, side actions, reuse picker */
+
+.upload-slot.is-drop {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.slot-links {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.picker {
+  width: min(560px, 92vw);
+  padding: 16px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.picker::backdrop {
+  background: rgba(6, 7, 10, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.picker-head h2 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.picker .asset-grid {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.picker-item {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  cursor: pointer;
+  overflow: hidden;
+  aspect-ratio: 1;
+}
+
+.picker-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.picker-item:hover {
+  border-color: var(--accent);
+}
+
+/* ------------------------------------------------------------- share card -- */
+
+.card-page {
+  min-height: 100vh;
+}
+
+.share {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+  padding: clamp(28px, 6vw, 56px) clamp(18px, 5vw, 32px) 56px;
+  flex: 1;
+}
+
+.share-name {
+  margin: 0 0 18px;
+  font-size: clamp(1.7rem, 4.4vw, 2.3rem);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.discord-card {
+  display: flex;
+  gap: 16px;
+  padding: 18px;
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #262a35, #1f222b);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  align-items: center;
+}
+
+.discord-art {
+  position: relative;
+  flex: 0 0 96px;
+  width: 96px;
+  height: 96px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #3b4166, #262a3d);
+  display: grid;
+  place-items: center;
+}
+
+.discord-art img {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.discord-art-fallback {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.discord-live {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ok);
+  border: 4px solid #20232c;
+}
+
+.discord-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.discord-type {
+  margin: 0;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.discord-title {
+  margin: 2px 0 4px;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.discord-line {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #d3d7e2;
+  overflow-wrap: anywhere;
+}
+
+.discord-line:empty {
+  display: none;
+}
+
+.discord-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.discord-buttons:empty {
+  display: none;
+}
+
+.card-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card-btn:hover {
+  background: #3a3f4b;
+}
+
+.share-note {
+  margin: 16px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------ responsive --- */
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  body.app {
+    padding: 0 12px 24px;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .topbar-right {
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .user-chip {
+    order: -1;
+  }
+
+  .tabs {
+    overflow-x: auto;
+    gap: 4px;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .row,
+  .photo-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preview {
+    gap: 12px;
+  }
+
+  .preview-art {
+    flex-basis: 64px;
+    width: 64px;
+    height: 64px;
+  }
+
+  .actions {
+    flex-wrap: wrap;
+  }
+
+  .actions .btn {
+    flex: 1 1 auto;
+  }
+
+  .asset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .template-chip {
+    min-width: 118px;
+  }
+
+  .discord-card {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .discord-art {
+    flex-basis: 72px;
+    width: 72px;
+    height: 72px;
+  }
+}
+
+@media (max-width: 520px) {
+  .setup-shell {
+    padding: 18px 14px 32px;
+  }
+
+  .steps {
+    gap: 4px;
+  }
+
+  .steps li {
+    font-size: 0.72rem;
+  }
+
+  .hero h1 {
+    font-size: 1.7rem;
+  }
+
+  .site-header {
+    padding: 12px 14px;
+  }
+
+  .site-nav {
+    gap: 12px;
+    font-size: 0.8rem;
+  }
 }
