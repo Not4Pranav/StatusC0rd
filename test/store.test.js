@@ -256,3 +256,137 @@ test("safeEqual treats different lengths and empties as different", () => {
   assert.equal(safeEqual("", ""), false);
   assert.equal(safeEqual(undefined, "x"), false);
 });
+
+test("a photo reference that no longer exists is an error, not a silent gap", () => {
+  const { sanitizePresence } = require("../src/presence");
+  const broken = sanitizePresence({ name: "x", type: 0, largeImage: "asset:nothex" });
+  assert.equal(broken.ok, false);
+  assert.match(broken.errors[0], /no longer exists/);
+});
+
+test("a card may only use photos its own account uploaded", () => {
+  const { sanitizePresence } = require("../src/presence");
+  const owns = () => false;
+  const result = sanitizePresence(
+    { name: "x", type: 0, largeImage: "asset:0123456789abcdef01" },
+    { ownsAsset: owns }
+  );
+  assert.equal(result.ok, false);
+  assert.match(result.errors[0], /not in your library/);
+  const mine = sanitizePresence(
+    { name: "x", type: 0, largeImage: "asset:0123456789abcdef01" },
+    { ownsAsset: () => true }
+  );
+  assert.equal(mine.ok, true);
+});
+
+test("one account cannot fill the disk: photo count and byte budgets", () => {
+  const dir = tmpDir("quota");
+  const s = store(dir);
+  const assets = new AssetStore(path.join(dir, "assets"), s);
+  const { MAX_PHOTOS_PER_ACCOUNT } = require("../src/assets");
+  // Same bytes are deduplicated, so vary the image to fill the quota.
+  const zlib = require("node:zlib");
+  const makePng = (seed) => {
+    const W = 16;
+    const H = 16;
+    const raw = Buffer.alloc((W * 3 + 1) * H, seed % 256);
+    for (let y = 0; y < H; y++) raw[y * (W * 3 + 1)] = 0;
+    const crcTable = [];
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      crcTable[n] = c;
+    }
+    const crc32 = (buf) => {
+      let x = 0xffffffff;
+      for (const byte of buf) x = crcTable[(x ^ byte) & 0xff] ^ (x >>> 8);
+      return (x ^ 0xffffffff) >>> 0;
+    };
+    const chunk = (type, data) => {
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(data.length);
+      const body = Buffer.concat([Buffer.from(type), data]);
+      const crc = Buffer.alloc(4);
+      crc.writeUInt32BE(crc32(body));
+      return Buffer.concat([len, body, crc]);
+    };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(W, 0);
+    ihdr.writeUInt32BE(H, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    return Buffer.concat([
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      chunk("IHDR", ihdr),
+      chunk("IDAT", zlib.deflateSync(raw)),
+      chunk("IEND", Buffer.alloc(0))
+    ]);
+  };
+  for (let i = 0; i < MAX_PHOTOS_PER_ACCOUNT; i += 1) {
+    const result = assets.save({ dataUrl: `data:image/png;base64,${makePng(i).toString("base64")}`, owner: "admin" });
+    assert.equal(result.ok, true, `upload ${i}`);
+  }
+  const oneTooMany = assets.save({ dataUrl: `data:image/png;base64,${makePng(999).toString("base64")}`, owner: "admin" });
+  assert.equal(oneTooMany.ok, false);
+  assert.match(oneTooMany.error, /60 photos/);
+});
+
+test("deleting a photo clears it from the card that used it", () => {
+  const dir = tmpDir("refs");
+  const s = store(dir);
+  s.addAsset({ id: "abcdef0123456789abcd", ext: "png", mime: "image/png", bytes: 10 }, "admin");
+  s.setPresence("admin", {
+    name: "with photo",
+    largeImage: "asset:abcdef0123456789abcd",
+    smallImage: "https://example.com/x.png"
+  });
+  s.setDraft("admin", { name: "draft", largeImage: "asset:abcdef0123456789abcd" });
+  assert.equal(s.clearAssetReferences("abcdef0123456789abcd", "admin"), true);
+  assert.equal(s.presenceFor("admin").largeImage, "");
+  assert.equal(s.presenceFor("admin").smallImage, "https://example.com/x.png", "other fields untouched");
+  assert.equal(s.draftFor("admin").largeImage, "");
+  assert.equal(s.clearAssetReferences("abcdef0123456789abcd", "admin"), false, "idempotent");
+});
+
+test("an image whose size cannot be read is refused", () => {
+  const { parseUpload } = require("../src/assets");
+  const jpegWithoutSize = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const result = parseUpload(`data:image/jpeg;base64,${jpegWithoutSize.toString("base64")}`);
+  assert.equal(result.ok, false);
+  assert.match(result.error, /size could not be read/);
+});
+
+test("lossless webp dimensions are read", () => {
+  const { parseUpload } = require("../src/assets");
+  const b = Buffer.alloc(64);
+  b.write("RIFF", 0, "ascii");
+  b.writeUInt32LE(56, 4);
+  b.write("WEBP", 8, "ascii");
+  b.write("VP8L", 12, "ascii");
+  b.writeUInt32LE(40, 16);
+  b[20] = 0x2f;
+  b.writeUInt32LE((47 & 0x3fff) | ((47 & 0x3fff) << 14), 21);
+  const result = parseUpload(`data:image/webp;base64,${b.toString("base64")}`);
+  assert.equal(result.ok, true);
+  assert.equal(result.width, 48);
+  assert.equal(result.height, 48);
+});
+
+test("changing the keep-alive target probes it immediately", async () => {
+  const pings = [];
+  const keepAlive = new KeepAlive({
+    getPublicUrl: () => "",
+    intervalMinutes: 10,
+    fetchImpl: async (url) => {
+      pings.push(url);
+      return { ok: true, status: 200 };
+    }
+  });
+  keepAlive.configure({ enabled: true, publicUrl: "https://one.example", intervalMinutes: 10 });
+  await new Promise((r) => setTimeout(r, 30));
+  keepAlive.configure({ enabled: true, publicUrl: "https://two.example", intervalMinutes: 10 });
+  await new Promise((r) => setTimeout(r, 30));
+  keepAlive.stop();
+  assert.deepEqual(pings, ["https://one.example/health", "https://two.example/health"]);
+});

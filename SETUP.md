@@ -424,7 +424,7 @@ member.
 | **URL** | Streaming only, must be `twitch.tv` or `youtube.com` | 512 chars |
 | **Large image / small image** | an uploaded photo, an `https://` URL, or a Discord asset key | 512 chars |
 | **Large text / small text** | tooltips on the images | 128 chars each |
-| **Buttons** | up to **2**, label + `https://` link | label 32 chars |
+| **Buttons** | exactly up to **2** — a third is refused, label + `https://` link | label 32 chars |
 | **Elapsed timer** | shows `01:23:45` on your card | — |
 | **Restart timer** | re-bases the start time on publish | — |
 | **Where it shows** | *The bot* and/or *Your profile* — at least one | — |
@@ -452,6 +452,11 @@ in a complete, valid card in one click. They never overwrite your images or your
 - Accepted: **PNG, JPEG, WebP, GIF**, 16×16 to 4096×4096, **2 MB** max after
   decoding.
 - Uploads are content-hashed, so the same image uploaded twice is stored once.
+- Each account may keep **60 photos / 30 MB**, and the instance as a whole
+  **500 MB**. Both ceilings exist because free hosts give you a small disk;
+  hitting one says so and asks you to delete a photo first.
+- Deleting a photo also removes it from the card that used it, so the next
+  publish cannot fail on a picture that is already gone.
 - Discord only fetches images over public **HTTPS**. On an `http://` install
   (localhost, a LAN address) the upload and the preview work, but the server
   drops the image from what it sends, and the editor says why. Publish from an
@@ -862,7 +867,9 @@ without the slash redirects to `/activity/`, and `/favicon.ico` redirects to the
 SVG.
 
 Everything except the public routes needs a session; every write also needs the
-CSRF token from `/api/state`. Errors under `/api/` are JSON:
+CSRF token from `/api/state`, sent as the `x-csrf-token` header or a `_csrf` form
+field. A token in the query string is refused: URLs end up in logs, history and
+`Referer` headers, which is the one place a CSRF token must never appear. Errors under `/api/` are JSON:
 `{"ok": false, "error": "…"}`.
 
 ---

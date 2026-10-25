@@ -150,6 +150,9 @@ function createActivityService({ settings, assets, logger = console, now = Date.
     const presenceConfig = settings.presenceFor(resolved.userId) || null;
     const publicUrl = config().publicUrl || origin;
     const resolveAsset = (id) => {
+      // Only the card owner's own uploads resolve, so one account cannot show
+      // another's photo by writing its id into a stored card.
+      if (!settings.ownsAsset(id, resolved.userId)) return "";
       const asset = settings.findAsset(id);
       return asset ? assets.url(asset, publicUrl) : "";
     };

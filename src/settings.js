@@ -717,6 +717,30 @@ class SettingsStore {
     return { ...asset, owner };
   }
 
+  /**
+   * Drop every reference to a photo from one account's card and draft.
+   *
+   * Deleting a photo otherwise leaves `asset:<id>` in the stored card: the
+   * picture disappears from Discord and the next publish fails validation for a
+   * reason the person never caused. Called right after the entry is removed.
+   */
+  clearAssetReferences(id, owner = ADMIN_USER_ID) {
+    const ref = `asset:${id}`;
+    let changed = false;
+    for (const map of [this.data.presences, this.data.drafts]) {
+      const card = map[owner];
+      if (!isPlainObject(card)) continue;
+      for (const field of ["largeImage", "smallImage"]) {
+        if (card[field] === ref) {
+          card[field] = "";
+          changed = true;
+        }
+      }
+    }
+    if (changed) this._commit();
+    return changed;
+  }
+
   /** Remove one owner's entry; the file survives while another owner has it. */
   removeAsset(id, owner = ADMIN_USER_ID) {
     const next = this.data.assets.filter((asset) => !(asset.id === id && asset.owner === owner));

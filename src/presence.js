@@ -100,6 +100,9 @@ function imageKind(value) {
   if (!text) return { kind: "empty", value: "" };
   const ref = ASSET_REF_RE.exec(text);
   if (ref) return { kind: "asset", id: ref[1], value: text };
+  // Anything that *looks* like a reference but is not one is a mistake, not a
+  // Discord asset key: silently sending "asset:xyz" would render nothing.
+  if (/^asset:/i.test(text)) return { kind: "broken", value: text };
   if (/^https?:\/\//i.test(text)) return { kind: "url", value: text };
   return { kind: "key", value: text };
 }
@@ -144,22 +147,36 @@ function imageError(value, label) {
     if (info.value.length > LIMITS.image) return `${label} URL is too long.`;
     return null;
   }
+  if (info.kind === "broken") {
+    return `${label}: that uploaded photo no longer exists. Pick another image.`;
+  }
   if (info.kind === "key" && !ASSET_KEY_RE.test(info.value)) {
     return `${label}: use an uploaded image, an https:// URL, or a Discord asset key (letters, numbers, _ and -).`;
   }
   return null;
 }
 
-function sanitizeButtons(input) {
+/**
+ * Discord renders two buttons at most. A third used to vanish silently, which
+ * looked like a broken save; now it is refused so the person can remove one.
+ */
+const MAX_BUTTONS = 2;
+
+function sanitizeButtons(input, errors = []) {
   if (!Array.isArray(input)) return [];
+  if (input.length > MAX_BUTTONS) {
+    errors.push(`Discord shows ${MAX_BUTTONS} buttons at most. Remove ${input.length - MAX_BUTTONS}.`);
+  }
   const buttons = [];
-  for (const button of input.slice(0, 2)) {
-    if (!button || typeof button !== "object") continue;
+  input.slice(0, MAX_BUTTONS).forEach((button, index) => {
+    if (!button || typeof button !== "object") return;
     const label = toText(button.label, LIMITS.buttonLabel);
     const url = toText(button.url, LIMITS.image);
-    if (!label || !/^https:\/\/\S+$/i.test(url)) continue;
-    buttons.push({ label, url });
-  }
+    const position = input.length > 1 ? `Button ${index + 1}` : "The button";
+    if (!label) errors.push(`${position} needs a label.`);
+    else if (!/^https:\/\/\S+$/i.test(url)) errors.push(`${position} needs an https:// link.`);
+    else buttons.push({ label, url });
+  });
   return buttons;
 }
 
@@ -204,18 +221,24 @@ function sanitizePresence(input, options = {}) {
   const largeText = toText(body.largeText, LIMITS.assetText);
   const smallText = toText(body.smallText, LIMITS.assetText);
 
+  const ownsImage = typeof options.ownsAsset === "function" ? options.ownsAsset : null;
   for (const [value, label] of [
     [largeImage, "Large image"],
     [smallImage, "Small image"]
   ]) {
-    const error = imageError(value, label);
+    let error = imageError(value, label);
+    if (!error && ownsImage) {
+      const info = imageKind(value);
+      // An uploaded photo belongs to the account that uploaded it; referencing
+      // somebody else's id would put their picture on your card.
+      if (info.kind === "asset" && !ownsImage(info.id)) {
+        error = `${label}: that photo is not in your library. Upload it again or pick another image.`;
+      }
+    }
     if (error) errors.push(error);
   }
 
-  const buttons = sanitizeButtons(body.buttons);
-  if (Array.isArray(body.buttons) && body.buttons.length > 0 && buttons.length === 0) {
-    errors.push("Buttons need a label and an https:// link.");
-  }
+  const buttons = sanitizeButtons(body.buttons, errors);
 
   const targetsInput = body.targets && typeof body.targets === "object" ? body.targets : current.targets || {};
   const targets = {
@@ -344,6 +367,7 @@ function buildActivity(config, options = {}) {
 }
 
 module.exports = {
+  MAX_BUTTONS,
   ACTIVITY_TYPES,
   LIMITS,
   isLocalHost,
