@@ -359,13 +359,6 @@ function createApp({
     return user;
   }
 
-  function requireAuth(req, res, next) {
-    if (liveUser(req)) return next();
-    if (req.session?.user) req.session = null;
-    if (settings.needsSetup()) return res.redirect(302, "/setup");
-    return res.redirect(302, "/login");
-  }
-
   function requireAuthApi(req, res, next) {
     if (liveUser(req)) return next();
     if (req.session?.user) req.session = null;
@@ -744,7 +737,7 @@ function createApp({
 
   app.post("/logout", requireCsrf, (req, res) => {
     req.session = null;
-    res.redirect(303, "/login");
+    res.redirect(303, "/");
   });
 
   // ------------------------------------------------------------- discord sso
@@ -866,7 +859,29 @@ function createApp({
 
   // --------------------------------------------------------------- dashboard
 
-  app.get("/", requireAuth, (req, res) => {
+  /**
+   * The front door.
+   *
+   * A stranger gets the pitch and two buttons; a signed-in account goes straight
+   * to its dashboard. Before setup there is nothing to sign in to, so everyone
+   * is sent to the wizard instead.
+   */
+  function renderHome(req, res) {
+    // Built here rather than in the template: the buttons depend on whether the
+    // instance is configured and whether sign-ups are open.
+    const actions = settings.allowSignup
+      ? '<a class="btn primary" href="/register">Create your card</a>' +
+        '<a class="btn ghost" href="/login">Sign in</a>'
+      : '<a class="btn primary" href="/login">Sign in</a>';
+    res.type("html").send(render("home.html", { VERSION: version, ACTIONS_HTML: actions }));
+  }
+
+  app.get("/", (req, res) => {
+    if (settings.needsSetup()) return res.redirect(302, "/setup");
+    if (!liveUser(req)) {
+      if (req.session?.user) req.session = null;
+      return renderHome(req, res);
+    }
     const effective = settings.effective();
     const user = req.session.user;
     res.type("html").send(

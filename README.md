@@ -57,7 +57,7 @@ Needs Node 20+.
 
 ```sh
 npm ci
-npm start          # http://localhost:3000/setup
+npm start          # http://localhost:3000
 ```
 
 The first visit serves a three-step wizard: dashboard key, Discord application,
@@ -116,7 +116,7 @@ and the environment wins when both exist.
 
 | Method | Route | What |
 | --- | --- | --- |
-| `GET` | `/` | dashboard: build the card, publish it |
+| `GET` | `/` | the front page when signed out; the dashboard when signed in |
 | `GET` | `/setup` | first-run wizard |
 | `GET`/`POST` | `/login`, `/register`, `POST /logout` | sign in and sign up |
 | `GET` | `/auth/discord`, `/auth/discord/link`, `/auth/discord/callback` | Discord sign-in and account linking |
