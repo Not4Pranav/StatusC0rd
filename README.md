@@ -3,8 +3,6 @@
 Set up a Discord rich presence from your browser: text, photos, buttons and a
 live timer — then keep it online 24/7.
 
-![status: tested](https://img.shields.io/badge/tests-138%20passing-3ddc97)
-
 ```
 Browser ──HTTPS──▶ StatusC0rd server
                      ├─▶ Discord gateway   → the bot card, always online
@@ -219,18 +217,13 @@ photo reference (`asset:<id>`), an `https://` URL, or a Discord asset key.
 ## Development
 
 ```sh
-npm run dev    # node --watch
-npm run check  # parse every source file
-npm test       # 138 tests (node:test only)
+npm ci         # once
+npm start      # http://localhost:3000
 ```
 
-`test/companion-e2e.test.js` is the proof for the headline flow: it boots a real
-dashboard, uploads a real PNG, sets text + photo + two buttons, pairs a device,
-then runs the **actual companion** against a temporary UNIX socket that emulates
-the Discord client. It asserts the exact `SET_ACTIVITY` frame Discord receives
-(photo URL, hover text, both buttons, `metadata.button_urls`, timer), that a
-dashboard edit arrives without reloading, and that clearing/stopping removes the
-presence.
+No build step, no transpiler, no test harness to install: the whole app is plain
+CommonJS plus a browser script. `node --watch index.js` if you want a reload on
+save.
 
 ```
 index.js               boot, banner, graceful shutdown
@@ -250,14 +243,9 @@ src/markdown.js        the small Markdown subset those files are written in
 src/companion/agent.js the companion (also served as a personalized script)
 views/                 setup, dashboard, login, welcome, guide, card, activity
 public/                styles, dashboard JS, setup JS, upload helper, activity app
-docs/setup.md          shared steps; setup-local.md, setup-cloud.md,
-                       setup-free-cloud.md are the three host paths
-test/                  node:test suites (presence, settings, assets, bot,
-                       keepalive, companion IPC, HTTP integration)
+docs/                  the four guides (also served at /guide, /guide/local,
+                       /guide/cloud, /guide/free-cloud)
 ```
-
-The tests inject a fake bot and a temporary data directory, and the companion
-suite runs a real UNIX-socket server that emulates Discord's IPC handshake.
 
 ---
 

@@ -157,4 +157,4 @@ function guideNav(activeSlug = "") {
   }));
 }
 
-module.exports = { loadGuide, guideNav, findDoc, hrefFor, DOCS, DOCS_DIR, GUIDE_FILE: path.join(DOCS_DIR, "setup.md") };
+module.exports = { loadGuide, guideNav, findDoc };

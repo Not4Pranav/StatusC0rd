@@ -110,4 +110,4 @@ class KeepAlive {
   }
 }
 
-module.exports = { KeepAlive, MIN_INTERVAL_MINUTES };
+module.exports = { KeepAlive };

@@ -6,11 +6,7 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js",
-    "test": "node --test test/*.test.js",
-    "check": "node scripts/check.js",
-    "companion": "node src/companion/agent.js"
+    "start": "node index.js"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -112,19 +112,17 @@ Browser ──HTTPS──▶ your host (this repo, Node 20+)
 - `src/activity.js` is the server half of the in-Discord app: it exchanges the
   Activity's OAuth2 code (the client secret never reaches the browser), verifies
   who is asking, and shapes the saved presence into a `setActivity` payload.
-- `src/companion/agent.js` is one file used by both the CLI and the in-process
-  API; it speaks Discord's IPC protocol directly, with no extra dependencies.
+- `src/companion/agent.js` is the optional companion, served at `/companion.js`
+  with the device's config prepended; it speaks Discord's IPC protocol directly,
+  with no extra dependencies. The app itself never loads it.
 - `src/guide.js` renders `docs/*.md` for `/guide`, so the docs and the site are
   the same bytes.
 - `data/` holds `settings.json` (mode `0600`), `assets/` and `setup-token.txt`.
   `DATA_DIR` moves it. **That directory is the deployment's state.**
-- `npm test` = 138 tests, including `test/companion-e2e.test.js`, which drives a
-  real dashboard (upload → pair) and runs the real companion against a fake
-  Discord socket, asserting the exact `SET_ACTIVITY` frame.
-- `npm run check` = syntax check across every source file.
 
-To add a feature: change `src/presence.js` (validation) or a view, add a case to
-the matching `test/*.test.js`, run `npm test`. There is no build step.
+There is no build step: `npm ci` once, `npm start` after that. To change what
+Discord shows, edit `src/presence.js` (validation and limits) or a file in
+`views/`; to change what this page says, edit `docs/setup.md`.
 
 ---
 
