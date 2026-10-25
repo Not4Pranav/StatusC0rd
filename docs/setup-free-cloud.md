@@ -81,13 +81,15 @@ clicks that make photos and buttons possible:
    > the site is configured as-is. Without it, the first visit lands on `/setup`.
 
 6. Open the URL and finish the wizard (or skip it if you set the variables).
+   What you land on is mapped in
+   [the dashboard, tab by tab](setup.md#7-the-dashboard-tab-by-tab).
 7. **Bot & 24/7 → 24/7 online** → keep **Keep this server awake** ticked with an
    interval **under 15 minutes**. This is what stops Render from spinning the
    service down — and a spun-down service is an offline bot.
 8. Discord side: the two portal clicks are in the box at the top of this page —
    **Enable Activities** and the `/` → `https://YOUR-APP.onrender.com/activity/`
    mapping — then **Publish** and **Open in Discord**
-   ([details](setup.md#8-step-5-on-your-own-profile-no-install)).
+   ([details](setup.md#9-step-5-on-your-own-profile-no-install)).
 
 **Render free-tier truths**
 
@@ -176,7 +178,7 @@ curl -I https://statusc0rd-yourname.duckdns.org/health     # expect 200
 3. Choose the dashboard key, paste the Application ID and Client Secret, press
    **Finish setup** ([the wizard](setup.md#6-step-3-first-boot-and-the-wizard)).
 4. Discord: **Enable Activities**, URL mapping **`/`** →
-   `https://statusc0rd-yourname.duckdns.org/activity/` ([details](setup.md#8-step-5-on-your-own-profile-no-install)).
+   `https://statusc0rd-yourname.duckdns.org/activity/` ([details](setup.md#9-step-5-on-your-own-profile-no-install)).
 5. Publish the card, then **My profile → Open in Discord**.
 
 The keep-alive is harmless here and doubles as a liveness check, but a VM never
@@ -314,7 +316,7 @@ For Oracle and GCP the backup one-liner from
 | Any: Activity opens blank | URL mapping missing | prefix `/` → `https://YOUR-HOST/activity/` |
 
 Everything host-independent — Discord errors, buttons, key recovery — is in the
-[troubleshooting section](setup.md#18-troubleshooting) of the guide.
+[troubleshooting section](setup.md#19-troubleshooting) of the guide.
 
 ---
 

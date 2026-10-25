@@ -13,9 +13,9 @@
 > `/guide/local`, `/guide/cloud`, `/guide/free-cloud`). Edit a Markdown file once
 > and the repository, GitHub and the website all show the update.
 
-**Read this page for:** the Discord application, the wizard, the dashboard, going
-live on your profile, the 24/7 bot card, verification, security, environment
-variables and troubleshooting.
+**Read this page for:** the Discord application, the wizard, the dashboard tab by
+tab, going live on your profile, the 24/7 bot card, verification, security,
+environment variables and troubleshooting.
 
 **Read a path file for:** creating the machine, installing Node or Docker,
 HTTPS, keeping it running, updating and backing up *that* kind of host.
@@ -32,17 +32,18 @@ HTTPS, keeping it running, updating and backing up *that* kind of host.
 [the Discord application](#4-step-1-the-discord-application)
 
 **Go live:** [first boot](#6-step-3-first-boot-and-the-wizard) ·
-[design and publish](#7-step-4-design-and-publish-the-card) ·
-[your own profile](#8-step-5-on-your-own-profile-no-install) ·
-[24/7 bot card](#9-step-6-the-bot-card-always-online) ·
-[share card](#10-step-7-the-share-card-optional) ·
-[companion](#11-step-8-the-optional-companion)
+[the dashboard, tab by tab](#7-the-dashboard-tab-by-tab) ·
+[design and publish](#8-step-4-design-and-publish-the-card) ·
+[your own profile](#9-step-5-on-your-own-profile-no-install) ·
+[24/7 bot card](#10-step-6-the-bot-card-always-online) ·
+[share card](#11-step-7-the-share-card-optional) ·
+[companion](#12-step-8-the-optional-companion)
 
-**Look after it:** [verify](#12-step-9-verify-the-whole-install) ·
-[update and back up](#13-step-10-updates-and-backups) ·
-[security](#14-step-11-security-and-rotation) ·
-[environment variables](#15-environment-variables) ·
-[troubleshooting](#18-troubleshooting)
+**Look after it:** [verify](#13-step-9-verify-the-whole-install) ·
+[update and back up](#14-step-10-updates-and-backups) ·
+[security](#15-step-11-security-and-rotation) ·
+[environment variables](#16-environment-variables) ·
+[troubleshooting](#19-troubleshooting)
 
 ---
 
@@ -70,7 +71,7 @@ be that client, and StatusC0rd ships both:
 - **The optional companion.** A ~700-line Node script that talks to the local
   Discord socket. Nothing to enable inside Discord, but it has to be installed
   and kept running. Only worth it if you want the presence without opening a
-  panel — see §11.
+  panel — see §12.
 
 ### The user's five minutes
 
@@ -162,8 +163,9 @@ Whatever you pick, the end state is the same four things:
 
 1. An `https://` URL that reaches the app from the internet.
 2. `PUBLIC_URL` set to exactly that origin (photos and keep-alive need it).
-3. A writable `data/` directory that survives restarts, or the equivalent
-   environment variables (see §16).
+3. A writable `data/` directory that survives restarts, or the same values in
+   the environment instead — the wizard and the environment write the same
+   settings, and the environment wins (§16).
 4. A process that starts again after a reboot.
 
 ---
@@ -198,7 +200,7 @@ password: it is what lets *your server* finish the Discord sign-in for the
 in-Discord app on the user's behalf.
 
 Resetting the secret invalidates the old one, so if you reset it later, paste the
-new value into the dashboard again (§14.3).
+new value into the dashboard again (§15.3).
 
 ### 4.4 Copy the bot token (this is `DISCORD_TOKEN`, optional)
 
@@ -315,7 +317,7 @@ wizard answers *"Setup is already complete"* from the dashboard. Set
 
 One exception, in your favour: if a completed instance ever loses its dashboard
 key (a hand-edited or half-restored `settings.json`), a fresh setup token is
-generated on the next boot — see §14.1.
+generated on the next boot — see §15.1.
 
 ### 6.2 Step 1 — Account
 
@@ -326,7 +328,7 @@ generated on the next boot — see §14.1.
 - **Repeat key** — must match.
 
 The key is stored as a scrypt hash with a random salt. If you lose it you cannot
-recover it; see §14.1.
+recover it; see §15.1.
 
 ### 6.3 Step 2 — Discord app
 
@@ -358,7 +360,7 @@ wins.
 - **Details (line 1)** and **State (line 2)** — 128 chars each.
 - **Large / small photo** — click the slot, pick a file, or drag one onto it.
   Photos are cropped to a square and downscaled in your browser before upload.
-- **Keep this server awake** — the 24/7 keep-alive (§9). Leave it ticked.
+- **Keep this server awake** — the 24/7 keep-alive (§10). Leave it ticked.
 - **Public URL of this dashboard** — pre-filled with the address you are using.
   It must be the public `https://` origin; it is the base for photo URLs and the
   keep-alive target.
@@ -373,18 +375,121 @@ presence and the keep-alive settings, signs you in, and drops you on
 
 ---
 
-## 7. Step 4: design and publish the card
+## 7. The dashboard, tab by tab
+
+Everything is configured on the website; there is no config file to edit. This
+section is the map of it — the pages, the top bar and the five tabs. The sections
+after it are the walkthrough.
+
+### 7.1 The pages the site serves
+
+| Page | Who can open it | What it is |
+| --- | --- | --- |
+| `/welcome` | anyone | the two-minute overview, with links to the wizard and these docs |
+| `/guide` | anyone | this document, plus `/guide/local`, `/guide/cloud`, `/guide/free-cloud` |
+| `/setup` | the operator, first run only | the three-step wizard (§6) |
+| `/login` | anyone | the dashboard key, or **Continue with Discord** when an allowlist is set (§15.4) |
+| `/` | signed in | the dashboard described below |
+| `/c/<slug>` | anyone holding the link | the optional public share card (§11) |
+| `/activity/` | Discord, in its iframe | the in-Discord app that puts the card on your profile (§9) |
+| `/health` | anyone | `{"status":"ok"}` and uptime, and nothing else |
+
+Before setup, every path redirects to `/setup`. After it, `/` needs a session and
+sends you to `/login`; a session lasts 8 hours and then you sign in with the key
+again. Dashboard pages are sent `no-store`, so a shared browser never keeps a
+stale copy of your card.
+
+### 7.2 The top bar
+
+- **Brand and version** — the version this instance is running, the same number
+  `/api/health` reports.
+- **Bot pill** — *Bot online*, *Connecting…*, *Reconnecting…* (automatic backoff
+  after a network blip), *Bot offline* (a bad token or a sleeping host) or *No
+  bot*. Hover it for the reason.
+- **Profile pill** — *Profile live (Discord)* while the in-Discord app is pushing,
+  *Profile live* while a paired companion is, *Profile idle* when a device is
+  paired but silent, *Profile not live* when neither.
+- **User chip** — your Discord name and avatar if you signed in with Discord,
+  otherwise *Signed in*.
+- **Setup guide** opens `/guide` in a new tab; **Sign out** ends the session.
+
+### 7.3 The five tabs
+
+| Tab | What it is for | Documented in |
+| --- | --- | --- |
+| **Presence** | the editor and the live preview: every field that reaches Discord | §8 |
+| **Photos** | the image library — reuse, inspect or delete what you uploaded | §8.6 |
+| **My profile** | the in-Discord app, the share card and the optional companion | §9, §11, §12 |
+| **Bot & 24/7** | the bot's connection, its invite link and the keep-alive | §10 |
+| **Settings** | application ID, client secret, bot token, allowlist, dashboard key | §7.4 |
+
+### 7.4 Settings, form by form
+
+**Application & bot**
+
+| Field | What goes in it |
+| --- | --- |
+| Application (client) ID | the number from §4.2 — public, used for the launch link and the invite |
+| Bot token | the token from §4.4. Write-only: it shows the current token's last characters underneath and accepts *leave blank to keep the current token*. Saving reconnects the bot at once |
+
+**Discord sign-in**
+
+| Field | What goes in it |
+| --- | --- |
+| OAuth2 client secret | from §4.3. Required for the in-Discord app, optional for key-only use |
+| Allowed Discord user IDs | comma-separated user IDs; empty means "anyone who can install the app". The exact redirect URL to register in the portal is printed under the field |
+
+**Dashboard key**
+
+Choose a new key of 12 or more characters; the current one is required. The
+session you are using survives the change, other devices sign in again. Lost the
+old key? §15.1.
+
+Any value supplied by the environment shows up in the form but is disabled,
+because the environment always wins.
+
+### 7.5 How the page keeps up
+
+- One SSE stream (`/api/events`) pushes every change: publish from your phone and
+  the desktop tab updates without a reload. A 20-second poll takes over when the
+  stream is blocked by a proxy.
+- Edits are autosaved as a **draft** about a second after you stop typing, so
+  nothing reaches Discord until you press **Publish** (§8.4).
+- Validation errors appear above the form, Discord's own refusal arrives as a
+  toast, and closing the tab with a save in flight asks first.
+- It is a single-tenant dashboard: one key, one presence, one profile per
+  instance. Several people each wanting their own card means several instances.
+
+### 7.6 A first-run tour
+
+Ten minutes, in this order:
+
+1. Sign in with the key you chose in the wizard.
+2. **Settings → Application & bot** — application ID and bot token → **Save**.
+3. **Settings → Discord sign-in** — client secret → **Save**.
+4. **Bot & 24/7** — confirm *Bot online*, copy the invite link, add the bot to a
+   server of yours.
+5. **Bot & 24/7** — set the public URL and leave the keep-alive on → **Save**.
+6. **Presence** — name, type, status, both lines, a photo, up to two buttons.
+7. **Publish** — the bot card changes within a second.
+8. **My profile → Open in Discord** — the card lands on your profile (§9).
+9. **My profile → Create share link** if you want a public `/c/…` card (§11).
+10. Run the verification table in §13 once; it catches every typo.
+
+---
+
+## 8. Step 4: design and publish the card
 
 Everything that reaches Discord is edited on one screen: the **Presence** tab.
 
-### 7.1 Start from a template (optional)
+### 8.1 Start from a template (optional)
 
 Ten starting points: **Focus mode, Listening, Building, Watching, Gaming,
 Studying, Reading, On a break, In the studio, Ranked**. Clicking one fills the
 form; the photo you already picked and your target choices survive. Nothing is
 published by clicking a template — you still press **Publish**.
 
-### 7.2 The fields, with their real limits
+### 8.2 The fields, with their real limits
 
 | Field | Limit / rule | Notes |
 | --- | --- | --- |
@@ -400,7 +505,7 @@ published by clicking a template — you still press **Publish**.
 | Buttons | at most **2**; label 32 chars; URL must be `https://` | Discord renders them under the card |
 | Timer | on/off plus "restart from now" | counts up from the moment you publish |
 
-### 7.3 Photos
+### 8.3 Photos
 
 - Use **drag and drop**, **paste** (`Ctrl`/`Cmd` + `V`), the file picker, or
   **Reuse** to pull one out of your library.
@@ -416,7 +521,7 @@ published by clicking a template — you still press **Publish**.
   Discord. If the photo shows as a letter or a silhouette, the public URL is the
   usual suspect.
 
-### 7.4 Draft, publish, discard
+### 8.4 Draft, publish, discard
 
 - Every edit is staged and autosaved as a **draft** — on any device — and nothing
   reaches Discord until you press **Publish**.
@@ -427,7 +532,7 @@ published by clicking a template — you still press **Publish**.
 - Closing the tab with a save in flight asks for confirmation; everything else is
   already saved.
 
-### 7.5 Where it shows
+### 8.5 Where it shows
 
 Two checkboxes under **Show this presence on**:
 
@@ -438,7 +543,7 @@ Pick one or both; at least one is required. Un-ticking *My own profile* is why a
 Activity can legitimately show "no presence" while the dashboard looks fine — the
 Activity names that reason explicitly.
 
-### 7.6 The Photos tab
+### 8.6 The Photos tab
 
 Uploads are not thrown away when you publish: every image you ever uploaded is
 in the library, and the **Photos** tab is where you manage it.
@@ -456,12 +561,12 @@ does not fill the disk. Uploads are capped at 2 MB and 4096×4096; the browser
 already shrinks ordinary phone photos well below that.
 
 If the tab shows a yellow **"This dashboard is not on HTTPS"** warning, Discord
-will refuse to load your images — fix `PUBLIC_URL` first (§15), then publish
+will refuse to load your images — fix `PUBLIC_URL` first (§16), then publish
 again.
 
 ---
 
-## 8. Step 5: on your own profile, no install
+## 9. Step 5: on your own profile, no install
 
 1. **My profile** tab → **Open in Discord**. That link is
    `https://discord.com/activities/<your-app-id>`; the same app is in Discord's
@@ -489,11 +594,11 @@ again.
 | Not on `ALLOWED_DISCORD_IDS` | `403 not_allowed`, message in the panel |
 | Discord rejects the payload | "Discord refused the activity" with Discord's reason |
 
-The bot card (§9) is the part that stays after you close the panel.
+The bot card (§10) is the part that stays after you close the panel.
 
 ---
 
-## 9. Step 6: the bot card, always online
+## 10. Step 6: the bot card, always online
 
 The bot runs on the server, so its card is online as long as the server is. Three
 things make that true:
@@ -534,7 +639,7 @@ presence update and uptime. The expected states are *Bot online*, *Connecting…
 
 ---
 
-## 10. Step 7: the share card (optional)
+## 11. Step 7: the share card (optional)
 
 **My profile → Share card → Create share link** publishes a read-only page at
 `/c/<random-slug>` with the same card and real `Open Graph` / Twitter tags, so it
@@ -550,7 +655,7 @@ unfurls with its photo anywhere.
 
 ---
 
-## 11. Step 8: the optional companion
+## 12. Step 8: the optional companion
 
 Some people would rather not open a panel. The companion is a Node script that
 talks to the local Discord client over its socket and pushes the same card. It is
@@ -590,7 +695,7 @@ Notes that matter:
 
 ---
 
-## 12. Step 9: verify the whole install
+## 13. Step 9: verify the whole install
 
 Run through this once, on whatever host you chose. It catches every typical
 mistake.
@@ -610,11 +715,11 @@ mistake.
 | 11 | **Share card → Create**, open `/c/<slug>` in a private window | the card renders; no dashboard |
 | 12 | Restart the host | with env values set, the dashboard comes back without the wizard; on an ephemeral disk, photos are gone — that is the host, not a bug |
 
-If a check fails, §18 has the symptom-to-cause table.
+If a check fails, §19 has the symptom-to-cause table.
 
 ---
 
-## 13. Step 10: updates and backups
+## 14. Step 10: updates and backups
 
 **Update** (any git-based host):
 
@@ -648,9 +753,9 @@ re-entering.
 
 ---
 
-## 14. Step 11: security and rotation
+## 15. Step 11: security and rotation
 
-### 14.1 The dashboard key
+### 15.1 The dashboard key
 
 - Change it in **Settings → Dashboard key** — it requires the current key and a
   new one of 12+ characters.
@@ -670,19 +775,19 @@ re-entering.
   If you cannot reach the log or the filesystem, set `SETUP_TOKEN` in the
   environment before restarting and use your own value in step 4.
 
-### 14.2 The bot token
+### 15.2 The bot token
 
 Reset it in the portal (**Bot → Reset Token**), then paste the new value in
 **Settings → Application & bot → Bot token**. The bot reconnects immediately; no
 restart. A wrong token is visible as *Bot offline* with the reason in the log.
 
-### 14.3 The client secret
+### 15.3 The client secret
 
 Reset it in the portal (**OAuth2 → General**), paste the new one in **Settings**.
 Until you do, the in-Discord app answers `not_configured` and Discord sign-in
 stops working.
 
-### 14.4 Who can use the instance
+### 15.4 Who can use the instance
 
 - **Dashboard sign-in** — the key, plus (optionally) allowlisted Discord accounts.
 - **The in-Discord app** — anyone who can launch the app *and* is on
@@ -694,7 +799,7 @@ stops working.
 - **`/health`** — public and minimal; version, storage, bot and Activity state are
   behind the session at `/api/health`.
 
-### 14.5 Deployment hygiene
+### 15.5 Deployment hygiene
 
 - Serve over HTTPS. Photos need it anyway, and the session cookie is marked
   `Secure` when the request arrives over TLS.
@@ -705,12 +810,12 @@ stops working.
   (`loopback, linklocal, uniquelocal`) is correct.
 - Delete `data/users.json` if you ever see a warning about it at boot: it is the
   old v1 token store and is no longer used.
-- Back up `data/` before you upgrade (§13). It is the only thing that cannot be
+- Back up `data/` before you upgrade (§14). It is the only thing that cannot be
   rebuilt from the repository.
 
 ---
 
-## 15. Environment variables
+## 16. Environment variables
 
 Environment variables are **optional**: the wizard writes the same values into
 `data/settings.json`, and the environment wins when both exist. A completely
@@ -745,7 +850,7 @@ variables panel instead; use that so the values survive a redeploy.
 
 ---
 
-## 16. Where every secret lives
+## 17. Where every secret lives
 
 | Thing | Where | Survives a restart? |
 | --- | --- | --- |
@@ -765,7 +870,7 @@ being silently deleted.
 
 ---
 
-## 17. Limits worth knowing
+## 18. Limits worth knowing
 
 - **Photos and buttons cannot go on a bot card.** Discord's bot presence accepts
   only name/type/state. They belong to *your* profile, which the in-Discord app
@@ -786,7 +891,7 @@ being silently deleted.
 
 ---
 
-## 18. Troubleshooting
+## 19. Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
@@ -802,7 +907,7 @@ being silently deleted.
 | Activity link opens a blank page | URL mapping missing or wrong | **Activities → URL Mappings**: prefix `/` → `https://YOUR-HOST/activity/` |
 | The app is not in Discord's launcher | the app was installed without the commands scope | re-run the invite with the `bot applications.commands` scopes (§4.6) |
 | Buttons do not appear | the client rejects button fields, or the card has none | the pill says **no buttons**; update the Discord client |
-| "That dashboard key is not correct" | typo, or the key was rotated | try again; if truly lost see §14.1 |
+| "That dashboard key is not correct" | typo, or the key was rotated | try again; if truly lost see §15.1 |
 | "Too many failed attempts" | five wrong keys from one IP | wait 15 minutes |
 | Wizard asks for a setup token | you opened it from a non-local address | copy it from the log or `data/setup-token.txt`, or set `SETUP_TOKEN` |
 | "Setup is locked" | the token expired (30-minute grant) or was rotated | re-enter the current token |
@@ -819,29 +924,47 @@ systemd — are in the troubleshooting section of the path file you used.
 
 ---
 
-## 19. All-in-one checklist
+## 20. All-in-one checklist
 
-**One-time, operator**
+**One-time, Discord side** — §4
 
-1. Discord app created; **Application ID** and **Client Secret** copied (§4.2–4.3).
+1. Application created; **Application ID** and **Client Secret** copied (§4.2–4.3).
 2. Bot token copied, *Public Bot* off, privileged intents all off (§4.4).
-3. **Activities → Enable Activities**; URL mapping `/` → `https://YOUR-HOST/activity/` (§4.5).
+3. **Activities → Enable Activities**; URL mapping `/` →
+   `https://YOUR-HOST/activity/`, trailing slash kept (§4.5).
 4. App installed with `bot applications.commands` (§4.6).
-5. Host deployed — [local](setup-local.md), [cloud](setup-cloud.md) or
-   [free cloud](setup-free-cloud.md) — with HTTPS.
-6. `PUBLIC_URL` set to the real public origin.
-7. `/setup` finished, or `DASHBOARD_KEY` + `CLIENT_ID` + `CLIENT_SECRET` +
+5. Optional: the OAuth2 redirect for Discord sign-in (§4.7).
+
+**One-time, host** — [local](setup-local.md), [cloud](setup-cloud.md) or
+[free cloud](setup-free-cloud.md)
+
+6. The app is running, reachable at an `https://` URL, and starts again after a
+   reboot.
+7. `PUBLIC_URL` set to exactly that origin, no trailing slash.
+8. A writable `data/` that survives restarts — or the Discord values in the
+   environment instead (§16).
+9. `/setup` finished, or `DASHBOARD_KEY` + `CLIENT_ID` + `CLIENT_SECRET` +
    `DISCORD_TOKEN` + `PUBLIC_URL` in the environment (§6).
-8. Keep-alive on, interval under the host's idle timeout (§9).
-9. §12 verification table green.
 
-**Per user**
+**One-time, dashboard** — §7
 
-1. Sign in.
-2. Design the card, add photos and up to two buttons.
-3. **Publish**.
-4. **Open in Discord** and leave the panel open while you want the card.
-5. Optional: create the share link.
+10. Signed in at `/login`; the dashboard key is stored somewhere safe.
+11. **Settings → Application & bot**: application ID and bot token saved.
+12. **Settings → Discord sign-in**: client secret saved; allowlist set if the
+    instance is not just yours.
+13. **Bot & 24/7**: *Bot online*, invite link used, public URL saved, keep-alive
+    on with an interval under the host's idle timeout (free hosts only).
+14. **Presence**: a template or your own text, a photo, up to two buttons.
+15. **Publish** → the bot card shows the text.
+16. **My profile → Open in Discord** → the pill turns *Profile live (Discord)*.
+17. Optional: **Share card → Create share link** (§11).
+18. §13 verification table green, on the real public URL.
+
+**Every time you change the card**
+
+1. Edit on the **Presence** tab — nothing reaches Discord yet, it is a draft.
+2. **Publish**.
+3. Leave the in-Discord app open while you want the card on your profile.
 
 Total cost: **$0** on the free paths. Total downloads for the person using the
 card: **none**.
