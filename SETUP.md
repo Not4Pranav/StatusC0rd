@@ -321,6 +321,21 @@ fetch, so the image is left out of what it sends while the rest of the card goes
 through. The editor says so under the preview. The moment `PUBLIC_URL` is an
 `https://` address, the same card carries the photo.
 
+### Not Vercel, Netlify, or any serverless platform
+
+These are wonderful and free, and this app cannot run on them as written:
+
+| What the app needs | Serverless reality |
+| --- | --- |
+| A writable disk for `settings.json` and photos | no disk; `/tmp` only, wiped on every cold start |
+| A 24/7 bot connection to Discord | functions stop after 5 minutes |
+| Live dashboard updates (`/api/events`, SSE) | long-lived streams are cut at the same limit |
+| A keep-alive ping every 5–60 minutes | free cron runs **once a day** |
+
+Static hosting plus a JSON API would work; the disk, the bot and the live stream
+would not. Use one of the paths above — Render is free and runs the whole thing,
+Oracle gives you a real disk for the same price.
+
 ### Whatever path you picked
 
 Write down your public URL. It looks like `https://something.onrender.com` or
@@ -463,6 +478,30 @@ in a complete, valid card in one click. They never overwrite your images or your
   `https://` address and it appears.
 - Discord caches artwork for a few minutes; a brand-new image can take a moment
   to appear, and occasionally a client restart.
+
+### 4.6 Your public card page
+
+Every account gets a link of the form `https://YOUR-HOST/c/handle`. It shows the
+card you built — photo, both lines, the running timer and **buttons that work as
+links** — to anyone you send it to, no sign-in required.
+
+- **Private until you switch it on.** The switch lives on the **Discord** tab,
+  under *Your public card page*. A visitor sees `404` while it is off, and the
+  same `404` if the handle does not exist, so a private card is not advertised.
+- **Handles** are 3–24 characters: lowercase letters, numbers and dashes. Yours
+  is derived from your display name when you sign up (`Jane Doe` → `jane-doe`)
+  and can be changed any time; two accounts cannot share one.
+- The page shows **only** what a card shows: no email address, no member list,
+  no settings. Deleting the account deletes the page.
+- Buttons here are ordinary links, so they open for anyone. Inside Discord the
+  same buttons are drawn by Discord itself.
+- If the card is switched off in the editor, the page still renders but says it
+  is paused — a shared link never turns into a blank page.
+
+**This page is the website half of the product.** Discord only accepts presence
+from a Discord client, so a browser cannot set your rich presence; the card page
+publishes what you built and gives you something to share, and the Activity is
+what pushes it to your profile.
 
 ---
 
@@ -836,6 +875,8 @@ close.
 | `GET` | `/auth/discord/link` | signed in | claims a Discord account for this user |
 | `GET` | `/auth/discord/callback` | — | both flows return here |
 | `GET` | `/activity/` | Discord | the in-Discord app |
+| `GET` | `/c/:handle` | anyone | a published card page (`404` while private) |
+| `POST` | `/api/card` | signed in | change your handle, publish / unpublish the page |
 | `GET` | `/assets/:hash.:ext` | anyone | a photo, cached for a year, `ACAO: *` |
 | `GET` | `/health` | anyone | `{"status":"ok"}` and nothing else |
 | `GET` | `/api/health` | signed in | version, storage, bot, keep-alive, Activity |

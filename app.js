@@ -314,7 +314,9 @@ function createApp({
       })),
       draft: settings.draftFor(userId),
       templates: templateList(),
-      keepAlive: keepAlive ? keepAlive.getState() : null,
+      // Keep-alive is an instance concern: members do not need to know whether
+      // the owner's uptime ping is on, let alone its target.
+      keepAlive: admin && keepAlive ? keepAlive.getState() : null,
       activitySession: visibleSession,
       meta: {
         version,
@@ -326,6 +328,10 @@ function createApp({
         discordLoginEnabled: settings.effective().discordLoginEnabled,
         publicUrl: settings.effective().publicUrl || origin,
         publicUrlIsHttps: (settings.effective().publicUrl || origin).startsWith("https://"),
+        card: {
+          ...(settings.cardFor(userId) || {}),
+          url: `${settings.effective().publicUrl || origin}/c/${settings.cardFor(userId)?.handle || ""}`
+        },
         startedAt: new Date(startedAt).toISOString(),
         needsSetupToken: Boolean(settings.setupToken),
         role: req.session?.user?.role || "member",
@@ -925,6 +931,15 @@ function createApp({
         USER_EMAIL: user.email || "",
         MEMBER_COUNT: String(settings.countUsers()),
         ALLOW_SIGNUP: settings.allowSignup ? "true" : "false",
+        CARD_HANDLE: settings.cardFor(user.id || ADMIN_USER_ID)?.handle || "",
+        CARD_CHECKED: settings.cardFor(user.id || ADMIN_USER_ID)?.publicCard ? "checked" : "",
+        CARD_URL: `${(settings.effective().publicUrl || originOf(req)).replace(/\/+$/, "")}/c/${
+          settings.cardFor(user.id || ADMIN_USER_ID)?.handle || ""
+        }`,
+        CARD_TAG: settings.cardFor(user.id || ADMIN_USER_ID)?.publicCard ? "Public" : "Private",
+        CARD_STATUS: settings.cardFor(user.id || ADMIN_USER_ID)?.publicCard
+          ? "Anyone with the link can view it. Turn the switch off to close it again."
+          : "The link is private: only you can open it until you switch it on.",
         ALLOW_SIGNUP_CHECKED: settings.allowSignup ? "checked" : "",
         // No application id means no invite link: a `client_id=` with an empty
         // value is a dead page on discord.com, worse than no button at all.
@@ -937,6 +952,130 @@ function createApp({
           : ""
       })
     );
+  });
+
+  // ------------------------------------------------------------ public cards
+
+  const CARD_TYPE_LABELS = ["PLAYING", "STREAMING", "LISTENING TO", "WATCHING", "", "COMPETING IN"];
+
+  /** Header buttons for a page that is not the dashboard. */
+  function siteActions(req, primary = "Create your card") {
+    if (liveUser(req)) return '<a class="btn ghost" href="/">Open dashboard</a>';
+    const signup = settings.allowSignup
+      ? `<a class="btn primary" href="/register">${primary}</a>`
+      : "";
+    return `${signup}<a class="btn ghost" href="/login">Sign in</a>`;
+  }
+
+  /** "1:23:45" for an elapsed timer, in the same shape the dashboard shows. */
+  function elapsedLabel(startMs) {
+    const seconds = Math.max(0, Math.floor((now() - Number(startMs)) / 1000));
+    const pad = (value) => String(value).padStart(2, "0");
+    const hours = Math.floor(seconds / 3600);
+    return hours > 0
+      ? `${hours}:${pad(Math.floor((seconds % 3600) / 60))}:${pad(seconds % 60)}`
+      : `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`;
+  }
+
+  /**
+   * A shareable card page.
+   *
+   * Discord only accepts presence from a Discord client, so a website cannot
+   * set it. What a website *can* do - and what this page is - is show the card
+   * you built: photo, both lines, timer and working buttons, at a link you can
+   * paste anywhere. Private until the owner turns it on.
+   */
+  function renderCard(req, res, found) {
+    const origin = publicOrigin(req);
+    const presence = settings.presenceFor(found.ownerId) || DEFAULT_CONFIG;
+    const resolveAsset = (id) => {
+      if (!settings.ownsAsset(id, found.ownerId)) return "";
+      const asset = settings.findAsset(id);
+      return asset ? assets.url(asset, origin) : "";
+    };
+
+    const large = resolveAsset(String(presence.largeImage || "").replace(/^asset:/, ""));
+    const small = resolveAsset(String(presence.smallImage || "").replace(/^asset:/, ""));
+    const custom = Number(presence.type) === 4;
+
+    const art = custom
+      ? '<span class="preview-art-fallback" aria-hidden="true">S</span>'
+      : `${large
+          ? `<img src="${escapeHtml(large)}" alt="" />`
+          : '<span class="preview-art-fallback" aria-hidden="true">S</span>'}${
+          small ? `<span class="preview-small"><img src="${escapeHtml(small)}" alt="" /></span>` : ""
+        }`;
+
+    // Buttons are real links here: this page is meant to be clicked.
+    const buttons = (Array.isArray(presence.buttons) ? presence.buttons : [])
+      .map(
+        (button) =>
+          `<a class="preview-button" href="${escapeHtml(button.url)}" rel="noreferrer noopener nofollow" target="_blank">${escapeHtml(button.label)}</a>`
+      )
+      .join("");
+
+    const name = String(presence.name || "").trim() || "StatusC0rd";
+    const startMs = presence.startedAt && Number(presence.startTimestamp) > 0 ? Number(presence.startTimestamp) : 0;
+    const live = presence.enabled && presence.targets?.profile !== false;
+    const description = [presence.details, presence.state].filter(Boolean).join(" · ") || `${name} on StatusC0rd`;
+    const note = live
+      ? `This is the card @${found.handle} publishes to Discord.`
+      : "This card is switched off right now — the owner's last saved version is shown.";
+
+    res.setHeader("Cache-Control", "no-store");
+    res.type("html").send(
+      render("card.html", {
+        VERSION: version,
+        HANDLE: found.handle,
+        PAGE_TITLE: `${name} — StatusC0rd card`,
+        PAGE_DESCRIPTION: description,
+        OG_HTML: large && /^https:\/\//.test(large)
+          ? `<meta property="og:image" content="${escapeHtml(large)}" />`
+          : "",
+        ACTIONS_HTML: siteActions(req),
+        ART_HTML: art,
+        TYPE_LABEL: custom ? "" : CARD_TYPE_LABELS[Number(presence.type) || 0] || "",
+        NAME: name,
+        DETAILS: custom ? "" : presence.details || "",
+        STATE_TEXT: custom ? "" : presence.state || "",
+        TIME_TEXT: startMs ? elapsedLabel(startMs) : "",
+        START_MS: startMs ? String(startMs) : "",
+        STATE_LABEL: live ? "Live" : "Paused",
+        NOTE: note,
+        BUTTONS_HTML: buttons
+      })
+    );
+  }
+
+  app.get("/c/:handle", (req, res) => {
+    const found = settings.findCardByHandle(req.params.handle);
+    // A private or unknown card is a 404 either way: publishing is opt-in, and
+    // "this handle exists but is private" is not something to confirm.
+    if (!found || !found.publicCard) {
+      return sendErrorPage(res, 404, "No card at that link", "This card is private or the handle changed. Ask the owner for a fresh link.");
+    }
+    if (found.ownerId !== ADMIN_USER_ID) {
+      const owner = settings.findUserById(found.ownerId);
+      if (!owner || owner.disabled) {
+        return sendErrorPage(res, 404, "No card at that link", "This card is private or the handle changed. Ask the owner for a fresh link.");
+      }
+    }
+    return renderCard(req, res, found);
+  });
+
+  /** Change your handle, or publish / unpublish the card. */
+  app.post("/api/card", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    const userId = ownerId(req);
+    try {
+      const card = settings.setCard(userId, {
+        handle: req.body?.handle,
+        publicCard: req.body?.publicCard
+      });
+      broadcastState();
+      res.json({ ok: true, card: { ...card, url: `${publicOrigin(req)}/c/${card.handle}` } });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message });
+    }
   });
 
   // --------------------------------------------------------------------- api

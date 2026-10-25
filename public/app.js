@@ -688,6 +688,7 @@
       }
     }
     renderTemplates(next.templates);
+    renderCardPanel(next.meta?.card);
     renderPreviewNote(next.presence);
     renderUser(next.user);
     const redirect = $("#redirect-hint");
@@ -1295,6 +1296,62 @@
     void loadMembers();
   }
 
+  // ------------------------------------------------------- public card page
+
+  function renderCardPanel(card) {
+    const handle = $("card-handle") || document.getElementById("card-handle");
+    if (!handle || !card) return;
+    if (document.activeElement !== handle) handle.value = card.handle || "";
+    const toggle = document.getElementById("card-public");
+    if (toggle && document.activeElement !== toggle) toggle.checked = Boolean(card.publicCard);
+    const tag = document.getElementById("card-tag");
+    if (tag) tag.textContent = card.publicCard ? "Public" : "Private";
+    const open = document.getElementById("card-open");
+    if (open && card.url) {
+      open.href = card.url;
+      // A private card 404s, so the link is not offered until it is public.
+      open.setAttribute("aria-disabled", card.publicCard ? "false" : "true");
+      open.classList.toggle("is-disabled", !card.publicCard);
+    }
+    const status = document.getElementById("card-status");
+    if (status) {
+      status.textContent = card.publicCard
+        ? "Anyone with the link can view it. Turn the switch off to close it again."
+        : "The link is private: only you can open it until you switch it on.";
+    }
+  }
+
+  function wireCardPanel() {
+    const formEl = document.getElementById("card-form");
+    if (!formEl) return;
+    formEl.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const handle = document.getElementById("card-handle").value.trim().toLowerCase();
+      const publicCard = document.getElementById("card-public").checked;
+      const save = document.getElementById("card-save");
+      save.disabled = true;
+      try {
+        const result = await api("/api/card", "POST", { handle, publicCard });
+        renderCardPanel(result.card);
+        toast(result.card.publicCard ? "Card published. The link works now." : "Card page is private.");
+      } catch (error) {
+        toast(error.message, true);
+      } finally {
+        save.disabled = false;
+      }
+    });
+
+    document.getElementById("card-copy")?.addEventListener("click", async () => {
+      const open = document.getElementById("card-open");
+      if (open?.getAttribute("aria-disabled") === "true") {
+        toast("Switch the card page on first, then the link works.", true);
+        return;
+      }
+      const ok = await copyText(open.href);
+      toast(ok ? "Link copied." : "Could not copy. Select the link and copy it.");
+    });
+  }
+
   // The OAuth link round-trip drops its answer in the query string.
   const linkResult = new URLSearchParams(location.search).get("link");
   if (linkResult) {
@@ -1308,6 +1365,8 @@
     toast(LINK_MESSAGES[linkResult] || "Discord linking finished.", linkResult !== "ok");
     history.replaceState(null, "", `${location.pathname}${location.hash}`);
   }
+
+  wireCardPanel();
 
   void (async () => {
     await refresh();

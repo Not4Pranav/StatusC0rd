@@ -54,6 +54,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   drafts: {},
   // discord user id -> StatusC0rd user id, written by "Connect Discord".
   discordLinks: {},
+  // Public card pages, keyed by owner id (a member id or "admin"):
+  //   { handle: "jane", publicCard: true }
+  // A handle is how somebody links to a card; the card itself is public only
+  // when publicCard is true, so nobody is published by accident.
+  cards: {},
   keepAlive: { enabled: true, intervalMinutes: 10 },
   assets: []
 });
@@ -66,10 +71,26 @@ const MIN_PASSWORD = 10;
 const MIN_KEY_LENGTH = 12;
 const MAX_USERS = 500;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
+/** Public handles: lowercase letters, digits and inner dashes, 3-24 chars. */
+const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{1,22}[a-z0-9])$/;
 
 function normalizeEmail(value) {
   const email = String(value ?? "").trim().toLowerCase();
   return EMAIL_RE.test(email) && email.length <= 254 ? email : "";
+}
+
+/** Turn a display name or email into an acceptable handle, or "" if hopeless. */
+function suggestHandle(value) {
+  const base = String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split("@")[0]
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24)
+    .replace(/-+$/g, "");
+  return HANDLE_RE.test(base) ? base : "";
 }
 
 function hashKey(key, salt = crypto.randomBytes(16).toString("hex")) {
@@ -180,6 +201,20 @@ function migrate(raw) {
   }
   migrated.discordLinks = links;
 
+  // Public cards: only for principals that still exist, and only with a valid
+  // handle. Anything else would publish a page pointing at nobody.
+  const knownOwners = new Set([ADMIN_USER_ID, ...migrated.users.map((user) => user.id)]);
+  const cards = {};
+  const takenHandles = new Set();
+  for (const [ownerId, card] of Object.entries(isPlainObject(migrated.cards) ? migrated.cards : {})) {
+    if (!knownOwners.has(ownerId) || !isPlainObject(card)) continue;
+    const handle = String(card.handle || "").toLowerCase();
+    if (!HANDLE_RE.test(handle) || takenHandles.has(handle)) continue;
+    takenHandles.add(handle);
+    cards[ownerId] = { handle, publicCard: Boolean(card.publicCard) };
+  }
+  migrated.cards = cards;
+
   migrated.allowSignup = migrated.allowSignup !== false;
 
   // The v3 keys are gone; keeping them would let stale data win on the next read.
@@ -211,6 +246,7 @@ class SettingsStore {
     }
     this._ensureSessionSecret();
     this._ensureSetupToken();
+    this.ensureCards();
   }
 
   // ------------------------------------------------------------------ files
@@ -424,7 +460,8 @@ class SettingsStore {
       discordId: user.discordId || null,
       linked: Boolean(user.discordId),
       createdAt: user.createdAt || null,
-      lastLoginAt: user.lastLoginAt || null
+      lastLoginAt: user.lastLoginAt || null,
+      card: user.card || null
     };
   }
 
@@ -438,6 +475,80 @@ class SettingsStore {
 
   findUserById(id) {
     return this.data.users.find((user) => user.id === id) ?? null;
+  }
+
+  // ------------------------------------------------------------- public cards
+
+  /**
+   * Give every principal a card row with a free handle.
+   *
+   * Handles are derived from the display name, so people get `jane` rather than
+   * a random id; collisions get `-2`, `-3`. Cards start private.
+   */
+  ensureCards() {
+    if (!isPlainObject(this.data.cards)) this.data.cards = {};
+    const used = new Set(Object.values(this.data.cards).map((card) => card.handle));
+    let changed = false;
+    const principals = [ADMIN_USER_ID, ...this.data.users.map((user) => user.id)];
+    for (const ownerId of principals) {
+      if (isPlainObject(this.data.cards[ownerId])) continue;
+      const user = this.data.users.find((row) => row.id === ownerId);
+      const base =
+        suggestHandle(user?.name) ||
+        suggestHandle(user?.email) ||
+        // The dashboard key's principal has no row to take a name from.
+        (ownerId === ADMIN_USER_ID ? "owner" : `user-${String(ownerId).replace(/^u_/, "").slice(0, 8)}`);
+      let handle = base;
+      for (let n = 2; used.has(handle); n += 1) {
+        handle = `${base.slice(0, 20)}-${n}`;
+      }
+      used.add(handle);
+      this.data.cards[ownerId] = { handle, publicCard: false };
+      changed = true;
+    }
+    if (changed) this._commit();
+  }
+
+  /** The card row for one principal, created on demand. */
+  cardFor(ownerId) {
+    if (!isPlainObject(this.data.cards)) this.data.cards = {};
+    if (!isPlainObject(this.data.cards[ownerId])) this.ensureCards();
+    return this.data.cards[ownerId] ? { ...this.data.cards[ownerId] } : null;
+  }
+
+  /** Resolve a public handle to the principal that owns it. */
+  findCardByHandle(handle) {
+    const wanted = String(handle || "").toLowerCase();
+    if (!HANDLE_RE.test(wanted)) return null;
+    for (const [ownerId, card] of Object.entries(this.data.cards || {})) {
+      if (card?.handle === wanted) return { ownerId, ...card };
+    }
+    return null;
+  }
+
+  /**
+   * Change a handle and/or publish state.
+   *
+   * Throws with a readable message: callers are the dashboard form and the
+   * public page, and both show the text verbatim.
+   */
+  setCard(ownerId, { handle, publicCard } = {}) {
+    this.ensureCards();
+    const current = this.data.cards[ownerId] || { handle: "", publicCard: false };
+    const next = { ...current };
+    if (handle !== undefined) {
+      const wanted = String(handle || "").trim().toLowerCase();
+      if (!HANDLE_RE.test(wanted)) {
+        throw new Error("Handles are 3-24 characters: lowercase letters, numbers and dashes.");
+      }
+      const clash = this.findCardByHandle(wanted);
+      if (clash && clash.ownerId !== ownerId) throw new Error("That handle is taken. Try another.");
+      next.handle = wanted;
+    }
+    if (publicCard !== undefined) next.publicCard = Boolean(publicCard);
+    this.data.cards[ownerId] = next;
+    this._commit();
+    return { ...next };
   }
 
   findUserByEmail(email) {
@@ -482,6 +593,7 @@ class SettingsStore {
     };
     this.data.users.push(user);
     this._commit();
+    this.ensureCards();
     return SettingsStore.publicUser(user);
   }
 
@@ -555,6 +667,9 @@ class SettingsStore {
     this.data.assets = this.data.assets.filter((asset) => asset.owner !== id);
     delete this.data.presences[id];
     delete this.data.drafts[id];
+    // Their public page goes with them: a handle that resolves to nobody would
+    // keep a dead card reachable at a URL someone may have shared.
+    if (this.data.cards) delete this.data.cards[id];
     for (const [discordId, userId] of Object.entries(this.data.discordLinks)) {
       if (userId === id) delete this.data.discordLinks[discordId];
     }
