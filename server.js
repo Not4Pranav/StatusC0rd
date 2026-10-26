@@ -144,8 +144,8 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       return;
     }
     const out = template
-      .replace(/\{\{(\w+)\}\}/g, (match, key) => escapeHtml(vars[key] !== undefined ? vars[key] : ""))
-      .replace(/\{\{(\w+)\}\}/g, (match, key) => String(vars[key] !== undefined ? vars[key] : ""));
+      .replace(/\{\{\{(\w+)\}\}\}/g, (match, key) => String(vars[key] !== undefined ? vars[key] : ""))
+      .replace(/\{\{(\w+)\}\}/g, (match, key) => escapeHtml(vars[key] !== undefined ? vars[key] : ""));
     res.status(status || 200).type("html").send(out);
   }
 
