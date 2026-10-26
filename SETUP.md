@@ -155,3 +155,17 @@ one process.
 
 Render redeploys automatically when <code>main</code> changes. Environment
 survives; the disk does not.
+
+## 8 · The go-live checklist
+
+Work top to bottom; the section in brackets says where each step lives.
+
+- [ ] Deploy on Render with the env vars from section 1 — done when the boot banner appears in Render **Logs**.
+- [ ] Discord application created: Application ID, Client Secret and bot token copied into the env vars (sections 2.1-2.4).
+- [ ] **Message Content Intent** on (section 2.5) — without it <code>;rpc</code> stays silent.
+- [ ] **Activities** enabled, URL mapping <code>/</code> → <code>https://NAME.onrender.com/activity/</code>, trailing slash included (sections 2.6-2.7).
+- [ ] **Installation**: User Install + Guild Install, Discord Provided Link, default install scopes (sections 2.8-2.9).
+- [ ] Bot added to your server via the Install Link or <code>/invite</code> (section 2.10) — it posts the welcome card.
+- [ ] Type <code>;rpc</code> → press **Open Dashboard** → create your account with email + password (section 3).
+- [ ] Voice channel → **App Launcher** → StatusC0rd — your card live on your profile (section 4).
+- [ ] Keep-alive on, 10-minute interval (section 5).
