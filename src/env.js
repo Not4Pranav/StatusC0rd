@@ -53,7 +53,22 @@ function normalizeEnv(env = process.env) {
     }
   }
 
-  const publicUrl = trim(env.PUBLIC_URL);
+  // Render tells a web service its own public address (RENDER_EXTERNAL_URL), and
+  // on a one-click deploy that is the only chance to know it: the URL does not
+  // exist until the service does. Without it the keep-alive has no target, so a
+  // free instance sleeps and takes the bot with it.
+  const renderUrl = trim(env.RENDER_EXTERNAL_URL).replace(/\/+$/, "");
+  let autoUrl = "";
+  if (renderUrl) {
+    try {
+      const url = new URL(renderUrl);
+      if (["http:", "https:"].includes(url.protocol)) autoUrl = renderUrl;
+    } catch {
+      /* an unexpected value is ignored rather than failing the boot */
+    }
+  }
+
+  const publicUrl = trim(env.PUBLIC_URL).replace(/\/+$/, "") || autoUrl;
   if (publicUrl) {
     try {
       const url = new URL(publicUrl);

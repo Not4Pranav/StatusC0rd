@@ -5,6 +5,9 @@
   const body = document.body;
   const needsToken = body.dataset.needsToken === "true";
   const botManaged = body.dataset.botManaged === "true";
+  // On Render the address is handed to the app by the platform, so the field is
+  // shown for confirmation only - never submitted, never typed.
+  const publicManaged = body.dataset.publicManaged === "true";
   const upload = window.StatusC0rdUpload;
 
   const state = {
@@ -253,8 +256,10 @@
     if (!state.adminKey) return alertBox("Go back and set a dashboard key.");
     if (!name) return alertBox("Give the activity a name.");
 
-    const publicUrl = ($("#public-url")?.value || "").trim() || location.origin;
-    if (!/^https?:\/\/[^\s]+$/i.test(publicUrl)) {
+    // Empty means "use the host's own address"; the server keeps the managed
+    // value when the platform supplies one.
+    const publicUrl = publicManaged ? "" : ($("#public-url")?.value || "").trim() || location.origin;
+    if (publicUrl && !/^https?:\/\/[^\s]+$/i.test(publicUrl)) {
       // Validate before touching the button, otherwise a typo would leave it stuck.
       return alertBox("The public URL must start with https:// (or http:// for local testing).");
     }
@@ -308,7 +313,17 @@
   // -------------------------------------------------------------------- init
 
   renderPreview();
-  if ($("#public-url")) $("#public-url").value = location.origin;
+  if (publicManaged) {
+    const field = $("#public-url");
+    if (field) field.disabled = true;
+    const hint = $("#public-url-hint");
+    if (hint) {
+      hint.textContent =
+        "Taken from this host automatically, so there is nothing to type. Set PUBLIC_URL yourself only for a custom domain.";
+    }
+  } else if ($("#public-url") && !$("#public-url").value) {
+    $("#public-url").value = location.origin;
+  }
   if (!needsToken) $("#admin-key").focus();
   else $("#setup-token").focus();
 })();

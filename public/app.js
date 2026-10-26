@@ -698,7 +698,13 @@
         form.elements.enabled.checked = Boolean(settings.keepAlive?.enabled);
         form.elements.intervalMinutes.value = settings.keepAlive?.intervalMinutes || 10;
       }
-      form.elements.publicUrl.disabled = Boolean(settings.managed?.publicUrl);
+      const locked = Boolean(settings.managed?.publicUrl);
+      form.elements.publicUrl.disabled = locked;
+      // On a managed host the address is not yours to type: Render publishes the
+      // service URL itself. Say where it came from instead of a greyed-out field.
+      if (locked && info) {
+        info.textContent = `Public URL comes from this host: ${settings.publicUrl}`;
+      }
     }
 
     const warning = $("#https-warning");

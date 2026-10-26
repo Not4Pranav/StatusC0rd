@@ -465,3 +465,27 @@ test("the stored site name survives a reload and never becomes blank", () => {
   assert.equal(reopened.siteName, "Star Statusc0rd", "persisted");
   assert.equal(reopened.setSiteName(" "), "StatusC0rd", "blank falls back, never an empty header");
 });
+
+test("Render's own service URL becomes the public URL when nothing else is set", () => {
+  const plain = normalizeEnv({ RENDER_EXTERNAL_URL: "https://star-statusc0rd.onrender.com/" });
+  assert.equal(plain.env.PUBLIC_URL, "https://star-statusc0rd.onrender.com");
+  // ...and it counts as managed, so the dashboard shows it read-only.
+  const s = store(
+    tmpDir("render-url"),
+    normalizeEnv({ RENDER_EXTERNAL_URL: "https://star-statusc0rd.onrender.com" }).env
+  );
+  assert.equal(s.effective().publicUrl, "https://star-statusc0rd.onrender.com");
+  assert.equal(s.effective().managed.publicUrl, true);
+
+  // An explicit PUBLIC_URL is a custom domain and must win over the platform's.
+  const custom = normalizeEnv({
+    RENDER_EXTERNAL_URL: "https://star-statusc0rd.onrender.com",
+    PUBLIC_URL: "https://status.example.com/"
+  });
+  assert.equal(custom.env.PUBLIC_URL, "https://status.example.com");
+
+  // A value that is not an absolute http(s) URL is ignored instead of failing the boot.
+  const junk = normalizeEnv({ RENDER_EXTERNAL_URL: "not-a-url" });
+  assert.equal(junk.env.PUBLIC_URL, "");
+  assert.equal(junk.problems.length, 0);
+});

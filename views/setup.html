@@ -16,6 +16,7 @@
     data-needs-token="{{NEEDS_TOKEN}}"
     data-client-id="{{CLIENT_ID}}"
     data-bot-managed="{{BOT_MANAGED}}"
+    data-public-managed="{{PUBLIC_URL_MANAGED}}"
   >
     <main class="setup-shell">
       <header class="setup-head">
@@ -200,8 +201,8 @@
 
             <label class="field" style="margin-top: 16px">
               <span>Public URL of this dashboard</span>
-              <input id="public-url" type="url" placeholder="https://status.example.com" />
-              <small>
+              <input id="public-url" type="url" value="{{PUBLIC_URL}}" placeholder="https://status.example.com" />
+              <small id="public-url-hint">
                 Discord downloads your images from this address, so it must be reachable over the
                 internet. Keep the address you are using now if it is already public.
               </small>
