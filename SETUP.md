@@ -503,6 +503,23 @@ from a Discord client, so a browser cannot set your rich presence; the card page
 publishes what you built and gives you something to share, and the Activity is
 what pushes it to your profile.
 
+### 4.7 Naming your instance
+
+**Settings → This instance → Site name** changes the wordmark in the header, every
+page title, the error pages and the bottom of every card page. A name containing
+a `0` gets the same bold treatment as the default — `Star StatusC0rd` renders
+exactly like `StatusC0rd`.
+
+- 2–40 characters. Blank falls back to `StatusC0rd`, so the header is never empty.
+- It is only a label: handles, URLs, sessions and card links are unaffected.
+- On a managed host, `SITE_NAME` in the environment pins it and the dashboard
+  field becomes read-only (the server says so rather than silently ignoring you).
+
+**The front page is deliberately small**: a brand, one headline, one line of
+pitch and one button. Everything else — the sample card, the three promises, the
+honest limits — sits under that first screen, so a visitor reads one thing before
+deciding.
+
 ---
 
 ## Part 5. Put it on your own profile
@@ -882,6 +899,7 @@ managed hosts should use it.
 | `NODE_ENV` | `development` | `production` adds HSTS, blocks framing of the dashboard, marks cookies `Secure` behind TLS |
 | `DATA_DIR` | `./data` | where `settings.json`, `assets/` and the setup token live |
 | `PUBLIC_URL` | unset | public origin for photo URLs and the keep-alive; must be the real `https://` URL, no trailing slash |
+| `SITE_NAME` | `StatusC0rd` | the name in the header, page titles and card pages (2–40 chars); pins it so the dashboard field is read-only |
 | `CLIENT_ID` | unset | Discord application ID (public) |
 | `CLIENT_SECRET` | unset | OAuth2 secret; enables the in-Discord app and Discord sign-in |
 | `DISCORD_TOKEN` | unset | bot token for the 24/7 text card |

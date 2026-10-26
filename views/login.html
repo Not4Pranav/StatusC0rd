@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <meta name="csrf-token" content="{{CSRF}}" />
-    <title>Sign in · StatusC0rd</title>
+    <title>Sign in · {{SITE_NAME}}</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/login.js" defer></script>
@@ -19,7 +19,7 @@
     <main class="auth-card">
       <a class="brand brand-lg" href="/">
         <span class="brand-mark" aria-hidden="true">S</span>
-        <span>StatusC0rd</span>
+        <span>{{{BRAND_HTML}}}</span>
       </a>
       <p class="auth-sub">Sign in to build your card and put it on your profile.</p>
 
@@ -97,7 +97,7 @@
       </p>
 
       <footer class="auth-footer">
-        <span>StatusC0rd v{{VERSION}}</span>
+        <span>{{SITE_NAME}} v{{VERSION}}</span>
         <span class="auth-links">
           <a href="https://github.com/Not4Pranav/StatusC0rd" target="_blank" rel="noreferrer noopener">Source</a>
         </span>

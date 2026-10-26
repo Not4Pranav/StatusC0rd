@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>{{TITLE}} · StatusC0rd</title>
+    <title>{{TITLE}} · {{SITE_NAME}}</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -12,13 +12,13 @@
     <main class="auth-card">
       <a class="brand brand-lg" href="/">
         <span class="brand-mark" aria-hidden="true">S</span>
-        <span>StatusC<strong>0</strong>rd</span>
+        <span>{{{BRAND_HTML}}}</span>
       </a>
       <p class="error-code">{{STATUS}}</p>
       <h1 class="error-title">{{TITLE}}</h1>
       <p class="auth-sub">{{DETAIL}}</p>
-      <a class="btn primary block" href="/">Back to StatusC0rd</a>
-      <footer class="auth-footer">StatusC0rd</footer>
+      <a class="btn primary block" href="/">Back to {{SITE_NAME}}</a>
+      <footer class="auth-footer">{{SITE_NAME}}</footer>
     </main>
   </body>
 </html>

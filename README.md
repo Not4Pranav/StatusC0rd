@@ -111,6 +111,7 @@ and the environment wins when both exist.
 | `DASHBOARD_KEY` | unset | the owner's key; setting it skips the wizard |
 | `SESSION_SECRET` | generated | cookie signing key, 32+ characters |
 | `ALLOWED_DISCORD_IDS` | unset | who may sign in with Discord / launch the app |
+| `SITE_NAME` | `StatusC0rd` | the header, titles and card-page name (2–40 chars) |
 | `KEEP_ALIVE` | `true` | keep this host awake (`PUBLIC_URL` required) |
 | `KEEP_ALIVE_INTERVAL_MINUTES` | `10` | ping interval, 5–60 |
 | `BOT_ENABLED` | on with a token | `false` runs without a gateway |

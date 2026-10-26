@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>StatusC0rd</title>
+    <title>{{SITE_NAME}}</title>
     <link rel="stylesheet" href="./activity.css" />
     <script type="module" src="./activity.mjs"></script>
   </head>
@@ -12,7 +12,7 @@
     <header class="bar">
       <div class="brand">
         <span class="mark" aria-hidden="true">S</span>
-        <span>StatusC<strong>0</strong>rd</span>
+        <span>{{{BRAND_HTML}}}</span>
       </div>
       <span class="pill" id="state-pill" data-state="idle"><span class="dot"></span><span id="state-text">Connecting…</span></span>
     </header>
@@ -61,7 +61,7 @@
         <button class="btn ghost" id="retry" type="button">Try again</button>
       </section>
 
-      <p class="footer">StatusC0rd v{{VERSION}}</p>
+      <p class="footer">{{SITE_NAME}} v{{VERSION}}</p>
     </main>
   </body>
 </html>

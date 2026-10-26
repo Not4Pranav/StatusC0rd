@@ -51,4 +51,16 @@ function createRenderer(viewsDir, { cache = true } = {}) {
   };
 }
 
-module.exports = { createRenderer, escapeHtml };
+/**
+ * The header wordmark for a site name.
+ *
+ * The product's own branded zero is the whole logo, so any name that contains a
+ * `0` gets the same treatment - `Star StatusC0rd` renders exactly like
+ * `StatusC0rd`. Everything else is escaped first, so a name can never inject
+ * markup.
+ */
+function brandHtml(siteName) {
+  return escapeHtml(String(siteName || "StatusC0rd")).replace(/0/g, "<strong>0</strong>");
+}
+
+module.exports = { createRenderer, escapeHtml, brandHtml };

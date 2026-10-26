@@ -6,7 +6,7 @@ const path = require("node:path");
 const express = require("express");
 const cookieSession = require("cookie-session");
 
-const { createRenderer, escapeHtml } = require("./src/views");
+const { createRenderer, escapeHtml, brandHtml } = require("./src/views");
 const { sanitizePresence, buildActivity, ACTIVITY_TYPES, DEFAULT_CONFIG } = require("./src/presence");
 const {
   safeEqual,
@@ -24,7 +24,8 @@ const {
   ADMIN_USER_ID,
   MIN_KEY_LENGTH,
   MAX_USERS,
-  clampKeepAliveInterval
+  clampKeepAliveInterval,
+  sanitizeSiteName
 } = require("./src/settings");
 const { templateList, applyTemplate } = require("./src/templates");
 const { splitHostingEnabled, localGatewayEnabled } = require("./src/worker");
@@ -354,6 +355,8 @@ function createApp({
         userId,
         linkedDiscord: Boolean(settings.discordIdForUser(userId)),
         allowSignup: settings.allowSignup,
+        siteName: settings.effective().siteName,
+        siteNameManaged: settings.effective().managed.siteName,
         memberCount: settings.countUsers()
       }
     };
@@ -416,6 +419,7 @@ function createApp({
     if (isAdminSession(req)) return next();
     return res.status(403).type("html").send(
       render("error.html", {
+        ...brandVars(),
         TITLE: "Admins only",
         STATUS: 403,
         DETAIL: "That page is the admin panel. Ask the server owner for access."
@@ -458,8 +462,22 @@ function createApp({
     });
   }
 
+  /**
+   * The name and wordmark every page needs.
+   *
+   * Passed into every `render` call rather than looked up inside templates, so a
+   * page can never render an empty header if one call is missed.
+   */
+  function brandVars() {
+    const siteName = settings.effective().siteName;
+    return { SITE_NAME: siteName, BRAND_HTML: brandHtml(siteName) };
+  }
+
   function sendErrorPage(res, status, title, detail) {
-    res.status(status).type("html").send(render("error.html", { TITLE: title, STATUS: status, DETAIL: detail }));
+    res
+      .status(status)
+      .type("html")
+      .send(render("error.html", { TITLE: title, STATUS: status, DETAIL: detail, ...brandVars() }));
   }
 
   /** Only the admin's card reaches the bot; members' cards go to their profile. */
@@ -514,6 +532,7 @@ function createApp({
     const needsToken = !isLoopback(req) || Boolean(process.env.SETUP_REQUIRE_TOKEN);
     res.type("html").send(
       render("setup.html", {
+        ...brandVars(),
         CSRF: ensureCsrf(req),
         VERSION: version,
         CLIENT_ID: effective.clientId,
@@ -692,6 +711,7 @@ function createApp({
     if (req.session?.user) return res.redirect(302, "/");
     res.type("html").send(
       render("login.html", {
+        ...brandVars(),
         CSRF: ensureCsrf(req),
         DISCORD_ENABLED: settings.effective().discordLoginEnabled ? "true" : "false",
         KEY_ENABLED: settings.hasAdminKey ? "true" : "false",
@@ -762,6 +782,7 @@ function createApp({
     if (req.session?.user) return res.redirect(302, "/");
     res.type("html").send(
       render("register.html", {
+        ...brandVars(),
         CSRF: ensureCsrf(req),
         SIGNUP_ENABLED: settings.allowSignup ? "true" : "false",
         VERSION: version
@@ -924,11 +945,29 @@ function createApp({
   function renderHome(req, res) {
     // Built here rather than in the template: the buttons depend on whether the
     // instance is configured and whether sign-ups are open.
-    const actions = settings.allowSignup
+    const signupOpen = settings.allowSignup;
+    const actions = signupOpen
       ? '<a class="btn primary" href="/register">Create your card</a>' +
         '<a class="btn ghost" href="/login">Sign in</a>'
       : '<a class="btn primary" href="/login">Sign in</a>';
-    res.type("html").send(render("home.html", { VERSION: version, ACTIONS_HTML: actions }));
+    // One button in the hero, like the site it is modelled on: a visitor should
+    // never have to choose between three doors before reading the pitch.
+    const heroCta = signupOpen
+      ? '<a class="btn primary large" href="/register">Create your card</a>' +
+        '<a class="btn ghost" href="/login">Sign in</a>'
+      : '<a class="btn primary large" href="/login">Sign in</a>';
+    const heroFine = signupOpen
+      ? "Free forever, no payment details. An email and a password is the whole sign-up."
+      : "Sign-ups are closed on this instance. Ask the owner for an account.";
+    res.type("html").send(
+      render("home.html", {
+        VERSION: version,
+        ACTIONS_HTML: actions,
+        HERO_CTA_HTML: heroCta,
+        HERO_FINE: heroFine,
+        ...brandVars()
+      })
+    );
   }
 
   app.get("/", (req, res) => {
@@ -941,6 +980,7 @@ function createApp({
     const user = req.session.user;
     res.type("html").send(
       render("dashboard.html", {
+        ...brandVars(),
         CSRF: ensureCsrf(req),
         VERSION: version,
         CLIENT_ID: effective.clientId,
@@ -1043,6 +1083,7 @@ function createApp({
     res.setHeader("Cache-Control", "no-store");
     res.type("html").send(
       render("card.html", {
+        ...brandVars(),
         VERSION: version,
         HANDLE: found.handle,
         PAGE_TITLE: `${name} — StatusC0rd card`,
@@ -1356,6 +1397,8 @@ function createApp({
         managed: effective.managed,
         keyFromEnv: settings.keyFromEnv,
         allowSignup: settings.allowSignup,
+        siteName: effective.siteName,
+        siteNameManaged: effective.managed.siteName,
         memberCount: settings.countUsers(),
         updatedAt: stored.updatedAt
       }
@@ -1383,6 +1426,17 @@ function createApp({
       };
     }
     if (body.allowSignup !== undefined) patch.allowSignup = Boolean(body.allowSignup);
+    if (body.siteName !== undefined) {
+      // The environment owns the name on a managed host; say so instead of
+      // silently ignoring the field.
+      if (effective.managed.siteName) {
+        return res.status(400).json({
+          ok: false,
+          error: "The site name comes from SITE_NAME in the environment. Change it there and restart."
+        });
+      }
+      patch.siteName = sanitizeSiteName(body.siteName);
+    }
 
     if (body.botToken !== undefined && !effective.managed.botToken) {
       discord.botToken = String(body.botToken || "").trim();
@@ -1547,6 +1601,7 @@ function createApp({
     res.setHeader("Cache-Control", "no-store");
     res.type("html").send(
       render("activity.html", {
+        ...brandVars(),
         VERSION: version,
         CLIENT_ID: effective.clientId,
         DASHBOARD_URL: effective.publicUrl || originOf(req)

@@ -1152,6 +1152,14 @@
         $("#bot-token-hint").textContent = settings.discord.hasBotToken
           ? `Current token ${settings.discord.botTokenPreview}`
           : "No bot token saved yet";
+        const siteForm = $("#site-form");
+        if (siteForm && !typingIn(siteForm)) siteForm.elements.siteName.value = settings.siteName || "";
+        if (siteForm) {
+          siteForm.elements.siteName.disabled = Boolean(settings.siteNameManaged);
+          $("#site-name-hint").textContent = settings.siteNameManaged
+            ? "Set by SITE_NAME in the environment. Change it there and restart."
+            : "2–40 characters. A 0 in the name gets the same bold treatment as the default.";
+        }
         const ssoForm = $("#sso-form");
         if (!typingIn(ssoForm)) {
           ssoForm.elements.allowedIds.value = (settings.discord.allowedIds || []).join(", ");
@@ -1361,6 +1369,25 @@
     }
   }
 
+  /** The instance name: header, titles and card pages all follow it. */
+  function wireSiteForm() {
+    const form = document.getElementById("site-form");
+    if (!form) return;
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const siteName = form.elements.siteName.value.trim();
+      try {
+        await api("/api/settings", "POST", { siteName });
+        toast("Name saved. Reload to see it everywhere.");
+        // The header is rendered server-side, so the page has to reload to show
+        // the new wordmark; the toast would be a lie otherwise.
+        setTimeout(() => location.reload(), 700);
+      } catch (error) {
+        toast(error.message, true);
+      }
+    });
+  }
+
   function wireCardPanel() {
     const formEl = document.getElementById("card-form");
     if (!formEl) return;
@@ -1407,6 +1434,7 @@
   }
 
   wireCardPanel();
+  wireSiteForm();
 
   void (async () => {
     await refresh();
