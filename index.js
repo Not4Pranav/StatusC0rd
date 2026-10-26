@@ -1,14 +1,15 @@
 "use strict";
 
 /**
- * StatusC0rd boot.
+ * StatusC0rd boot (multi-user).
  *
  *   index.js    this file - env, store, bot, keep-alive, HTTP server
  *   server.js   every route
  *   src/*       the engine: presence model, gateway bot, oauth, store, photos
  *
- * Order matters only once: the store is created first because a first run with
- * no key anywhere generates the dashboard key and prints it to the log.
+ * Anyone signs in with Discord and gets their own card. The bot card and the
+ * instance settings belong to the admin: ADMIN_DISCORD_IDS in the
+ * environment, or the first account to sign in when the environment is silent.
  */
 
 require("dotenv").config();
@@ -36,6 +37,13 @@ const PRODUCTION = process.env.NODE_ENV === "production";
 
 const store = new Store({ dir: DATA_DIR });
 
+// ADMIN_DISCORD_IDS names the admins; ALLOWED_DISCORD_IDS is the v4 name,
+// still honoured so an old environment keeps working.
+function envAdminIds() {
+  const raw = String(process.env.ADMIN_DISCORD_IDS || "") + "," + String(process.env.ALLOWED_DISCORD_IDS || "");
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 const effective = () => ({
   clientId: String(process.env.CLIENT_ID || store.settings.clientId || "").trim(),
   clientSecret: String(process.env.CLIENT_SECRET || store.settings.clientSecret || "").trim(),
@@ -44,17 +52,18 @@ const effective = () => ({
   publicUrl: String(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || store.settings.publicUrl || "").trim().replace(/\/+$/, ""),
   keepAlive: process.env.KEEP_ALIVE === undefined ? store.settings.keepAlive !== false : flag("KEEP_ALIVE", true),
   keepAliveMinutes: Number(process.env.KEEP_ALIVE_INTERVAL_MINUTES || store.settings.keepAliveMinutes || 10),
-  cardPublished: store.settings.cardPublished === true,
-  allowedDiscordIds: String(process.env.ALLOWED_DISCORD_IDS || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
+  adminIds: envAdminIds(),
   botEnabled: flag("BOT_ENABLED", true)
 });
 
-let firstRunKey = null;
-if (!store.hasKey()) {
-  firstRunKey = store.generateKey();
+// The gateway bot carries the instance owner's card: the first admin that has
+// an account.
+function botOwner() {
+  for (const id of [...effective().adminIds, ...store.adminIds]) {
+    const user = store.getUser(id);
+    if (user) return user;
+  }
+  return null;
 }
 
 const bot = new DiscordBot({
@@ -62,9 +71,14 @@ const bot = new DiscordBot({
   enabled: effective().botEnabled,
   clientId: effective().clientId
 });
+
+function applyBotPresence() {
+  const owner = botOwner();
+  bot.setPresence(owner ? owner.presence : null);
+}
 // The saved card is the bot's desired presence from the first second; the
 // queue applies it the moment the gateway is ready.
-bot.setPresence(store.presence);
+applyBotPresence();
 void bot.start();
 
 const keepAlive = new KeepAlive({});
@@ -81,7 +95,7 @@ function applyKeepAlive() {
 }
 applyKeepAlive();
 
-const app = createApp({ store, bot, keepAlive, activity, effective, version, production: PRODUCTION, applyKeepAlive });
+const app = createApp({ store, bot, keepAlive, activity, effective, version, production: PRODUCTION, applyKeepAlive, applyBotPresence });
 
 const server = http.createServer(app);
 server.listen(PORT, () => {
@@ -90,11 +104,9 @@ server.listen(PORT, () => {
   console.log("  StatusC0rd v" + version + "  -  " + (PRODUCTION ? "production" : "development"));
   console.log("  " + url);
   console.log("");
-  if (firstRunKey) {
-    console.log("  FIRST RUN - no dashboard key existed, so one was generated:");
-    console.log("  dashboard key: " + firstRunKey);
-    console.log("  Copy it now - it is shown once. Or set DASHBOARD_KEY in the");
-    console.log("  environment to choose your own key.");
+  if (!effective().adminIds.length) {
+    console.log("  No ADMIN_DISCORD_IDS set - the first Discord account to");
+    console.log("  sign in becomes the admin (instance settings + bot card).");
     console.log("");
   }
   if (!effective().botToken) {
