@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  var TYPES = { 0: "PLAYING", 1: "STREAMING", 2: "LISTING", 3: "WATCHING", 4: "CUSTOM STATUS", 5: "COMPETING" };
+  var TYPES = { 0: "PLAYING", 1: "STREAMING", 2: "LISTENING", 3: "WATCHING", 4: "CUSTOM STATUS", 5: "COMPETING" };
   var IDS = ["pill-bot", "pill-bot-text", "pill-activity", "pill-activity-text", "logout", "f-name", "f-type", "f-status", "f-details", "f-state", "row-url", "f-url", "pick-large", "thumb-large", "fallback-large", "pick-small", "thumb-small", "fallback-small", "f-large-text", "f-small-text", "btn-rows", "add-button", "f-timer", "row-restart", "f-restart", "f-bot", "f-profile", "f-enabled", "save", "take-down", "save-note", "errors", "photo-input", "upload", "photo-grid", "discord-user", "activity-status", "publish-card", "card-link", "copy-link", "open-card", "s-site-name", "s-keepalive", "s-interval", "s-client-id", "s-client-secret", "s-bot-token", "save-settings", "pv-large", "pv-fallback", "pv-small-wrap", "pv-small", "pv-type", "pv-name", "pv-details", "pv-state", "pv-time", "pv-buttons", "picker", "picker-close", "picker-grid", "picker-empty", "toast"];
   var el = {};
   IDS.forEach(function (id) { el[id] = document.getElementById(id); });
