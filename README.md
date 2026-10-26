@@ -75,6 +75,12 @@ first card. Everything afterwards is configured from the dashboard.
 
 ## Deploy free
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Not4Pranav/StatusC0rd)
+
+**[DEPLOY-FREE.md](DEPLOY-FREE.md) is the 15-minute, zero-cost walkthrough** —
+fork, one click, one Discord application, one wizard. It states what each free
+plan cannot do before you start, not after.
+
 The shortest path is **Render's free tier**: fork this repository, then
 <https://dashboard.render.com> → **New +** → **Blueprint** → pick the fork.
 `render.yaml` supplies Node 22, `npm ci`, `npm start` and the `/health` check.
@@ -104,7 +110,8 @@ and the environment wins when both exist.
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP port |
 | `DATA_DIR` | `./data` | `settings.json`, `assets/`, setup token |
-| `PUBLIC_URL` | unset | public origin for photo URLs and the keep-alive |
+| `PUBLIC_URL` | unset | public origin for photo URLs and the keep-alive; defaults to Render's own service URL |
+| `RENDER_EXTERNAL_URL` | set by Render | used as `PUBLIC_URL` when that is blank, so a one-click deploy needs no typing |
 | `CLIENT_ID` | unset | Discord application ID (public) |
 | `CLIENT_SECRET` | unset | OAuth2 secret; the in-Discord app needs it |
 | `DISCORD_TOKEN` | unset | bot token for the 24/7 card |

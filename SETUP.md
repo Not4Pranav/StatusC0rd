@@ -207,6 +207,11 @@ https://YOUR-HOST/auth/discord/callback
 
 ## Part 2. Put the website online (free)
 
+> **In a hurry?** [DEPLOY-FREE.md](DEPLOY-FREE.md) is the fast path: fork, one
+> click on Render, one Discord application, one wizard, about 15 minutes, no
+> card. This Part is the reference: every host, every catch, and what to do when
+> it goes wrong.
+
 Pick **one** path. Render is the shortest; Oracle gives you a real disk for the
 same money.
 
@@ -899,6 +904,7 @@ managed hosts should use it.
 | `NODE_ENV` | `development` | `production` adds HSTS, blocks framing of the dashboard, marks cookies `Secure` behind TLS |
 | `DATA_DIR` | `./data` | where `settings.json`, `assets/` and the setup token live |
 | `PUBLIC_URL` | unset | public origin for photo URLs and the keep-alive; must be the real `https://` URL, no trailing slash |
+| `RENDER_EXTERNAL_URL` | set by Render | read automatically when `PUBLIC_URL` is blank, so a one-click deploy knows its own address; an explicit `PUBLIC_URL` wins (needed for a custom domain) |
 | `SITE_NAME` | `StatusC0rd` | the name in the header, page titles and card pages (2–40 chars); pins it so the dashboard field is read-only |
 | `CLIENT_ID` | unset | Discord application ID (public) |
 | `CLIENT_SECRET` | unset | OAuth2 secret; enables the in-Discord app and Discord sign-in |

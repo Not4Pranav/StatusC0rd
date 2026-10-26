@@ -537,7 +537,9 @@ function createApp({
         VERSION: version,
         CLIENT_ID: effective.clientId,
         NEEDS_TOKEN: needsToken ? "true" : "false",
-        BOT_MANAGED: effective.managed.botToken ? "true" : "false"
+        BOT_MANAGED: effective.managed.botToken ? "true" : "false",
+        PUBLIC_URL: effective.publicUrl || "",
+        PUBLIC_URL_MANAGED: effective.managed.publicUrl ? "true" : "false"
       })
     );
   });
@@ -621,11 +623,16 @@ function createApp({
     const adminKey = String(body.adminKey || "");
     const discord = body.discord && typeof body.discord === "object" ? body.discord : {};
 
-    const publicUrl = String(body.publicUrl || originOf(req)).trim().replace(/\/+$/, "");
+    // A managed host (Render) tells the app its own address; the wizard leaves
+    // the field empty in that case and the stored value is left alone, so a
+    // first run can never pin the wrong URL into the data file.
+    const publicUrl = settings.effective().managed.publicUrl
+      ? ""
+      : String(body.publicUrl || originOf(req)).trim().replace(/\/+$/, "");
     if (publicUrl && !/^https?:\/\/[^\s]+$/i.test(publicUrl)) {
       return res.status(400).json({ ok: false, error: "The public URL must start with https:// or http://." });
     }
-    const patch = { publicUrl };
+    const patch = publicUrl ? { publicUrl } : {};
     if (!settings.data.admin.keyHash && !settings.keyFromEnv) {
       if (adminKey.length < MIN_KEY_LENGTH) {
         return res.status(400).json({

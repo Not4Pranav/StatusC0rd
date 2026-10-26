@@ -16,8 +16,8 @@ services:
       # Everything below is optional: the setup wizard stores the same values in
       # data/settings.json. Variables win when both are present - and they are the
       # only thing that survives this plan, which wipes the disk on every restart.
-      # Set these four (plus DISCORD_TOKEN) and a wiped instance comes back
-      # configured. Full walkthrough: SETUP.md, Part 2.
+      # Set these (plus DISCORD_TOKEN) and a wiped instance comes back configured.
+      # Fast path, step by step: DEPLOY-FREE.md. Reference: SETUP.md, Part 2.
       # Your own Discord application ID. Leave blank to enter it in the wizard.
       - key: CLIENT_ID
         sync: false
@@ -33,12 +33,19 @@ services:
         generateValue: true
       - key: SETUP_TOKEN
         sync: false
+      # The name in the header and titles. Blank means "StatusC0rd".
+      - key: SITE_NAME
+        sync: false
+      # Leave blank: Render publishes the service's own URL as RENDER_EXTERNAL_URL
+      # and the app uses it for photo links, keep-alive and card pages. Set this
+      # only for a custom domain.
       - key: PUBLIC_URL
         sync: false
       - key: REDIRECT_URI
         sync: false
       # Keeps the free service awake, which is what keeps the bot online.
-      # Needs PUBLIC_URL to be set and reachable from the internet.
+      # The target is this service's own address (PUBLIC_URL, else the URL Render
+      # publishes as RENDER_EXTERNAL_URL), so nothing has to be typed in.
       - key: KEEP_ALIVE
         value: "true"
       - key: KEEP_ALIVE_INTERVAL_MINUTES
@@ -49,12 +56,16 @@ services:
       - key: BOT_WORKER_TOKEN
         sync: false
 
-  # Uncomment to run the bot on Render too, as its own always-warm service.
-  # Two free services are allowed per account; the worker needs no disk.
+  # The bot on a second host. NOT on Render's free plan: it has no background
+  # workers, and a second free *web* service kept awake would also blow the
+  # 750 instance-hour budget for the whole workspace. Use a host with an
+  # always-on free box (SETUP.md 6.5) and leave BOT_WORKER_TOKEN empty here
+  # unless you actually run one. On a paid Render plan, uncomment this:
+  #
   # - type: worker
   #   name: StatusC0rd-bot
   #   runtime: node
-  #   plan: free
+  #   plan: starter
   #   region: oregon
   #   buildCommand: npm ci
   #   startCommand: npm start
@@ -68,6 +79,4 @@ services:
   #     - key: BOT_WORKER_TOKEN
   #       sync: false          # the same value as the web service
   #     - key: DISCORD_TOKEN
-  #       sync: false
-  #     - key: PUBLIC_URL
   #       sync: false
