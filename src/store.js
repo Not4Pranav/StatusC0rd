@@ -16,6 +16,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { DEFAULT_CONFIG } = require("./presence");
+const { verifyPassword } = require("./auth");
 
 const ASSET_LIMIT_PER_USER = 10;
 
@@ -116,6 +117,15 @@ class Store {
       u.cardPublished = u.cardPublished === true;
       u.presence = { ...DEFAULT_CONFIG, ...(u.presence && typeof u.presence === "object" ? u.presence : {}) };
       u.assets = Array.isArray(u.assets) ? u.assets.filter((a) => a && typeof a === "object") : [];
+      // v5.1: email + password sign-in, approved through an ;rpc link.
+      u.email = typeof u.email === "string" ? u.email.toLowerCase() : "";
+      u.passHash = typeof u.passHash === "string" ? u.passHash : "";
+      u.passSalt = typeof u.passSalt === "string" ? u.passSalt : "";
+    }
+    // Email -> account index, rebuilt on every boot so it can never drift.
+    d.emailIndex = {};
+    for (const id of Object.keys(d.users)) {
+      if (d.users[id].email) d.emailIndex[d.users[id].email] = id;
     }
   }
 
@@ -178,6 +188,42 @@ class Store {
     return user;
   }
 
+  /* ---- email + password (the web half of the ;rpc approval) ---- */
+
+  findUserByEmail(email) {
+    const key = this.data.emailIndex[String(email || "").toLowerCase()];
+    return key ? this.getUser(key) : null;
+  }
+
+  /**
+   * Create the account an ;rpc link approved: keyed by Discord id (the
+   * in-Discord app looks users up that way), signed in with email + password.
+   * An existing account without a password (the OAuth era) gets its
+   * credentials set here - the signed link proved the Discord side already.
+   */
+  registerUser({ discordId, username, email, passHash, passSalt }) {
+    const key = String(discordId || "");
+    let user = this.data.users[key];
+    if (!user) {
+      user = this.#newUser(key, username);
+      this.data.users[key] = user;
+    }
+    if (user.email) delete this.data.emailIndex[user.email];
+    user.email = String(email || "").toLowerCase();
+    user.passHash = String(passHash || "");
+    user.passSalt = String(passSalt || "");
+    this.data.emailIndex[user.email] = key;
+    this.save();
+    return user;
+  }
+
+  /** The account when the email and password match, null otherwise. */
+  verifyLogin(email, password) {
+    const user = this.findUserByEmail(email);
+    if (!user || !user.passHash || !user.passSalt) return null;
+    return verifyPassword(password, user.passSalt, user.passHash) ? user : null;
+  }
+
   getPresence(id) {
     const user = this.getUser(id);
     return user ? user.presence : { ...DEFAULT_CONFIG };
@@ -209,6 +255,7 @@ class Store {
         /* already gone */
       }
     }
+    if (user.email) delete this.data.emailIndex[user.email];
     delete this.data.users[String(id)];
     this.data.adminIds = this.data.adminIds.filter((a) => a !== String(id));
     this.save();

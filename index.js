@@ -7,9 +7,10 @@
  *   server.js   every route
  *   src/*       the engine: presence model, gateway bot, oauth, store, photos
  *
- * Anyone signs in with Discord and gets their own card. The bot card and the
+ * Every account starts with an ";rpc" link in Discord and an email + password
+ * on the website - the reference approval pipeline. The bot card and the
  * instance settings belong to the admin: ADMIN_DISCORD_IDS in the
- * environment, or the first account to sign in when the environment is silent.
+ * environment, or the first account registered when the environment is silent.
  */
 
 require("dotenv").config();
@@ -82,9 +83,9 @@ function applyBotPresence() {
 // queue applies it the moment the gateway is ready.
 applyBotPresence();
 
-// The in-Discord half of the approval flow: slash commands and a welcome
-// with dashboard buttons whenever the bot is added to a server.
-const commands = createCommandsService({ effective });
+// The in-Discord half of the approval flow: ";rpc" (and the slash commands)
+// hand out personal 30-minute dashboard links; the bot welcomes every server.
+const commands = createCommandsService({ effective, store });
 bot.on("ready", () => {
   commands.wire(bot.client);
   void commands.onReady({ token: effective().botToken, clientId: effective().clientId });
@@ -116,8 +117,8 @@ server.listen(PORT, () => {
   console.log("  " + url);
   console.log("");
   if (!effective().adminIds.length) {
-    console.log("  No ADMIN_DISCORD_IDS set - the first Discord account to");
-    console.log("  sign in becomes the admin (instance settings + bot card).");
+    console.log("  No ADMIN_DISCORD_IDS set - the first account registered");
+    console.log("  through an ;rpc link becomes the admin (settings + bot card).");
     console.log("");
   }
   if (!effective().botToken) {

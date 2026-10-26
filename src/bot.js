@@ -66,10 +66,17 @@ class PresenceQueue {
   }
 }
 
-function defaultClientFactory() {
+function defaultClientFactory({ contentIntent = true } = {}) {
   // Loaded lazily so the dashboard can run without a bot (and tests stay fast).
   const { Client, GatewayIntentBits } = require("discord.js");
-  return new Client({ intents: [GatewayIntentBits.Guilds] });
+  const intents = [GatewayIntentBits.Guilds];
+  if (contentIntent) {
+    // ";rpc" in servers and DMs. Message Content is a privileged intent: the
+    // portal must enable "Message Content Intent" (SETUP section 2.5) or the
+    // gateway refuses the connection - the bot then falls back to Guilds only.
+    intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.DirectMessages);
+  }
+  return new Client({ intents });
 }
 
 /**
@@ -87,6 +94,7 @@ class DiscordBot extends EventEmitter {
     this.client = null;
     this.retryDelay = RETRY_BASE_MS;
     this.retryTimer = null;
+    this.contentIntent = true;
     this.connecting = false;
     this.stopping = false;
     this.desired = { activity: null, status: "online" };
@@ -147,7 +155,7 @@ class DiscordBot extends EventEmitter {
     clearTimeout(this.retryTimer);
     this.retryTimer = null;
 
-    const client = this.clientFactory();
+    const client = this.clientFactory({ contentIntent: this.contentIntent !== false });
     this.client = client;
     // A token swap destroys the old client but its event listeners can still
     // fire afterwards; ignore anything that does not belong to the live client.
@@ -206,6 +214,24 @@ class DiscordBot extends EventEmitter {
 
   _onClientError(error) {
     const message = error?.message || String(error);
+    // The portal can lag behind the code: when the privileged Message Content
+    // intent is not enabled yet, reconnect without ;rpc support instead of
+    // dying in a loop - the dashboard keeps working either way.
+    if (/disallowed intents?/i.test(message) && this.contentIntent !== false) {
+      this.contentIntent = false;
+      this.note = ";rpc is off until the Message Content Intent is enabled in the developer portal (SETUP section 2.5).";
+      this.retryDelay = RETRY_BASE_MS;
+      this.logger.warn?.("[bot] " + this.note);
+      this._setState({ note: this.note, error: message });
+      try {
+        this.client?.destroy();
+      } catch {
+        /* ignore */
+      }
+      this.client = null;
+      this._scheduleRetry();
+      return;
+    }
     // Avoid log spam when the same failure repeats on every retry.
     if (this.state.error !== message) {
       this.logger.error?.(`[bot] ${message}`);

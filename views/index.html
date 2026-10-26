@@ -20,13 +20,30 @@
         Pick the title, details, images and buttons — then go live in seconds.
         Everyone gets their own card — photos and buttons land on your own profile.
       </p>
-      <div class="gate-form">
-        <a class="btn primary" href="/auth/discord">Continue with Discord</a>
-        <a class="btn ghost" href="/invite">Add to Discord — it works in your account, no server needed</a>
-        {{ERROR}}
+      {{{LINK_BANNER}}}
+      <div class="auth-card">
+        <div class="tabs" role="tablist" aria-label="Sign in">
+          <button type="button" class="tab selected" id="tab-login">Log in</button>
+          <button type="button" class="tab" id="tab-register">Create account</button>
+        </div>
+        <form id="form-login" class="auth-form" autocomplete="on">
+          <label class="field"><span>Email</span><input id="l-email" type="email" autocomplete="email" required /></label>
+          <label class="field"><span>Password</span><input id="l-pass" type="password" autocomplete="current-password" required /></label>
+          <button class="btn primary" type="submit">Log in</button>
+        </form>
+        <form id="form-register" class="auth-form" hidden>
+          <label class="field"><span>Email</span><input id="r-email" type="email" autocomplete="email" required /></label>
+          <label class="field"><span>Password — 8 characters or more</span><input id="r-pass" type="password" autocomplete="new-password" minlength="8" required /></label>
+          <button class="btn primary" type="submit">Create account &amp; approve</button>
+        </form>
+        <p class="hint" id="need-link" hidden>No access link yet — type <strong>;rpc</strong> where the bot is and press <strong>Open Dashboard</strong> in its reply.</p>
+        <p class="auth-error" id="auth-error">{{ERROR}}</p>
       </div>
-      <p class="gate-note">One Discord account, one card. Build it here, then open the app inside Discord (a voice channel → App Launcher) to put it on your profile.</p>
+      {{{LINK_TOKEN_HTML}}}
+      <a class="btn ghost" href="/invite">Add to Discord — it works in your account, no server needed</a>
+      <p class="gate-note">One Discord account, one card. Approve with ;rpc, build it here, then open the app inside Discord (a voice channel → App Launcher) to put it on your profile.</p>
     </main>
     <p class="gate-foot">{{SITE_NAME}} v{{VERSION}} · <a href="https://github.com/Not4Pranav/StatusC0rd/blob/main/SETUP.md" target="_blank" rel="noreferrer noopener">Setup guide</a></p>
+    <script src="/auth.js" defer></script>
   </body>
 </html>

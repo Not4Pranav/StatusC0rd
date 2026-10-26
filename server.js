@@ -3,12 +3,14 @@
 /**
  * Every route, in one file, in reading order:
  *   pages    /  /card/:id  /activity/  /health
- *   session  /auth/discord  /auth/discord/callback  POST /logout
+ *   session  /access/:token  /api/auth/register  /api/auth/login  POST /logout
  *   api      /api/state /api/presence /api/presence/clear /api/settings /api/assets
  *   activity /activity/api/token  /activity/api/presence   (bearer-token, no session)
  *
- * Security model: multi-user. Anyone signs in with Discord and lands in their
- * own account - their card, their photos, their public card page. The session
+ * Security model: multi-user. Anyone an ;rpc link brings in registers with
+ * email + password and lands in their own account - their card, their photos,
+ * their public card page. The link is the Discord half of the approval, the
+ * registration the web half. The session
  * plus a CSRF header opens every write; the in-Discord app carries an OAuth
  * token that resolves to the same account. Instance-wide settings (bot,
  * keep-alive, site name) are admin-only: ADMIN_DISCORD_IDS, or the first
@@ -23,7 +25,7 @@ const cookieSession = require("cookie-session");
 
 const { sanitizePresence, buildActivity, ACTIVITY_TYPES } = require("./src/presence");
 const { validateImage, ImageError } = require("./src/images");
-const { buildAuthorizeUrl, exchangeCode, fetchMe } = require("./src/oauth");
+const { readAccessToken, hashPassword, isValidEmail, normalizeEmail } = require("./src/auth");
 const { ActivityError } = require("./src/activity");
 
 const VIEWS_DIR = path.join(__dirname, "views");
@@ -31,8 +33,8 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const ASSET_NAME = /^[a-f0-9]{16}\.(png|jpg|gif|webp)$/;
 const CONTENT_TYPES = { png: "image/png", jpg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
 const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
-const OAUTH_STARTS_PER_WINDOW = 10;
-const OAUTH_WINDOW_MS = 15 * 60_000;
+const AUTH_ATTEMPTS_PER_WINDOW = 10;
+const AUTH_WINDOW_MS = 15 * 60_000;
 
 function escapeHtml(value) {
   return String(value === undefined || value === null ? "" : value)
@@ -93,7 +95,7 @@ function elapsedText(startMs, now) {
 function createApp({ store, bot, keepAlive, activity, effective, version, production, applyKeepAlive, applyBotPresence }) {
   const app = express();
   const templates = loadTemplates();
-  const oauthLimiter = makeLimiter({ max: OAUTH_STARTS_PER_WINDOW, windowMs: OAUTH_WINDOW_MS });
+  const authLimiter = makeLimiter({ max: AUTH_ATTEMPTS_PER_WINDOW, windowMs: AUTH_WINDOW_MS });
   const activityTokenLimiter = makeLimiter({ max: 10, windowMs: 60_000 });
 
   app.disable("x-powered-by");
@@ -197,11 +199,11 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       return render(res, "dashboard.html", pageVars({ CLIENT_ID: effective().clientId }));
     }
     const reasons = {
-      "1": "Discord refused that sign-in - try again.",
-      "2": "Too many sign-ins from this address - wait fifteen minutes.",
+      "1": "That access link is invalid or expired - type ;rpc again.",
+      "2": "Too many attempts from this address - wait fifteen minutes.",
       "3": "This instance has no Discord application configured yet."
     };
-    render(res, "index.html", pageVars({ ERROR: reasons[req.query.e] || "" }));
+    render(res, "index.html", pageVars({ ERROR: reasons[req.query.e] || "", LINK_BANNER: "", LINK_TOKEN_HTML: "" }));
   });
 
   app.post("/logout", (req, res) => {
@@ -221,41 +223,68 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     res.redirect("https://discord.com/oauth2/authorize?client_id=" + encodeURIComponent(clientId) + "&integration_type=1&scope=applications.commands");
   });
 
-  /* ---- sign in with Discord ---- */
+  /* ---- sign in: the ;rpc approval pipeline ---- */
 
-  app.get("/auth/discord", (req, res) => {
-    const config = effective();
-    if (!config.clientId || !config.clientSecret || !config.publicUrl) return res.redirect("/?e=3");
-    if (!oauthLimiter(req.ip || "unknown")) return res.redirect("/?e=2");
-    const state = crypto.randomBytes(16).toString("hex");
-    req.session.oauthState = state;
-    res.redirect(buildAuthorizeUrl({ clientId: config.clientId, redirectUri: config.publicUrl + "/auth/discord/callback", state, scope: "identify" }));
+  // The bot hands out signed 30-minute access links (src/commands.js). A link
+  // is the Discord half of the approval - registering with one links that
+  // Discord account to the email account, which is the web half.
+  app.get("/access/:token", (req, res) => {
+    const token = String(req.params.token || "");
+    const link = readAccessToken(token, store.sessionSecret());
+    const banner = link
+      ? '<p class="link-banner ok">Approving Discord account: <strong>@' + escapeHtml(link.name) + '</strong> — register or log in to finish.</p>'
+      : '<p class="link-banner warn">That link is invalid or expired — type ;rpc again for a fresh one.</p>';
+    const tokenHtml = link ? '<input type="hidden" id="link-token" value="' + escapeHtml(token) + '" />' : "";
+    render(res, "index.html", pageVars({ ERROR: "", LINK_BANNER: banner, LINK_TOKEN_HTML: tokenHtml }));
   });
 
-  app.get("/auth/discord/callback", async (req, res) => {
-    try {
-      const config = effective();
-      if (!req.session.oauthState || String(req.query.state) !== req.session.oauthState) {
-        return res.redirect("/?e=1");
-      }
-      req.session.oauthState = null;
-      if (req.query.error) return res.redirect("/?e=1");
-      const token = await exchangeCode({ code: String(req.query.code || ""), clientId: config.clientId, clientSecret: config.clientSecret, redirectUri: config.publicUrl + "/auth/discord/callback" });
-      const me = await fetchMe(token.access_token);
-      const user = store.ensureUser(me.id, me.global_name || me.username);
-      // Nobody named an admin and this is the first account through the door:
-      // it owns the instance.
-      if (store.userCount() === 1 && store.adminIds.length === 0 && config.adminIds.length === 0) {
-        store.addAdmin(user.id);
-        console.log("[auth] first account through the door - " + user.username + " is now the admin.");
-      }
-      req.session.uid = user.id;
-      req.session.cs = crypto.randomBytes(24).toString("hex");
-      res.redirect("/");
-    } catch (error) {
-      console.warn("[oauth] sign-in failed:", error.message);
-      res.redirect("/?e=3");
+  app.post("/api/auth/register", (req, res) => {
+    if (!authLimiter(req.ip || "unknown")) {
+      return res.status(429).json({ ok: false, error: "Too many attempts from this address - wait fifteen minutes." });
     }
+    const body = req.body || {};
+    const email = normalizeEmail(body.email);
+    const password = String(body.password || "");
+    const link = readAccessToken(String(body.token || ""), store.sessionSecret());
+    if (!link) return res.status(400).json({ ok: false, error: "Your access link is missing or expired - type ;rpc again." });
+    if (!isValidEmail(email)) return res.status(400).json({ ok: false, error: "Enter a valid email address." });
+    if (password.length < 8) return res.status(400).json({ ok: false, error: "The password needs at least 8 characters." });
+    const existing = store.getUser(link.id);
+    if (existing && existing.passHash) {
+      return res.status(409).json({ ok: false, error: "That Discord account already has a card here - log in with its email instead." });
+    }
+    if (store.findUserByEmail(email)) {
+      return res.status(409).json({ ok: false, error: "That email is already registered - log in instead." });
+    }
+    const credentials = hashPassword(password);
+    const user = store.registerUser({
+      discordId: link.id,
+      username: link.name,
+      email,
+      passHash: credentials.hash,
+      passSalt: credentials.salt
+    });
+    // Nobody named an admin and this is the first account through the door:
+    // it owns the instance.
+    if (store.userCount() === 1 && store.adminIds.length === 0 && effective().adminIds.length === 0) {
+      store.addAdmin(user.id);
+      console.log("[auth] first registered account - " + user.username + " is now the admin.");
+    }
+    req.session.uid = user.id;
+    req.session.cs = crypto.randomBytes(24).toString("hex");
+    res.json({ ok: true });
+  });
+
+  app.post("/api/auth/login", (req, res) => {
+    if (!authLimiter(req.ip || "unknown")) {
+      return res.status(429).json({ ok: false, error: "Too many attempts from this address - wait fifteen minutes." });
+    }
+    const body = req.body || {};
+    const user = store.verifyLogin(normalizeEmail(body.email), String(body.password || ""));
+    if (!user) return res.status(401).json({ ok: false, error: "Wrong email or password." });
+    req.session.uid = user.id;
+    req.session.cs = crypto.randomBytes(24).toString("hex");
+    res.json({ ok: true });
   });
 
   /* ---- the signed-in api ---- */
