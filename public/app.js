@@ -314,8 +314,8 @@
     else if (act.lastSeenAt) { actPill.dataset.state = "busy"; actText.textContent = "Seen " + timeAgo(act.lastSeenAt); }
     else { actPill.dataset.state = "off"; actText.textContent = "Activity idle"; }
 
-    var owner = state.owner || {};
-    $("discord-user").textContent = owner.discordId ? "Linked as " + (owner.username || "your Discord account") + "." : "Not linked yet - Connect Discord once so the in-Discord app knows it is you.";
+    var owner = state.user || {};
+    $("discord-user").textContent = "Signed in as " + (owner.username || "your Discord account") + (owner.admin ? " (admin)." : ".");
 
     var lines = [];
     if (act.connected) lines.push("Your card is on your profile right now" + (act.username ? " (as " + act.username + ")" : "") + ".");
@@ -328,7 +328,9 @@
   function renderCardPage() {
     $("publish-card").checked = Boolean(state.settings && state.settings.cardPublished);
     var base = state.publicUrl || location.origin;
-    $("card-link").value = base.replace(/\/+$/, "") + "/card";
+    var path = state.cardPath || "/card";
+    $("card-link").value = base.replace(/\/+$/, "") + path;
+    $("open-card").href = path;
   }
 
   /* ---------- boot ---------- */
@@ -343,12 +345,23 @@
     $("s-bot-token").value = "";
   }
 
+  /* ---------- role ---------- */
+
+  function applyRole() {
+    var admin = Boolean(state.user && state.user.admin);
+    ["field-status", "row-bot", "pill-bot", "panel-instance"].forEach(function (id) {
+      var node = document.getElementById(id);
+      if (node) node.hidden = !admin;
+    });
+  }
+
   function refresh() {
     return api("/api/state").then(function (r) {
       if (!r.ok) { toast(r.body && r.body.error || "Could not load the dashboard."); return; }
       var hadDraft = Boolean(draft);
       state = r.body;
       csrf = state.csrf;
+      applyRole();
       if (!hadDraft) {
         fillForm(state.presence);
         fillSettings();
@@ -424,6 +437,7 @@
       });
     });
     $("save-settings").addEventListener("click", function () {
+      if (!(state.user && state.user.admin)) { toast("Those settings are admin-only."); return; }
       var body = {
         siteName: $("s-site-name").value,
         keepAlive: $("s-keepalive").value === "on",

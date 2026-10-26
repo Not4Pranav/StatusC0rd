@@ -18,17 +18,13 @@
       <h1>Your activity, <em>your way</em></h1>
       <p class="gate-sub">
         Pick the title, details, images and buttons — then go live in seconds.
-        Photos and buttons land on your own profile; a bot keeps a card online 24/7.
+        Everyone gets their own card — photos and buttons land on your own profile.
       </p>
-      <form method="post" action="/login" class="gate-form">
-        <label class="field">
-          <span>Dashboard key</span>
-          <input type="password" name="key" autocomplete="current-password" placeholder="your key" required minlength="8" autofocus />
-        </label>
-        <button class="btn primary" type="submit">Sign in</button>
+      <div class="gate-form">
+        <a class="btn primary" href="/auth/discord">Continue with Discord</a>
         {{ERROR}}
-      </form>
-      <p class="gate-note">One key, one owner. New here? The key is in the server logs on first run, or set <code>DASHBOARD_KEY</code>.</p>
+      </div>
+      <p class="gate-note">One Discord account, one card. Build it here, then open the app inside Discord (a voice channel → App Launcher) to put it on your profile.</p>
     </main>
     <p class="gate-foot">{{SITE_NAME}} v{{VERSION}} · <a href="https://github.com/Not4Pranav/StatusC0rd/blob/main/SETUP.md" target="_blank" rel="noreferrer noopener">Setup guide</a></p>
   </body>
