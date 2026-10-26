@@ -17,7 +17,7 @@ services:
       # data/settings.json. Variables win when both are present - and they are the
       # only thing that survives this plan, which wipes the disk on every restart.
       # Set these (plus DISCORD_TOKEN) and a wiped instance comes back configured.
-      # Fast path, step by step: DEPLOY-FREE.md. Reference: SETUP.md, Part 2.
+      # Step by step: SETUP.md, section 1.
       # Your own Discord application ID. Leave blank to enter it in the wizard.
       - key: CLIENT_ID
         sync: false
@@ -50,8 +50,8 @@ services:
         value: "true"
       - key: KEEP_ALIVE_INTERVAL_MINUTES
         value: "10"
-      # Split hosting (SETUP.md 6.5): set BOT_WORKER_TOKEN here and run the bot
-      # on another box with BOT_WORKER=1, BOT_URL=<this service's URL> and the
+      # Split hosting (SETUP.md section 6): set BOT_WORKER_TOKEN here and run the
+      # bot on another box with BOT_WORKER=1, BOT_URL=<this service's URL> and the
       # same token. Leave it empty to keep the bot in this process.
       - key: BOT_WORKER_TOKEN
         sync: false
@@ -59,8 +59,8 @@ services:
   # The bot on a second host. NOT on Render's free plan: it has no background
   # workers, and a second free *web* service kept awake would also blow the
   # 750 instance-hour budget for the whole workspace. Use a host with an
-  # always-on free box (SETUP.md 6.5) and leave BOT_WORKER_TOKEN empty here
-  # unless you actually run one. On a paid Render plan, uncomment this:
+  # always-on free box (SETUP.md section 6) and leave BOT_WORKER_TOKEN empty
+  # here unless you actually run one. On a paid Render plan, uncomment this:
   #
   # - type: worker
   #   name: StatusC0rd-bot
