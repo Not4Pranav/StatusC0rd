@@ -2,15 +2,17 @@
 
 /**
  * Every route, in one file, in reading order:
- *   pages    /  /card  /activity/  /health
- *   session  POST /login  POST /logout
+ *   pages    /  /card/:id  /activity/  /health
+ *   session  /auth/discord  /auth/discord/callback  POST /logout
  *   api      /api/state /api/presence /api/presence/clear /api/settings /api/assets
- *   discord  /auth/discord  /auth/discord/callback
  *   activity /activity/api/token  /activity/api/presence   (bearer-token, no session)
  *
- * Security model: one owner. The dashboard key opens the session; the session
+ * Security model: multi-user. Anyone signs in with Discord and lands in their
+ * own account - their card, their photos, their public card page. The session
  * plus a CSRF header opens every write; the in-Discord app carries an OAuth
- * token that must resolve to the linked owner. Nothing else writes anything.
+ * token that resolves to the same account. Instance-wide settings (bot,
+ * keep-alive, site name) are admin-only: ADMIN_DISCORD_IDS, or the first
+ * account to sign in when the environment is silent.
  */
 
 const fs = require("node:fs");
@@ -19,7 +21,7 @@ const crypto = require("node:crypto");
 const express = require("express");
 const cookieSession = require("cookie-session");
 
-const { sanitizePresence, buildActivity, ACTIVITY_TYPES, DEFAULT_CONFIG } = require("./src/presence");
+const { sanitizePresence, buildActivity, ACTIVITY_TYPES } = require("./src/presence");
 const { validateImage, ImageError } = require("./src/images");
 const { buildAuthorizeUrl, exchangeCode, fetchMe } = require("./src/oauth");
 const { ActivityError } = require("./src/activity");
@@ -29,6 +31,8 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const ASSET_NAME = /^[a-f0-9]{16}\.(png|jpg|gif|webp)$/;
 const CONTENT_TYPES = { png: "image/png", jpg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
 const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const OAUTH_STARTS_PER_WINDOW = 10;
+const OAUTH_WINDOW_MS = 15 * 60_000;
 
 function escapeHtml(value) {
   return String(value === undefined || value === null ? "" : value)
@@ -86,10 +90,10 @@ function elapsedText(startMs, now) {
   return h > 0 ? h + ":" + pad(m) + ":" + pad(s) : pad(m) + ":" + pad(s);
 }
 
-function createApp({ store, bot, keepAlive, activity, effective, version, production, applyKeepAlive }) {
+function createApp({ store, bot, keepAlive, activity, effective, version, production, applyKeepAlive, applyBotPresence }) {
   const app = express();
   const templates = loadTemplates();
-  const loginAttempts = new Map();
+  const oauthLimiter = makeLimiter({ max: OAUTH_STARTS_PER_WINDOW, windowMs: OAUTH_WINDOW_MS });
   const activityTokenLimiter = makeLimiter({ max: 10, windowMs: 60_000 });
 
   app.disable("x-powered-by");
@@ -140,8 +144,8 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       return;
     }
     const out = template
-      .replace(/\{\{\{(\w+)\}\}\}/g, (match, key) => String(vars[key] !== undefined ? vars[key] : ""))
-      .replace(/\{\{(\w+)\}\}/g, (match, key) => escapeHtml(vars[key] !== undefined ? vars[key] : ""));
+      .replace(/\{\{(\w+)\}\}/g, (match, key) => escapeHtml(vars[key] !== undefined ? vars[key] : ""))
+      .replace(/\{\{(\w+)\}\}/g, (match, key) => String(vars[key] !== undefined ? vars[key] : ""));
     res.status(status || 200).type("html").send(out);
   }
 
@@ -150,9 +154,19 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     return req.session.cs;
   }
 
+  function currentUser(req) {
+    const id = req.session && req.session.uid;
+    return id ? store.getUser(id) : null;
+  }
+
   function requireAuth(req, res, next) {
-    if (req.session && req.session.authed) return next();
+    if (currentUser(req)) return next();
     res.status(401).json({ ok: false, error: "Not signed in." });
+  }
+
+  function isAdmin(req) {
+    const user = currentUser(req);
+    return Boolean(user && store.isAdmin(user.id, effective().adminIds));
   }
 
   function requireCsrf(req, res, next) {
@@ -179,31 +193,15 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
   /* ---- pages ---- */
 
   app.get("/", (req, res) => {
-    if (req.session && req.session.authed) {
+    if (currentUser(req)) {
       return render(res, "dashboard.html", pageVars({ CLIENT_ID: effective().clientId }));
     }
-    const reasons = { "1": "That dashboard key is not right.", "2": "Too many attempts - wait fifteen minutes.", "3": "This instance has no Discord application configured yet." };
+    const reasons = {
+      "1": "Discord refused that sign-in - try again.",
+      "2": "Too many sign-ins from this address - wait fifteen minutes.",
+      "3": "This instance has no Discord application configured yet."
+    };
     render(res, "index.html", pageVars({ ERROR: reasons[req.query.e] || "" }));
-  });
-
-  app.post("/login", (req, res) => {
-    const ip = req.ip || "unknown";
-    const now = Date.now();
-    const entry = loginAttempts.get(ip);
-    if (entry && entry.resetAt < now) loginAttempts.delete(ip);
-    if (entry && entry.resetAt >= now && entry.count >= 5) {
-      return res.redirect("/?e=2");
-    }
-    const key = String((req.body && req.body.key) || "");
-    if (key.length < 8 || !store.verifyKey(key)) {
-      const current = loginAttempts.get(ip);
-      loginAttempts.set(ip, { count: (current ? current.count : 0) + 1, resetAt: now + 15 * 60_000 });
-      return res.redirect("/?e=1");
-    }
-    loginAttempts.delete(ip);
-    req.session.authed = true;
-    req.session.cs = crypto.randomBytes(24).toString("hex");
-    res.redirect("/");
   });
 
   app.post("/logout", (req, res) => {
@@ -215,10 +213,49 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     res.json({ status: "ok", uptime: Math.floor(process.uptime()), version });
   });
 
-  /* ---- the owner's api ---- */
+  /* ---- sign in with Discord ---- */
+
+  app.get("/auth/discord", (req, res) => {
+    const config = effective();
+    if (!config.clientId || !config.clientSecret || !config.publicUrl) return res.redirect("/?e=3");
+    if (!oauthLimiter(req.ip || "unknown")) return res.redirect("/?e=2");
+    const state = crypto.randomBytes(16).toString("hex");
+    req.session.oauthState = state;
+    res.redirect(buildAuthorizeUrl({ clientId: config.clientId, redirectUri: config.publicUrl + "/auth/discord/callback", state, scope: "identify" }));
+  });
+
+  app.get("/auth/discord/callback", async (req, res) => {
+    try {
+      const config = effective();
+      if (!req.session.oauthState || String(req.query.state) !== req.session.oauthState) {
+        return res.redirect("/?e=1");
+      }
+      req.session.oauthState = null;
+      if (req.query.error) return res.redirect("/?e=1");
+      const token = await exchangeCode({ code: String(req.query.code || ""), clientId: config.clientId, clientSecret: config.clientSecret, redirectUri: config.publicUrl + "/auth/discord/callback" });
+      const me = await fetchMe(token.access_token);
+      const user = store.ensureUser(me.id, me.global_name || me.username);
+      // Nobody named an admin and this is the first account through the door:
+      // it owns the instance.
+      if (store.userCount() === 1 && store.adminIds.length === 0 && config.adminIds.length === 0) {
+        store.addAdmin(user.id);
+        console.log("[auth] first account through the door - " + user.username + " is now the admin.");
+      }
+      req.session.uid = user.id;
+      req.session.cs = crypto.randomBytes(24).toString("hex");
+      res.redirect("/");
+    } catch (error) {
+      console.warn("[oauth] sign-in failed:", error.message);
+      res.redirect("/?e=3");
+    }
+  });
+
+  /* ---- the signed-in api ---- */
 
   app.get("/api/state", requireAuth, (req, res) => {
+    const user = currentUser(req);
     const config = effective();
+    const admin = store.isAdmin(user.id, config.adminIds);
     res.json({
       ok: true,
       csrf: ensureCsrf(req),
@@ -226,79 +263,108 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       version,
       publicUrl: config.publicUrl,
       publicUrlManaged: Boolean(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL),
-      presence: store.presence,
-      assets: store.assets.map((a) => ({ id: a.id, ext: a.ext, bytes: a.bytes, width: a.width, height: a.height, addedAt: a.addedAt, url: store.assetUrl(a, config.publicUrl) })),
-      owner: store.owner,
-      bot: bot.getState(),
-      keepAlive: keepAlive.getState(),
-      activity: activity.snapshot(),
-      settings: {
-        clientId: config.clientId,
-        hasClientSecret: Boolean(config.clientSecret),
-        hasBotToken: Boolean(config.botToken),
-        siteName: store.settings.siteName || "",
-        keepAlive: config.keepAlive,
-        keepAliveMinutes: config.keepAliveMinutes,
-        cardPublished: config.cardPublished
-      }
+      user: { id: user.id, username: user.username, admin },
+      cardPath: "/card/" + user.id,
+      presence: user.presence,
+      assets: user.assets.map((a) => ({ id: a.id, ext: a.ext, bytes: a.bytes, width: a.width, height: a.height, addedAt: a.addedAt, url: store.assetUrl(a, config.publicUrl) })),
+      activity: activity.snapshot(user.id),
+      bot: admin ? bot.getState() : null,
+      keepAlive: admin ? keepAlive.getState() : null,
+      settings: admin
+        ? {
+            cardPublished: user.cardPublished === true,
+            clientId: config.clientId,
+            hasClientSecret: Boolean(config.clientSecret),
+            hasBotToken: Boolean(config.botToken),
+            siteName: store.settings.siteName || "",
+            keepAlive: config.keepAlive,
+            keepAliveMinutes: config.keepAliveMinutes
+          }
+        : { cardPublished: user.cardPublished === true }
     });
   });
 
   app.post("/api/presence", requireAuth, requireCsrf, (req, res) => {
+    const user = currentUser(req);
+    const admin = isAdmin(req);
     const result = sanitizePresence(req.body, {
-      current: store.presence,
-      ownsAsset: (id) => store.ownsAsset(id)
+      current: user.presence,
+      ownsAsset: (id) => store.ownsAsset(user.id, id)
     });
     if (!result.ok) {
       return res.status(422).json({ ok: false, errors: result.errors });
     }
-    store.setPresence(result.value);
-    bot.setPresence(result.value);
+    // Only the admin's card rides the gateway bot. Everyone else is
+    // profile-only - which is where photos and buttons work anyway.
+    if (!admin) result.value.targets.bot = false;
+    store.setPresence(user.id, result.value);
+    if (admin) bot.setPresence(result.value);
     res.json({ ok: true, presence: result.value });
   });
 
   app.post("/api/presence/clear", requireAuth, requireCsrf, (req, res) => {
-    const presence = { ...store.presence, enabled: false, updatedAt: new Date().toISOString() };
-    store.setPresence(presence);
-    bot.clearPresence(presence.status || "online");
+    const user = currentUser(req);
+    const presence = { ...user.presence, enabled: false, updatedAt: new Date().toISOString() };
+    store.setPresence(user.id, presence);
+    if (isAdmin(req)) bot.clearPresence(presence.status || "online");
     res.json({ ok: true, presence });
   });
 
   app.post("/api/settings", requireAuth, requireCsrf, (req, res) => {
+    const user = currentUser(req);
+    const admin = isAdmin(req);
     const body = req.body || {};
-    const s = store.settings;
-    if (body.clientId !== undefined) s.clientId = String(body.clientId).trim().slice(0, 32);
-    if (typeof body.clientSecret === "string" && body.clientSecret.trim() !== "") s.clientSecret = body.clientSecret.trim().slice(0, 128);
-    if (typeof body.botToken === "string" && body.botToken.trim() !== "") s.botToken = body.botToken.trim().slice(0, 128);
-    if (body.siteName !== undefined) s.siteName = sanitizeSiteName(body.siteName);
-    if (body.keepAlive !== undefined) s.keepAlive = body.keepAlive === true || body.keepAlive === "true" || body.keepAlive === 1;
-    if (body.keepAliveMinutes !== undefined) s.keepAliveMinutes = Math.min(60, Math.max(5, Number(body.keepAliveMinutes) || 10));
-    if (body.cardPublished !== undefined) s.cardPublished = body.cardPublished === true || body.cardPublished === "true";
-    store.save();
 
-    const config = effective();
-    // A settings save may re-point the bot and the keep-alive; both no-op when nothing changed.
-    void bot.reconfigure({ token: config.botToken, enabled: config.botEnabled });
-    if (applyKeepAlive) applyKeepAlive();
+    // Everyone: the publish switch on their own card page.
+    if (body.cardPublished !== undefined) {
+      store.setCardPublished(user.id, body.cardPublished === true || body.cardPublished === "true");
+    }
 
-    res.json({ ok: true, settings: { clientId: config.clientId, hasClientSecret: Boolean(config.clientSecret), hasBotToken: Boolean(config.botToken), siteName: s.siteName, keepAlive: config.keepAlive, keepAliveMinutes: config.keepAliveMinutes, cardPublished: config.cardPublished } });
+    // Admins only: instance-wide values.
+    const adminOnly = ["clientId", "clientSecret", "botToken", "siteName", "keepAlive", "keepAliveMinutes"];
+    const touchedAdminFields = adminOnly.some((k) => body[k] !== undefined);
+    if (touchedAdminFields && !admin) {
+      return res.status(403).json({ ok: false, error: "Those settings are admin-only." });
+    }
+    if (admin && touchedAdminFields) {
+      const s = store.settings;
+      if (body.clientId !== undefined) s.clientId = String(body.clientId).trim().slice(0, 32);
+      if (typeof body.clientSecret === "string" && body.clientSecret.trim() !== "") s.clientSecret = body.clientSecret.trim().slice(0, 128);
+      if (typeof body.botToken === "string" && body.botToken.trim() !== "") s.botToken = body.botToken.trim().slice(0, 128);
+      if (body.siteName !== undefined) s.siteName = sanitizeSiteName(body.siteName);
+      if (body.keepAlive !== undefined) s.keepAlive = body.keepAlive === true || body.keepAlive === "true" || body.keepAlive === 1;
+      if (body.keepAliveMinutes !== undefined) s.keepAliveMinutes = Math.min(60, Math.max(5, Number(body.keepAliveMinutes) || 10));
+      store.save();
+      const config = effective();
+      // A settings save may re-point the bot and the keep-alive; both no-op when nothing changed.
+      void bot.reconfigure({ token: config.botToken, enabled: config.botEnabled });
+      if (applyBotPresence) applyBotPresence();
+      if (applyKeepAlive) applyKeepAlive();
+    }
+
+    res.json({ ok: true });
   });
 
   app.get("/api/assets", requireAuth, (req, res) => {
+    const user = currentUser(req);
     const config = effective();
-    res.json({ ok: true, assets: store.assets.map((a) => ({ id: a.id, ext: a.ext, bytes: a.bytes, width: a.width, height: a.height, addedAt: a.addedAt, url: store.assetUrl(a, config.publicUrl) })) });
+    res.json({ ok: true, assets: user.assets.map((a) => ({ id: a.id, ext: a.ext, bytes: a.bytes, width: a.width, height: a.height, addedAt: a.addedAt, url: store.assetUrl(a, config.publicUrl) })) });
   });
 
   app.post("/api/assets", requireAuth, requireCsrf, express.raw({ type: "application/octet-stream", limit: "2.5mb" }), (req, res) => {
+    const user = currentUser(req);
     try {
-      const record = validateImage(req.body);
-      const existing = store.findAsset(record.id);
-      if (!existing) {
-        fs.writeFileSync(store.assetPath(record), req.body);
-        store.addAsset(record);
+      if (user.assets.length >= store.assetLimit) {
+        return res.status(422).json({ ok: false, error: "Photo limit reached - " + store.assetLimit + " per account. Delete one first." });
       }
-      const asset = existing || record;
-      res.json({ ok: true, asset: { id: asset.id, ext: asset.ext, bytes: asset.bytes, width: asset.width, height: asset.height, addedAt: asset.addedAt, url: store.assetUrl(asset, effective().publicUrl) } });
+      let record = validateImage(req.body);
+      // The same picture from a second account gets an id of its own.
+      record = store.uniqueAssetId(record, user.id);
+      if (!store.ownsAsset(user.id, record.id)) {
+        fs.writeFileSync(store.assetPath(record), req.body);
+        store.addAsset(user.id, record);
+      }
+      res.json({ ok: true, asset: { id: record.id, ext: record.ext, bytes: record.bytes, width: record.width, height: record.height, addedAt: record.addedAt, url: store.assetUrl(record, effective().publicUrl) } });
     } catch (error) {
       if (error instanceof ImageError) return res.status(422).json({ ok: false, error: error.message });
       res.status(500).json({ ok: false, error: "The upload did not make it to disk." });
@@ -306,47 +372,20 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
   });
 
   app.delete("/api/assets/:id", requireAuth, requireCsrf, (req, res) => {
-    const asset = store.removeAsset(req.params.id);
+    const user = currentUser(req);
+    const asset = store.removeAsset(user.id, req.params.id);
     if (!asset) return res.status(404).json({ ok: false, error: "No such photo." });
-    bot.setPresence(store.presence);
+    if (isAdmin(req)) bot.setPresence(store.getPresence(user.id));
     res.json({ ok: true });
   });
 
   app.get("/assets/:name", (req, res) => {
     if (!ASSET_NAME.test(req.params.name)) return res.status(404).type("text/plain").send("Not found");
-    const asset = store.findAsset(req.params.name.split(".")[0]);
+    const asset = store.findAnyAsset(req.params.name.split(".")[0]);
     if (!asset) return res.status(404).type("text/plain").send("Not found");
     res.setHeader("Content-Type", CONTENT_TYPES[asset.ext] || "application/octet-stream");
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     res.sendFile(store.assetPath(asset));
-  });
-
-  /* ---- linking the owner's Discord account ---- */
-
-  app.get("/auth/discord", requireAuth, (req, res) => {
-    const config = effective();
-    if (!config.clientId || !config.clientSecret) return res.redirect("/?e=3");
-    if (!config.publicUrl) return res.redirect("/?e=3");
-    const state = crypto.randomBytes(16).toString("hex");
-    req.session.oauthState = state;
-    res.redirect(buildAuthorizeUrl({ clientId: config.clientId, redirectUri: config.publicUrl + "/auth/discord/callback", state, scope: "identify" }));
-  });
-
-  app.get("/auth/discord/callback", requireAuth, async (req, res) => {
-    try {
-      const config = effective();
-      if (!req.session.oauthState || String(req.query.state) !== req.session.oauthState) {
-        return res.redirect("/?e=1");
-      }
-      req.session.oauthState = null;
-      const token = await exchangeCode({ code: String(req.query.code || ""), clientId: config.clientId, clientSecret: config.clientSecret, redirectUri: config.publicUrl + "/auth/discord/callback" });
-      const me = await fetchMe(token.access_token);
-      store.linkDiscord(me.id, me.global_name || me.username);
-      res.redirect("/");
-    } catch (error) {
-      console.warn("[oauth] link failed:", error.message);
-      res.redirect("/?e=3");
-    }
   });
 
   /* ---- the in-Discord app (no session: the iframe is Discord's, cookies are not guaranteed) ---- */
@@ -380,22 +419,22 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     });
   });
 
-  /* ---- the public card page ---- */
+  /* ---- public card pages ---- */
 
-  app.get("/card", (req, res) => {
+  function cardNotFound(res) {
+    return render(res, "error.html", pageVars({ STATUS: 404, TITLE: "No card here", MESSAGE: "This card is private or does not exist." }), 404);
+  }
+
+  function renderCard(res, user) {
     const config = effective();
-    const presence = store.presence;
-    if (!config.cardPublished || !presence.enabled || !presence.name) {
-      return render(res, "error.html", pageVars({ STATUS: 404, TITLE: "No card here", MESSAGE: "This card is private or does not exist." }), 404);
-    }
+    const presence = user.presence;
+    if (!user.cardPublished || !presence.enabled || !presence.name) return cardNotFound(res);
     const resolveAsset = (id) => {
-      const asset = store.findAsset(id);
+      const asset = store.findAsset(user.id, id);
       return asset ? store.assetUrl(asset, config.publicUrl) : "";
     };
     const activityObject = buildActivity(presence, { target: "profile", publicUrl: config.publicUrl, resolveAsset });
-    if (!activityObject) {
-      return render(res, "error.html", pageVars({ STATUS: 404, TITLE: "No card here", MESSAGE: "This card is private or does not exist." }), 404);
-    }
+    if (!activityObject) return cardNotFound(res);
     const large = (activityObject.assets && activityObject.assets.large_image) || "";
     const type = Number(presence.type) || 0;
     const description = [presence.details, presence.state].filter(Boolean).join(" - ");
@@ -420,6 +459,19 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       PAGE_TITLE: presence.name + " - " + config.siteName,
       PAGE_DESCRIPTION: description || "A card made with " + config.siteName
     }));
+  }
+
+  app.get("/card/:userId", (req, res) => {
+    const user = store.getUser(req.params.userId);
+    if (!user) return cardNotFound(res);
+    renderCard(res, user);
+  });
+
+  // Short link for the instance owner.
+  app.get("/card", (req, res) => {
+    const owner = [...effective().adminIds, ...store.adminIds].map((id) => store.getUser(id)).find(Boolean) || null;
+    if (!owner) return cardNotFound(res);
+    renderCard(res, owner);
   });
 
   /* ---- fallthrough ---- */
