@@ -4,60 +4,34 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#14151a" />
     <title>{{PAGE_TITLE}}</title>
     <meta name="description" content="{{PAGE_DESCRIPTION}}" />
     <meta property="og:type" content="profile" />
-    <meta property="og:site_name" content="StatusC0rd" />
+    <meta property="og:site_name" content="{{SITE_NAME}}" />
     <meta property="og:title" content="{{PAGE_TITLE}}" />
     <meta property="og:description" content="{{PAGE_DESCRIPTION}}" />
-    {{{OG_HTML}}}
+    {{{OG_IMAGE}}}
     <meta name="twitter:card" content="summary" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/card.js" defer></script>
   </head>
-  <body class="site card-page">
-    <header class="site-header">
-      <a class="brand" href="/">
-        <span class="brand-mark" aria-hidden="true">S</span>
-        <span>{{{BRAND_HTML}}}</span>
-      </a>
-      <nav class="site-nav" aria-label="Account">{{{ACTIONS_HTML}}}</nav>
-    </header>
-
-    <main class="card-stage">
-      <p class="card-owner">
-        <span class="card-handle">@{{HANDLE}}</span>
-        <span class="tag" id="card-state">{{STATE_LABEL}}</span>
-      </p>
-
-      <article class="preview card-public" aria-label="{{NAME}} activity card">
-        <div class="preview-art">
-          {{{ART_HTML}}}
-        </div>
-        <div class="preview-body">
-          <div class="preview-type">{{TYPE_LABEL}}</div>
-          <div class="preview-name">{{NAME}}</div>
-          <div class="preview-line">{{DETAILS}}</div>
-          <div class="preview-line">{{STATE_TEXT}}</div>
-          <div class="preview-time" id="card-time" data-start="{{START_MS}}">{{TIME_TEXT}}</div>
-          <div class="preview-buttons">{{{BUTTONS_HTML}}}</div>
+  <body class="gate">
+    <main class="gate-card">
+      <div class="brand">{{{BRAND_HTML}}}</div>
+      <article class="pv public-card" aria-label="activity card">
+        <div class="pv-art">{{{ART_HTML}}}</div>
+        <div class="pv-body">
+          <div class="pv-type">{{TYPE_LABEL}}</div>
+          <div class="pv-name">{{NAME}}</div>
+          <div class="pv-line">{{DETAILS}}</div>
+          <div class="pv-line">{{STATE_TEXT}}</div>
+          <div class="pv-time" id="card-time" data-start="{{START_MS}}">{{TIME_TEXT}}</div>
+          <div class="pv-buttons">{{{BUTTONS_HTML}}}</div>
         </div>
       </article>
-
-      <p class="hint card-note">{{NOTE}}</p>
-
-      <div class="card-cta">
-        <a class="btn primary" href="/register">Create your own card</a>
-        <a class="btn ghost" href="/">What is StatusC0rd?</a>
-      </div>
+      <p class="gate-note">Posted through {{{BRAND_HTML}}}</p>
+      <p><a class="btn primary" href="/">Make your own</a></p>
     </main>
-
-    <footer class="site-footer">
-      <span>Posted through {{SITE_NAME}}</span>
-      <span class="dot-sep" aria-hidden="true">·</span>
-      <span>v{{VERSION}}</span>
-    </footer>
   </body>
 </html>

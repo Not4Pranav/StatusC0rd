@@ -4,21 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>{{TITLE}} · {{SITE_NAME}}</title>
+    <title>{{TITLE}} — {{SITE_NAME}}</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body class="auth">
-    <main class="auth-card">
-      <a class="brand brand-lg" href="/">
-        <span class="brand-mark" aria-hidden="true">S</span>
-        <span>{{{BRAND_HTML}}}</span>
-      </a>
-      <p class="error-code">{{STATUS}}</p>
-      <h1 class="error-title">{{TITLE}}</h1>
-      <p class="auth-sub">{{DETAIL}}</p>
-      <a class="btn primary block" href="/">Back to {{SITE_NAME}}</a>
-      <footer class="auth-footer">{{SITE_NAME}}</footer>
+  <body class="gate">
+    <main class="gate-card">
+      <div class="brand">{{{BRAND_HTML}}}</div>
+      <h1>{{STATUS}} — {{TITLE}}</h1>
+      <p class="gate-sub">{{MESSAGE}}</p>
+      <p><a class="btn ghost" href="/">Back home</a></p>
     </main>
   </body>
 </html>
