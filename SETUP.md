@@ -50,9 +50,19 @@ At <https://discord.com/developers/applications>:
 6. **Activities → URL Mappings** → prefix <code>/</code>, target
    <code>https://NAME.onrender.com/activity/</code> — **with** the trailing slash.
 7. **Bot → Reset Token** → copy it (→ <code>DISCORD_TOKEN</code>).
-8. **OAuth2 → URL Generator** → scopes <code>bot</code> +
-   <code>applications.commands</code> → open the generated URL → pick your
-   server → **Authorize**.
+8. **Installation** (sidebar) → under **Installation Contexts** tick both
+   **User Install** and **Guild Install** → **Save Changes**. User Install is
+   what lets anyone add the app to their account - no server invite needed.
+9. Still on **Installation** → **Install Link**: keep **Discord Provided
+   Link**. Under **Default Install Settings**, add the
+   <code>applications.commands</code> scope to **User Install**, and
+   <code>applications.commands</code> + <code>bot</code> (any permissions) to
+   **Guild Install** → **Save Changes**.
+10. Invite: open the **Install Link** from that page - or press
+    <strong>Add to Discord</strong> on your site (it serves <code>/invite</code>).
+    One link, two choices: <strong>Add to my apps</strong> installs it to the
+    user's account (this is what puts it in their App Launcher anywhere),
+    <strong>Add to server</strong> invites the bot for the admin's 24/7 card.
 
 ## 3 · Sign in and configure
 
@@ -118,7 +128,7 @@ one process.
 | Sign-in bounces back to the landing page | <code>CLIENT_ID</code>/<code>CLIENT_SECRET</code> missing, or the redirect in section 2.4 is not exact |
 | Invalid OAuth2 redirect_uri | must be exactly <code>https://NAME.onrender.com/auth/discord/callback</code> |
 | Someone is not the admin | put their Discord id in <code>ADMIN_DISCORD_IDS</code> and redeploy |
-| Activity missing from the App Launcher | re-invite with <code>bot</code> + <code>applications.commands</code>; Activities enabled (section 2.5) |
+| Activity missing from the App Launcher | user-install the app ("Add to my apps" via <code>/invite</code>); Activities enabled (section 2.5) |
 | Activity opens a blank frame | URL mapping needs the trailing slash: <code>/activity/</code> |
 | The Activity says "No account here yet" | that user has not signed in on the website yet — one click, then reopen the app |
 | Photos render as a letter | the URL Discord sees is not https or unreachable — check <code>PUBLIC_URL</code> |

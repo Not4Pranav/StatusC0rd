@@ -213,6 +213,14 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     res.json({ status: "ok", uptime: Math.floor(process.uptime()), version });
   });
 
+  // The user-install link: the app lands in anyone's App Launcher with no
+  // server invite - the same Discord-provided flow the reference site uses.
+  app.get("/invite", (req, res) => {
+    const clientId = effective().clientId;
+    if (!clientId) return res.redirect("/?e=3");
+    res.redirect("https://discord.com/oauth2/authorize?client_id=" + encodeURIComponent(clientId) + "&integration_type=1&scope=applications.commands");
+  });
+
   /* ---- sign in with Discord ---- */
 
   app.get("/auth/discord", (req, res) => {
