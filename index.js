@@ -62,6 +62,9 @@ const bot = new DiscordBot({
   enabled: effective().botEnabled,
   clientId: effective().clientId
 });
+// The saved card is the bot's desired presence from the first second; the
+// queue applies it the moment the gateway is ready.
+bot.setPresence(store.presence);
 void bot.start();
 
 const keepAlive = new KeepAlive({});
@@ -78,7 +81,7 @@ function applyKeepAlive() {
 }
 applyKeepAlive();
 
-const app = createApp({ store, bot, keepAlive, activity, effective, version, production: PRODUCTION, flag });
+const app = createApp({ store, bot, keepAlive, activity, effective, version, production: PRODUCTION, applyKeepAlive });
 
 const server = http.createServer(app);
 server.listen(PORT, () => {
@@ -89,9 +92,7 @@ server.listen(PORT, () => {
   console.log("");
   if (firstRunKey) {
     console.log("  FIRST RUN - no dashboard key existed, so one was generated:");
-    console.log("  ┌──────────────────────────────────────────────┐");
-    console.log("  │  dashboard key:  " + firstRunKey + "".padEnd(28 - firstRunKey.length) + "│");
-    console.log("  └──────────────────────────────────────────────┘");
+    console.log("  dashboard key: " + firstRunKey);
     console.log("  Copy it now - it is shown once. Or set DASHBOARD_KEY in the");
     console.log("  environment to choose your own key.");
     console.log("");

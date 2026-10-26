@@ -13,12 +13,11 @@ services:
         value: "22"
       - key: NODE_ENV
         value: production
-      # Everything below is optional: the setup wizard stores the same values in
-      # data/settings.json. Variables win when both are present - and they are the
-      # only thing that survives this plan, which wipes the disk on every restart.
-      # Set these (plus DISCORD_TOKEN) and a wiped instance comes back configured.
+      # Everything below is optional: the dashboard stores the same values in
+      # data/settings.json, and variables win when both exist - they are the
+      # only thing that survives this plan, which wipes the disk on restart.
       # Step by step: SETUP.md, section 1.
-      # Your own Discord application ID. Leave blank to enter it in the wizard.
+      # Your own Discord application ID. Leave blank to enter it in the dashboard.
       - key: CLIENT_ID
         sync: false
       - key: DISCORD_TOKEN
@@ -30,53 +29,17 @@ services:
       - key: ALLOWED_DISCORD_IDS
         sync: false
       - key: SESSION_SECRET
-        generateValue: true
-      - key: SETUP_TOKEN
         sync: false
       # The name in the header and titles. Blank means "StatusC0rd".
       - key: SITE_NAME
         sync: false
       # Leave blank: Render publishes the service's own URL as RENDER_EXTERNAL_URL
-      # and the app uses it for photo links, keep-alive and card pages. Set this
-      # only for a custom domain.
+      # and the app uses it for photo links, the keep-alive and the card page.
+      # Set this only for a custom domain.
       - key: PUBLIC_URL
         sync: false
-      - key: REDIRECT_URI
-        sync: false
       # Keeps the free service awake, which is what keeps the bot online.
-      # The target is this service's own address (PUBLIC_URL, else the URL Render
-      # publishes as RENDER_EXTERNAL_URL), so nothing has to be typed in.
       - key: KEEP_ALIVE
         value: "true"
       - key: KEEP_ALIVE_INTERVAL_MINUTES
         value: "10"
-      # Split hosting (SETUP.md section 6): set BOT_WORKER_TOKEN here and run the
-      # bot on another box with BOT_WORKER=1, BOT_URL=<this service's URL> and the
-      # same token. Leave it empty to keep the bot in this process.
-      - key: BOT_WORKER_TOKEN
-        sync: false
-
-  # The bot on a second host. NOT on Render's free plan: it has no background
-  # workers, and a second free *web* service kept awake would also blow the
-  # 750 instance-hour budget for the whole workspace. Use a host with an
-  # always-on free box (SETUP.md section 6) and leave BOT_WORKER_TOKEN empty
-  # here unless you actually run one. On a paid Render plan, uncomment this:
-  #
-  # - type: worker
-  #   name: StatusC0rd-bot
-  #   runtime: node
-  #   plan: starter
-  #   region: oregon
-  #   buildCommand: npm ci
-  #   startCommand: npm start
-  #   envVars:
-  #     - key: NODE_VERSION
-  #       value: "22"
-  #     - key: BOT_WORKER
-  #       value: "1"
-  #     - key: BOT_URL
-  #       sync: false          # https://<this web service>.onrender.com
-  #     - key: BOT_WORKER_TOKEN
-  #       sync: false          # the same value as the web service
-  #     - key: DISCORD_TOKEN
-  #       sync: false
