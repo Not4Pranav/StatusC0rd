@@ -1,6 +1,6 @@
 {
   "name": "statusc0rd",
-  "version": "3.6.1",
+  "version": "3.7.0",
   "private": true,
   "description": "StatusC0rd - set up and run a Discord rich presence from the browser",
   "main": "index.js",

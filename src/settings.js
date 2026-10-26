@@ -15,7 +15,7 @@ const path = require("node:path");
  * starts in "setup needed" mode and serves the wizard.
  */
 
-const SETTINGS_VERSION = 5;
+const SETTINGS_VERSION = 6;
 
 /**
  * The account the dashboard key signs in as.
@@ -56,6 +56,13 @@ const DEFAULT_SETTINGS = Object.freeze({
   drafts: {},
   // discord user id -> StatusC0rd user id, written by "Connect Discord".
   discordLinks: {},
+  // Short codes that connect a Discord account to an account here, keyed by the
+  // code: { discordId, discordName, createdAt, expiresAt }.
+  //
+  // The in-Discord app only ever learns a Discord id, and it runs in an iframe
+  // where this site's cookies do not exist. So it shows a code, the person types
+  // it into a page where they *are* signed in, and the two accounts meet.
+  linkCodes: {},
   // Public card pages, keyed by owner id (a member id or "admin"):
   //   { handle: "jane", publicCard: true }
   // A handle is how somebody links to a card; the card itself is public only
@@ -75,6 +82,25 @@ const MAX_USERS = 500;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 /** Public handles: lowercase letters, digits and inner dashes, 3-24 chars. */
 const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{1,22}[a-z0-9])$/;
+
+/** How long a link code stays usable, and how many may exist at once. */
+const LINK_CODE_TTL_MS = 15 * 60_000;
+const LINK_CODE_MAX = 200;
+/**
+ * Code alphabet without look-alikes: no O/0, I/1/L, S/5, B/8.
+ *
+ * A code is read off a Discord window and typed into a browser, often from a
+ * phone, so every ambiguous glyph is a support request waiting to happen.
+ */
+const LINK_CODE_ALPHABET = "ACDEFGHJKMNPQRTUVWXY234679";
+const LINK_CODE_LENGTH = 8;
+
+/** Strip what a person's keyboard adds: spaces, dashes, lowercase. */
+function normalizeLinkCode(value) {
+  return String(value ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
 
 function normalizeEmail(value) {
   const email = String(value ?? "").trim().toLowerCase();
@@ -152,7 +178,7 @@ function merge(base, patch) {
 }
 
 /** Fill in any keys added by a newer version of the app. */
-function migrate(raw) {
+function migrate(raw, nowMs = Date.now()) {
   const source = isPlainObject(raw) ? raw : {};
   const migrated = merge(DEFAULT_SETTINGS, source);
   migrated.version = SETTINGS_VERSION;
@@ -218,6 +244,30 @@ function migrate(raw) {
   }
   migrated.discordLinks = links;
 
+  // v5 -> v6: link codes. Anything expired, malformed or already connected is
+  // dropped, so a stale code can never be used to claim an account.
+  const codes = {};
+  const seenCodes = new Set();
+  for (const [code, entry] of Object.entries(isPlainObject(migrated.linkCodes) ? migrated.linkCodes : {})) {
+    const key = normalizeLinkCode(code);
+    if (key.length !== LINK_CODE_LENGTH || seenCodes.has(key)) continue;
+    if (!isPlainObject(entry)) continue;
+    const discordId = String(entry.discordId || "");
+    if (!/^\d{5,25}$/.test(discordId)) continue;
+    // Already linked: the code has served its purpose.
+    if (links[discordId]) continue;
+    const expiresAt = Number(entry.expiresAt) || 0;
+    if (!expiresAt || expiresAt <= nowMs) continue;
+    seenCodes.add(key);
+    codes[key] = {
+      discordId,
+      discordName: String(entry.discordName || "").slice(0, 64),
+      createdAt: new Date(Number(entry.createdAt) || nowMs).toISOString(),
+      expiresAt
+    };
+  }
+  migrated.linkCodes = codes;
+
   // Public cards: only for principals that still exist, and only with a valid
   // handle. Anything else would publish a page pointing at nobody.
   const knownOwners = new Set([ADMIN_USER_ID, ...migrated.users.map((user) => user.id)]);
@@ -277,7 +327,7 @@ class SettingsStore {
       } catch {
         /* ignore */
       }
-      return migrate(JSON.parse(raw));
+      return migrate(JSON.parse(raw), this.now());
     } catch (error) {
       // Whatever was in there is gone: never let a later prune() read this as
       // "the owner has no photos" and delete the files.
@@ -457,7 +507,10 @@ class SettingsStore {
    * the only correct semantics here.
    */
   _commit() {
-    this.data = migrate(this.data);
+    // Migrate with the store's clock, not the wall clock: the frontend of this
+    // class is testable with a fake `now`, and a pruning rule that silently used
+    // real time would delete data the test still expects to be there.
+    this.data = migrate(this.data, this.now());
     this.data.updatedAt = new Date(this.now()).toISOString();
     this._write();
     return this;
@@ -750,6 +803,120 @@ class SettingsStore {
     return linked;
   }
 
+  // ------------------------------------------------------------- link codes
+  //
+  // The bridge between the two places a person is: the Discord client (where the
+  // Activity runs, holding a Discord id and no cookies) and this website (where
+  // the account lives, signed in). The Activity shows a code; the website takes
+  // it. Nothing is emailed, nothing is pasted into a URL bar, and it works on a
+  // phone.
+
+  /** Drop expired codes; called before every read and write. */
+  _pruneLinkCodes() {
+    const now = this.now();
+    let removed = false;
+    for (const [code, entry] of Object.entries(this.data.linkCodes)) {
+      if (!entry || Number(entry.expiresAt) <= now) {
+        delete this.data.linkCodes[code];
+        removed = true;
+      }
+    }
+    // Write the prune so a restart does not resurrect codes that timed out.
+    if (removed) this._commit();
+    return removed;
+  }
+
+  /** The code currently on screen for a Discord account, or null. */
+  linkCodeFor(discordId) {
+    const id = String(discordId || "");
+    if (!/^\d{5,25}$/.test(id)) return null;
+    this._pruneLinkCodes();
+    for (const [code, entry] of Object.entries(this.data.linkCodes)) {
+      if (entry.discordId === id) return { code, ...entry };
+    }
+    return null;
+  }
+
+  /**
+   * Create (or re-show) the code for a Discord account.
+   *
+   * Idempotent while the old code is alive: polling the Activity must not spray
+   * a new code every five seconds, and the person may already be typing the one
+   * they were shown.
+   *
+   * @returns {{code: string, expiresAt: number, discordId: string, reused: boolean}}
+   */
+  createLinkCode({ discordId, discordName = "" }) {
+    const id = String(discordId || "");
+    if (!/^\d{5,25}$/.test(id)) throw new Error("That Discord account id does not look right.");
+    if (this.data.discordLinks[id]) throw new Error("This Discord account is already connected.");
+
+    this._pruneLinkCodes();
+    const existing = this.linkCodeFor(id);
+    if (existing) return { ...existing, reused: true };
+
+    // Cap the table: an abusive client could otherwise fill the data file.
+    const codes = Object.keys(this.data.linkCodes);
+    while (codes.length >= LINK_CODE_MAX) delete this.data.linkCodes[codes.shift()];
+
+    let code = "";
+    do {
+      const bytes = crypto.randomBytes(LINK_CODE_LENGTH);
+      code = Array.from(bytes, (byte) => LINK_CODE_ALPHABET[byte % LINK_CODE_ALPHABET.length]).join("");
+    } while (this.data.linkCodes[code]);
+
+    const now = this.now();
+    this.data.linkCodes[code] = {
+      discordId: id,
+      discordName: String(discordName || "").slice(0, 64),
+      createdAt: new Date(now).toISOString(),
+      expiresAt: now + LINK_CODE_TTL_MS
+    };
+    this._commit();
+    return { ...this.data.linkCodes[code], code, reused: false };
+  }
+
+  /**
+   * Attach a Discord account to an account here using a code.
+   *
+   * The code is consumed on success, so it cannot be replayed - and it never
+   * reveals whose Discord account it was to anyone who merely guesses it.
+   *
+   * @returns {{discordId: string, discordName: string}}
+   */
+  claimLinkCode(value, userId) {
+    const code = normalizeLinkCode(value);
+    if (code.length !== LINK_CODE_LENGTH) {
+      throw new Error("That code is not valid. Ask the app in Discord for a fresh one.");
+    }
+    if (userId !== ADMIN_USER_ID && !this.findUserById(userId)) throw new Error("No such account.");
+
+    this._pruneLinkCodes();
+    const entry = this.data.linkCodes[code];
+    if (!entry) {
+      throw new Error("That code is not valid any more. Open the app in Discord and get a new one.");
+    }
+
+    // Someone else's Discord account already? Refuse, and keep the code intact
+    // so the rightful owner can still use it.
+    const existing = this.data.discordLinks[entry.discordId];
+    if (existing && existing !== userId) {
+      throw new Error(
+        "That Discord account is already connected to a different account on this site. Sign in to that one, or disconnect it first."
+      );
+    }
+
+    // Re-connecting with a different Discord account replaces the old link: one
+    // account, one Discord identity.
+    const current = this.discordIdForUser(userId);
+    if (current && current !== entry.discordId) this.unlinkDiscord(userId);
+
+    this.linkDiscord(entry.discordId, userId);
+    delete this.data.linkCodes[code];
+    this._commit();
+    return { discordId: entry.discordId, discordName: entry.discordName };
+  }
+
   discordIdForUser(userId) {
     if (userId === ADMIN_USER_ID) {
       const found = Object.entries(this.data.discordLinks).find(([, linked]) => linked === ADMIN_USER_ID);
@@ -898,6 +1065,10 @@ class SettingsStore {
 }
 
 module.exports = {
+  LINK_CODE_TTL_MS,
+  LINK_CODE_LENGTH,
+  LINK_CODE_ALPHABET,
+  normalizeLinkCode,
   SettingsStore,
   sanitizeSiteName,
   ADMIN_USER_ID,

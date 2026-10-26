@@ -134,7 +134,7 @@ function createActivityService({ settings, assets, logger = console, now = Date.
     const resolved = ownerForDiscordUser(user.id);
     if (!resolved.userId) {
       throw new ActivityError(
-        "This Discord account is not connected to a StatusC0rd account yet. Open the dashboard, go to My profile and press “Connect Discord” once.",
+        "This Discord account is not connected to an account on this site yet. This window can show you a short code to connect them - open the site, sign in, and enter it under Discord.",
         { status: 403, code: "not_linked" }
       );
     }
@@ -203,6 +203,40 @@ function createActivityService({ settings, assets, logger = console, now = Date.
     };
   }
 
+  /**
+   * A code that connects the Discord account running this Activity to an
+   * account on the website.
+   *
+   * The Activity has a verified Discord identity and no website cookies, so it
+   * cannot link anything itself. It shows a short code instead; the person types
+   * it into /link where they are signed in, and the two meet there.
+   */
+  async function linkCode({ accessToken, origin }) {
+    const user = await identify(accessToken);
+    const resolved = ownerForDiscordUser(user.id);
+    if (resolved.userId) {
+      return { linked: true, userId: resolved.userId, username: user.username, code: null };
+    }
+    if (!allowed(user.id)) {
+      throw new ActivityError(
+        "This Discord account is not on the allowlist for this StatusC0rd instance.",
+        { status: 403, code: "not_allowed" }
+      );
+    }
+
+    const created = settings.createLinkCode({ discordId: user.id, discordName: user.username });
+    const base = String(config().publicUrl || origin || "").replace(/\/+$/, "");
+    return {
+      linked: false,
+      code: created.code,
+      discordId: user.id,
+      username: user.username,
+      expiresAt: new Date(created.expiresAt).toISOString(),
+      url: `${base}/link`,
+      linkUrl: `${base}/link?code=${created.code}`
+    };
+  }
+
   function snapshot() {
     return { ...status };
   }
@@ -230,6 +264,7 @@ function createActivityService({ settings, assets, logger = console, now = Date.
     identify,
     allowed,
     presence,
+    linkCode,
     snapshot,
     noteError,
     reset

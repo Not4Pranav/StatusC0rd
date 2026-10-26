@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="csrf-token" content="{{CSRF}}" />
+    <meta name="robots" content="noindex" />
+    <title>Connect Discord · {{SITE_NAME}}</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/link.js" defer></script>
+  </head>
+  <body class="auth" data-connected="{{CONNECTED}}">
+    <main class="auth-card">
+      <a class="brand brand-lg" href="/">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span>{{{BRAND_HTML}}}</span>
+      </a>
+      <p class="auth-sub">One code connects your Discord account to this one.</p>
+
+      <div class="alert is-ok" id="connected-box" hidden>
+        <strong>Discord is connected.</strong>
+        <span class="hint" style="display: block; margin-top: 4px">
+          If you connect a different Discord account, it replaces this one.
+        </span>
+      </div>
+
+      <div id="alert" class="alert" role="alert" hidden></div>
+
+      <form id="link-form" class="stack" novalidate>
+        <label class="field">
+          <span>Code from the Discord app</span>
+          <input
+            id="link-code"
+            name="code"
+            type="text"
+            inputmode="latin"
+            autocomplete="one-time-code"
+            autocapitalize="characters"
+            spellcheck="false"
+            maxlength="12"
+            placeholder="AB23CD45"
+            value="{{CODE}}"
+            required
+          />
+        </label>
+        <p class="hint">
+          Eight characters, valid for 15 minutes and single use. Spaces and lowercase are fine.
+        </p>
+        <button class="btn primary block" type="submit" id="link-submit">Connect</button>
+      </form>
+
+      <ol class="notes numbered">
+        <li>In Discord, open this app from the App Launcher — the rocket in a voice channel, or the shapes icon next to the chat bar.</li>
+        <li>It shows a code when the accounts are not connected yet. Press <strong>Copy</strong>.</li>
+        <li>Paste it above. The app picks it up within five seconds and your card goes live.</li>
+      </ol>
+
+      <details class="advanced">
+        <summary>Rather not type a code?</summary>
+        <p class="hint">
+          Add the app to your Discord account instead: Discord asks you to authorise it, and the
+          accounts are connected in the same step.
+        </p>
+        <a class="btn ghost small" href="{{INSTALL_PATH}}">Add to my Discord account</a>
+        <form id="unlink-form" method="post" hidden>
+          <button class="btn ghost small" type="submit" id="unlink-submit">Disconnect Discord</button>
+        </form>
+      </details>
+
+      <p class="fineprint">
+        Signed in as <strong>{{USER_NAME}}</strong> · <a href="/?tab=profile">Back to the dashboard</a>
+      </p>
+
+      <footer class="auth-footer">
+        <span>{{SITE_NAME}} v{{VERSION}}</span>
+        <span class="auth-links">
+          <a href="/">Dashboard</a>
+          <a href="https://github.com/Not4Pranav/StatusC0rd" target="_blank" rel="noreferrer noopener">Source</a>
+        </span>
+      </footer>
+    </main>
+  </body>
+</html>

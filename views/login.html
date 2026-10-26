@@ -28,6 +28,7 @@
       <!-- members: email + password ------------------------------------- -->
       <form id="member-form" class="stack" method="post" action="/login">
         <input type="hidden" name="_csrf" value="{{CSRF}}" />
+        <input type="hidden" name="next" value="{{NEXT}}" />
         <label class="field">
           <span>Email</span>
           <input
@@ -62,6 +63,7 @@
         <summary>Instance owner? Use the dashboard key</summary>
         <form id="key-form" class="stack" method="post" action="/login">
           <input type="hidden" name="_csrf" value="{{CSRF}}" />
+          <input type="hidden" name="next" value="{{NEXT}}" />
           <label class="field">
             <span>Dashboard key</span>
             <input

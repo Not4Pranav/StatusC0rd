@@ -145,14 +145,31 @@ on your profile.
   nobody else can invite it.
 - No privileged intents are needed. The app only sets its own presence.
 
-### 1.5 Turn the Activity on
+### 1.5 Installation contexts — who may add the app
+
+**Installation → Installation Contexts** → tick **User Install** *and* **Guild
+Install** → **Save Changes**. Leave **Install Link** on `Discord Provided Link`.
+
+| Context | What it means | What breaks without it |
+| --- | --- | --- |
+| **User Install** | a person adds the app to *their own account* | the app never appears in anyone's App Launcher — and since the Activity is the only way photos reach a profile, the whole point of the site |
+| **Guild Install** | the app can be added to a server | the bot has no server to sit in |
+
+User installs only support the `applications.commands` scope, which is why the
+authorise screen asks for nothing else. Members never need a bot permission.
+
+The dashboard's **Discord → Check the Discord application** button reads these two
+settings back from Discord and names anything missing — worth pressing once after
+this section, because a wrong context here fails silently rather than loudly.
+
+### 1.6 Turn the Activity on
 
 **Activities → Settings → Enable Activities** (the toggle).
 
 Without this, the in-Discord app has nowhere to run and you will get a blank
 frame inside Discord.
 
-### 1.6 Map the URL
+### 1.7 Map the URL
 
 Still under **Activities → URL Mappings**:
 
@@ -164,7 +181,10 @@ Still under **Activities → URL Mappings**:
 - Replace `YOUR-HOST` with the address you will get in Part 2. Doing this before
   you know the address is fine — come back and edit it.
 
-### 1.7 Install the app in your server
+### 1.8 Install the app in your server (bot only, optional)
+
+Members do not need this — they press **Add to Discord** in their dashboard, which
+uses the User Install context from 1.5. This is for the 24/7 bot card:
 
 Build the invite URL by hand, or use the one the dashboard shows on **Bot & 24/7**:
 
@@ -179,7 +199,7 @@ https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot%20applicati
 
 Open the URL, choose a server you own, **Authorize**.
 
-### 1.8 Register the redirect URL (for "Connect Discord" and Discord sign-in)
+### 1.9 Register the redirect URL (for "Add to Discord" and Discord sign-in)
 
 **OAuth2 → Redirects → Add Redirect**:
 
@@ -187,20 +207,21 @@ Open the URL, choose a server you own, **Authorize**.
 https://YOUR-HOST/auth/discord/callback
 ```
 
-- Needed for **Connect Discord** on the Discord tab, which is how the app knows
-  whose card to push.
+- Needed for **Add to Discord** on the Discord tab: the same round trip installs
+  the app to the person's account and tells this site whose card it is.
 - Also needed if you want **Continue with Discord** on the login page.
 - The dashboard prints the exact URL to copy: **Discord** tab → *One-time setup*
   shows it, and so does the login page when Discord sign-in is unavailable.
 
-### 1.9 Checklist before moving on
+### 1.10 Checklist before moving on
 
 - [ ] Application ID copied
 - [ ] Client secret copied
 - [ ] Bot token copied (only if you want the 24/7 card)
+- [ ] **User Install** and **Guild Install** both ticked
 - [ ] **Enable Activities** is on
 - [ ] URL mapping `/` → `https://YOUR-HOST/activity/`
-- [ ] App invited to your server with `bot applications.commands`
+- [ ] App invited to your server with `bot applications.commands` (bot only)
 - [ ] Redirect `https://YOUR-HOST/auth/discord/callback` registered
 
 ---
@@ -248,7 +269,7 @@ same money.
    (`https://something.onrender.com`).
 5. **Environment** → set `PUBLIC_URL` to that exact URL, no trailing slash →
    **Save**. Render redeploys itself.
-6. Go back to Part 1.6 and put that URL in the Discord URL mapping.
+6. Go back to Part 1.7 and put that URL in the Discord URL mapping.
 
 **Render free truths**
 
@@ -534,23 +555,32 @@ why their profile shows nothing.
 
 ### 5.1 Connect Discord, once
 
-**Discord tab → Connect Discord** → approve in the Discord window.
+Two doors, same result. Use whichever you reach first.
 
-- This tells the server which Discord user *you* are: the Activity only ever
-  learns a Discord user id, so the link is how it finds the right card.
-- The status line turns green: *Connected. The in-Discord app will push this card
-  onto your Discord profile.*
+**Door A — from the website.** **Discord tab → Add to Discord** → Discord's own
+screen asks you to allow the app for your account (this is the User Install
+context from 1.5) → **Authorize**. You come back connected, and the app is now in
+your App Launcher everywhere.
+
+**Door B — from inside Discord.** Open the app first and the panel says
+*Connect your account* and shows an **eight-character code**. Signed in on the
+site, open `/link` (Discord tab → **Use a code**), type it, and press **Connect**.
+The panel picks it up within five seconds. Codes last 15 minutes and work once.
+
+- Either way the status line turns green: *Connected. The in-Discord app will push
+  this card onto your Discord profile.*
 - If it says **unconfigured**, the client ID or secret is missing — **Settings →
   Application & bot**.
 - If it says **already linked**, another account claimed that Discord user.
   Unlink it under **Members → Unlink Discord** on the wrong row, then try again.
+- **Disconnect** (on `/link`) forgets the link but keeps the card.
 
 ### 5.2 Open the app
 
-**Discord tab → Open in Discord** (or copy the link and paste it into Discord).
-
-In Discord: join any voice channel → open the **App Launcher** → pick your app.
-Keep the window open — it shows exactly what your friends see.
+In Discord: **App Launcher** — the shapes icon next to the chat bar, or the rocket
+inside a voice channel — → your app → **Launch**. The dashboard's **Open in
+Discord** button opens the same place. Keep the panel open; it shows exactly what
+your friends see.
 
 ### 5.3 What you should see
 
@@ -774,7 +804,7 @@ key, no domain, nothing to pay for.
 Tell them these three things, in this order:
 
 1. Register at `/register`, or use the login you gave them.
-2. **Discord → Connect Discord**, once.
+2. **Discord → Add to Discord**, once (or the code at `/link`).
 3. **Discord → Open in Discord** and leave the panel open.
 
 Skip step 2 and nothing appears — the app cannot know whose card to push.
@@ -978,9 +1008,9 @@ close.
 | Log shows `GET / aborted by the client` | the browser hung up, usually a proxy timing out on a cold free instance | wait for the instance to be warm (`/health` 200) and reload |
 | `/setup` reappears after a restart | ephemeral disk and no `DASHBOARD_KEY` in the environment | put the values in **Environment**, or use a host with a real disk |
 | Photos show as a letter or silhouette | wrong `PUBLIC_URL`, not HTTPS, or the host is asleep | fix **Settings → public URL**, re-publish, open the photo URL directly |
-| *Profile live* never turns green | the Activity is not open, or Discord is not connected | **Discord → Connect Discord**, then **Open in Discord** and keep it open |
+| *Profile live* never turns green | the Activity is not open, or Discord is not connected | **Discord → Add to Discord** (or the `/link` code), then **Open in Discord** and keep it open |
 | The profile card vanishes after a while | the panel was closed — Discord only shows it while the Activity runs | reopen the app; the bot card is the 24/7 part |
-| A member's card never appears on their profile | they never pressed **Connect Discord** | send them to **Discord → Connect Discord** |
+| A member's card never appears on their profile | they never connected Discord | send them to the dashboard: **Add to Discord**, or `/link` with the code from the panel |
 | The Activity is missing from the App Launcher | the app was invited without `applications.commands`, or Activities are disabled | re-invite with the full link; **Activities → Enable Activities** |
 | Activity opens a blank frame | URL mapping missing or missing the trailing slash | **Activities → URL Mappings**: `/` → `https://YOUR-HOST/activity/` |
 | *not_configured* inside the Activity | no client secret on the server | **Settings → Application & bot** |

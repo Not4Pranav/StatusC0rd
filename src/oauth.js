@@ -65,9 +65,16 @@ async function request(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
 
 /**
  * Build the authorization URL the user is redirected to.
- * @param {{clientId: string, redirectUri: string, state: string, scope?: string}} params
+ *
+ * `integrationType: 1` is Discord's USER_INSTALL context: the app is added to
+ * the person's own account instead of a server, which is what lets it show up in
+ * their App Launcher in every server and DM. That is the "authorise the app"
+ * step of the pipeline - Discord's own consent screen, no bot permission asked
+ * for beyond `applications.commands`.
+ *
+ * @param {{clientId: string, redirectUri: string, state: string, scope?: string, integrationType?: number|null}} params
  */
-function buildAuthorizeUrl({ clientId, redirectUri, state, scope = "identify" }) {
+function buildAuthorizeUrl({ clientId, redirectUri, state, scope = "identify", integrationType = null }) {
   const url = new URL(AUTHORIZE_URL);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("response_type", "code");
@@ -75,6 +82,8 @@ function buildAuthorizeUrl({ clientId, redirectUri, state, scope = "identify" })
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("state", state);
   url.searchParams.set("prompt", "consent");
+  const type = Number(integrationType);
+  if (Number.isInteger(type) && type >= 0) url.searchParams.set("integration_type", String(type));
   return url.toString();
 }
 

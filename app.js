@@ -19,6 +19,7 @@ const {
   publicUser
 } = require("./src/auth");
 const oauth = require("./src/oauth");
+const { inspectApplication } = require("./src/discordApi");
 const { createActivityService, ActivityError, FRAME_ANCESTORS } = require("./src/activity");
 const {
   ADMIN_USER_ID,
@@ -62,6 +63,20 @@ function trustProxySetting() {
   if (/^(true|yes|on)$/i.test(raw)) return "loopback, linklocal, uniquelocal";
   if (/^\d+$/.test(raw)) return Number(raw);
   return raw;
+}
+
+/**
+ * Where to send someone after signing in, from a query string.
+ *
+ * Only same-site absolute paths survive: anything with a scheme, a host or a
+ * protocol-relative `//` is a redirect to somebody else's site, which is how a
+ * login page becomes a phishing tool.
+ */
+function safeNext(value) {
+  const next = String(value ?? "").trim();
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return "";
+  if (/^\/[a-z]+:/i.test(next)) return "";
+  return next;
 }
 
 function originOf(req) {
@@ -354,6 +369,11 @@ function createApp({
         isAdmin: admin,
         userId,
         linkedDiscord: Boolean(settings.discordIdForUser(userId)),
+        // The authorisation step is a redirect into Discord's own consent screen;
+        // the path is enough, the client builds nothing itself.
+        installPath: "/auth/discord/install",
+        // Last "check my Discord app" result, if an admin ran one.
+        discordCheck: admin ? appCheck.value : null,
         allowSignup: settings.allowSignup,
         siteName: settings.effective().siteName,
         siteNameManaged: settings.effective().managed.siteName,
@@ -723,6 +743,7 @@ function createApp({
         DISCORD_ENABLED: settings.effective().discordLoginEnabled ? "true" : "false",
         KEY_ENABLED: settings.hasAdminKey ? "true" : "false",
         SIGNUP_ENABLED: settings.allowSignup ? "true" : "false",
+        NEXT: safeNext(req.query.next),
         VERSION: version
       })
     );
@@ -765,7 +786,7 @@ function createApp({
         csrf: randomToken(24)
       });
       logger.log?.(`[auth] dashboard key sign-in from ${ip}`);
-      return res.redirect(303, "/");
+      return res.redirect(303, safeNext(req.body?.next) || "/");
     }
 
     // Door 2: a member account.
@@ -781,7 +802,7 @@ function createApp({
     settings.touchUserLogin(user.id);
     startMemberSession(req, user);
     logger.log?.(`[auth] ${user.id} signed in`);
-    res.redirect(303, "/");
+    res.redirect(303, safeNext(req.body?.next) || "/");
   });
 
   app.get("/register", (req, res) => {
@@ -834,13 +855,26 @@ function createApp({
   function startOAuth(req, res, intent) {
     const effective = settings.effective();
     if (!effective.clientId || !effective.clientSecret) {
-      return res.redirect(302, intent === "link" ? "/?tab=profile&link=unconfigured" : "/login?error=discord_disabled");
+      return res.redirect(
+        302,
+        intent === "login" ? "/login?error=discord_disabled" : "/?tab=profile&link=unconfigured"
+      );
     }
     const state = randomToken(24);
     req.session.oauth = { state, at: now(), intent };
+    // `install` adds the app to the person's own Discord account (USER_INSTALL)
+    // and knows who they are; `link` only proves the identity. Both end in the
+    // same place - a Discord id stored against an account here.
+    const install = intent === "install";
     res.redirect(
       302,
-      oauth.buildAuthorizeUrl({ clientId: effective.clientId, redirectUri: callbackUri(req), state })
+      oauth.buildAuthorizeUrl({
+        clientId: effective.clientId,
+        redirectUri: callbackUri(req),
+        state,
+        scope: install ? "applications.commands identify" : "identify",
+        integrationType: install ? 1 : null
+      })
     );
   }
 
@@ -862,12 +896,30 @@ function createApp({
     return startOAuth(req, res, "link");
   });
 
+  /**
+   * Add the app to the person's own Discord account.
+   *
+   * This is the authorisation step of the pipeline: Discord asks them to allow
+   * `applications.commands` for their account, which is what puts the app in
+   * their App Launcher everywhere. It also proves who they are, so the same
+   * round trip connects the Discord account to the one signed in here.
+   */
+  app.get("/auth/discord/install", (req, res) => {
+    if (!req.session?.user) {
+      return res.redirect(302, `/login?next=${encodeURIComponent("/auth/discord/install")}`);
+    }
+    return startOAuth(req, res, "install");
+  });
+
   app.get("/auth/discord/callback", async (req, res) => {
     const pending = req.session?.oauth;
     req.session.oauth = null;
-    const intent = pending?.intent === "link" ? "link" : "login";
+    const intent =
+      pending?.intent === "install" ? "install" : pending?.intent === "link" ? "link" : "login";
     const fail = (code) =>
-      intent === "link" ? res.redirect(302, `/?tab=profile&link=${code}`) : res.redirect(302, `/login?error=${code}`);
+      intent === "login"
+        ? res.redirect(302, `/login?error=${code}`)
+        : res.redirect(302, `/?tab=profile&link=${code}`);
 
     if (req.query.error) return fail("cancelled");
     if (!pending || !req.query.state || !safeEqual(req.query.state, pending.state)) return fail("state");
@@ -886,11 +938,11 @@ function createApp({
       me = await oauth.fetchMe(token.access_token);
     } catch (error) {
       logger.error?.(`[auth] Discord ${intent} failed: ${error.message}`);
-      return fail(intent === "link" ? "failed" : "discord_failed");
+      return fail(intent === "login" ? "discord_failed" : "failed");
     }
 
-    // ---- linking an already signed-in account ----
-    if (intent === "link") {
+    // ---- linking (or adding the app to) an already signed-in account ----
+    if (intent === "link" || intent === "install") {
       const userId = ownerId(req);
       if (!userId) return res.redirect(302, "/login?error=state");
       try {
@@ -899,9 +951,9 @@ function createApp({
         logger.warn?.(`[auth] could not link ${me.id} to ${userId}: ${error.message}`);
         return res.redirect(302, "/?tab=profile&link=taken");
       }
-      logger.log?.(`[auth] Discord account ${me.id} linked to ${userId}`);
+      logger.log?.(`[auth] Discord account ${me.id} linked to ${userId} (${intent})`);
       broadcastState();
-      return res.redirect(302, "/?tab=profile&link=ok");
+      return res.redirect(302, `/?tab=profile&link=${intent === "install" ? "installed" : "ok"}`);
     }
 
     // ---- signing in with Discord ----
@@ -938,6 +990,89 @@ function createApp({
       csrf: randomToken(24)
     });
     res.redirect(302, "/");
+  });
+
+  // -------------------------------------------------------------- link codes
+  //
+  // The bridge for the one case cookies cannot cover: the Activity runs inside
+  // Discord with no session here. It shows a code, the person types it on this
+  // site, and both sides agree on who they are.
+
+  /** The page that turns a code from the Discord app into a connection. */
+  app.get("/link", (req, res) => {
+    if (settings.needsSetup()) return res.redirect(302, "/setup");
+    if (!liveUser(req)) {
+      const target = safeNext(req.originalUrl) || "/link";
+      return res.redirect(302, `/login?next=${encodeURIComponent(target)}`);
+    }
+    const id = req.session.user.id || ADMIN_USER_ID;
+    const discordId = settings.discordIdForUser(id);
+    res.type("html").send(
+      render("link.html", {
+        ...brandVars(),
+        CSRF: ensureCsrf(req),
+        VERSION: version,
+        CODE: String(req.query.code || "").slice(0, 32),
+        CONNECTED: discordId ? "true" : "false",
+        DISCORD_ID: discordId || "",
+        INSTALL_PATH: "/auth/discord/install",
+        USER_NAME: req.session.user.name || "Member"
+      })
+    );
+  });
+
+  /**
+   * Claim a code that the in-Discord app is showing.
+   *
+   * Signed in, CSRF-checked, rate-limited: a code is only meaningful to the
+   * account that types it. Codes are single use and expire in 15 minutes, so a
+   * screenshot in a group chat is not a way in.
+   */
+  app.post("/api/link/claim", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    const userId = ownerId(req);
+    try {
+      const result = settings.claimLinkCode(req.body?.code, userId);
+      logger.log?.(`[link] Discord account connected to ${userId} by code`);
+      broadcastState();
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: error.message });
+    }
+  });
+
+  /** Sign out of Discord: forget the link, keep everything else. */
+  app.post("/api/link/remove", requireAuthApi, requireCsrf, writeLimiter.middleware(), (req, res) => {
+    settings.unlinkDiscord(ownerId(req));
+    logger.log?.(`[link] Discord account disconnected from ${ownerId(req)}`);
+    broadcastState();
+    res.json({ ok: true });
+  });
+
+  // --------------------------------------------------------- discord app check
+
+  /**
+   * Read the Discord application and say what would stop the app from launching.
+   *
+   * Cached for a minute: it is a diagnostic, not a heartbeat, and Discord rate
+   * limits the application endpoint.
+   */
+  let appCheck = { at: 0, value: null };
+  app.get("/api/discord/app", requireAuthApi, requireAdminApi, async (req, res) => {
+    if (appCheck.value && now() - appCheck.at < 60_000) {
+      return res.json({ ok: true, ...appCheck.value, cached: true });
+    }
+    try {
+      const result = await inspectApplication({ token: settings.effective().botToken });
+      appCheck = { at: now(), value: result };
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      logger.warn?.(`[discord] app check failed: ${error.message}`);
+      res.status(error.status && error.status < 500 ? 400 : 502).json({
+        ok: false,
+        error: error.message,
+        code: error.code || null
+      });
+    }
   });
 
   // --------------------------------------------------------------- dashboard
@@ -977,6 +1112,35 @@ function createApp({
     );
   }
 
+  /**
+   * The three-step checklist, rendered server-side.
+   *
+   * The client keeps it live over SSE, but the first paint has to be true as
+   * well: a checklist that says "0 of 3" for a second after every reload reads
+   * like a bug, and anyone with scripts off would see it forever.
+   */
+  function pipelineVars(user) {
+    const owner = user.id || ADMIN_USER_ID;
+    const presence = settings.presenceFor(owner);
+    const session = activityService.snapshot();
+    const live = Boolean(
+      session.connected && session.lastSeenAt && now() - new Date(session.lastSeenAt).getTime() < 2 * 60_000
+    );
+    const steps = {
+      card: Boolean(presence?.enabled && presence?.name),
+      discord: Boolean(settings.discordIdForUser(owner)),
+      launch: live
+    };
+    const done = Object.values(steps).filter(Boolean).length;
+    return {
+      PIPELINE_TAG: `${done} of 3 done`,
+      PIPELINE_TAG_CLASS: done === 3 ? "tag is-live" : "tag",
+      PIPELINE_CARD_CLASS: steps.card ? "is-done" : "is-todo",
+      PIPELINE_DISCORD_CLASS: steps.discord ? "is-done" : "is-todo",
+      PIPELINE_LAUNCH_CLASS: steps.launch ? "is-done" : "is-todo"
+    };
+  }
+
   app.get("/", (req, res) => {
     if (settings.needsSetup()) return res.redirect(302, "/setup");
     if (!liveUser(req)) {
@@ -1001,6 +1165,7 @@ function createApp({
         CARD_URL: `${(settings.effective().publicUrl || originOf(req)).replace(/\/+$/, "")}/c/${
           settings.cardFor(user.id || ADMIN_USER_ID)?.handle || ""
         }`,
+        ...pipelineVars(user),
         CARD_TAG: settings.cardFor(user.id || ADMIN_USER_ID)?.publicCard ? "Public" : "Private",
         CARD_STATUS: settings.cardFor(user.id || ADMIN_USER_ID)?.publicCard
           ? "Anyone with the link can view it. Turn the switch off to close it again."
@@ -1638,6 +1803,26 @@ function createApp({
       res.json({ ok: true, ...payload });
     } catch (error) {
       if (activityService.noteError(error.message)) broadcastState();
+      activityError(res, error);
+    }
+  });
+
+  /**
+   * The code that connects this Discord account to an account on the site.
+   *
+   * Only reachable with a Discord-issued bearer token, so the code can only be
+   * created by the person who actually launched the app - and it is idempotent
+   * while it is alive, because the page asks again on every reload.
+   */
+  app.post(activityApi.map((base) => `${base}/link-code`), activityLimiter.middleware(), async (req, res) => {
+    try {
+      const payload = await activityService.linkCode({
+        accessToken: bearer(req),
+        origin: publicOrigin(req)
+      });
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ ok: true, ...payload });
+    } catch (error) {
       activityError(res, error);
     }
   });

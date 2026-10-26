@@ -50,6 +50,48 @@
       <section class="col">
         <!-- ============================================= presence ========== -->
         <div class="pane is-active" data-pane="presence" id="pane-presence" role="tabpanel">
+          <!-- The pipeline, in the order it has to happen. Every row is driven by
+               real state from the server, so it is a checklist and not a tour. -->
+          <div class="card" id="pipeline-card">
+            <div class="card-head">
+              <h2>Get it live</h2>
+              <span class="{{PIPELINE_TAG_CLASS}}" id="pipeline-tag">{{PIPELINE_TAG}}</span>
+            </div>
+            <ol class="pipeline" id="pipeline">
+              <li class="pipeline-step {{PIPELINE_CARD_CLASS}}" data-step="card">
+                <span class="pipeline-mark" aria-hidden="true">1</span>
+                <div class="pipeline-body">
+                  <p class="pipeline-title">Build your card</p>
+                  <p class="hint" id="pipeline-card-hint">Title, both lines, photo, up to two buttons.</p>
+                </div>
+                <button class="btn ghost small" type="button" data-goto="presence">Edit</button>
+              </li>
+              <li class="pipeline-step {{PIPELINE_DISCORD_CLASS}}" data-step="discord">
+                <span class="pipeline-mark" aria-hidden="true">2</span>
+                <div class="pipeline-body">
+                  <p class="pipeline-title">Connect your Discord account</p>
+                  <p class="hint" id="pipeline-discord-hint">
+                    One click on Discord's own authorise screen. No bot permissions, nothing installed.
+                  </p>
+                </div>
+                <a class="btn ghost small" id="pipeline-connect" href="/auth/discord/install">Add to Discord</a>
+              </li>
+              <li class="pipeline-step {{PIPELINE_LAUNCH_CLASS}}" data-step="launch">
+                <span class="pipeline-mark" aria-hidden="true">3</span>
+                <div class="pipeline-body">
+                  <p class="pipeline-title">Open it in Discord</p>
+                  <p class="hint" id="pipeline-launch-hint">
+                    The panel inside Discord puts the card on your profile. Leave it open.
+                  </p>
+                </div>
+                <a class="btn ghost small" id="pipeline-launch" href="#pane-profile" data-goto="profile">Open</a>
+              </li>
+            </ol>
+            <p class="hint" id="pipeline-note">
+              Nothing to download at any step. The card lives here; Discord only renders it.
+            </p>
+          </div>
+
           <div class="card">
             <div class="card-head">
               <h2>Live preview</h2>
@@ -297,7 +339,10 @@
                 <p class="link-title">Discord account</p>
                 <p class="hint" id="discord-link-status">Not connected yet.</p>
               </div>
-              <a class="btn ghost small" id="discord-link-btn" href="/auth/discord/link">Connect Discord</a>
+              <div class="link-actions">
+                <a class="btn primary small" id="discord-link-btn" href="/auth/discord/install">Add to Discord</a>
+                <a class="btn ghost small" id="discord-code-btn" href="/link">Use a code</a>
+              </div>
             </div>
 
             <ol class="notes numbered">
@@ -318,9 +363,31 @@
               >
                 Open in Discord
               </a>
+              <a class="btn ghost" id="activity-install" href="/auth/discord/install">Add to my account</a>
               <button class="btn ghost" type="button" id="copy-activity">Copy link</button>
             </div>
             <p class="hint" id="activity-status">Not connected yet.</p>
+            <p class="hint" id="launch-help">
+              After authorising, open Discord → <strong>App Launcher</strong> (the shapes icon next to
+              the chat bar, or the rocket in a voice channel) → this app → <strong>Launch</strong>.
+              Nothing is installed; it opens as a panel inside Discord.
+            </p>
+
+            <div class="card inset admin-only" id="app-check-card">
+              <div class="card-head">
+                <h3>Check the Discord application</h3>
+                <span class="tag" id="app-check-tag">Not checked</span>
+              </div>
+              <p class="hint">
+                People cannot launch an app whose Discord settings do not allow it. This reads them
+                from Discord and says exactly what to change.
+              </p>
+              <ul class="checks" id="app-check-list" hidden></ul>
+              <div class="alert" id="app-check-error" role="alert" hidden></div>
+              <div class="actions">
+                <button class="btn ghost small" type="button" id="app-check-run">Check now</button>
+              </div>
+            </div>
 
             <div class="share-card" id="card-share">
               <div class="card-head">

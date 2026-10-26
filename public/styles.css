@@ -874,6 +874,136 @@ select:focus {
   margin: 0;
 }
 
+.link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* A card inside a card: one thing to look at, not another section. */
+.card.inset {
+  margin-top: 18px;
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.card.inset .card-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* --------------------------------------------------------------- pipeline */
+
+.pipeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pipeline-step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.pipeline-step.is-done {
+  border-color: rgba(61, 220, 151, 0.32);
+  background: rgba(61, 220, 151, 0.06);
+}
+
+.pipeline-mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.pipeline-step.is-done .pipeline-mark {
+  border-color: transparent;
+  background: rgba(61, 220, 151, 0.16);
+  color: var(--ok);
+  font-size: 0;
+}
+
+.pipeline-step.is-done .pipeline-mark::after {
+  content: "✓";
+  font-size: 0.86rem;
+}
+
+.pipeline-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.pipeline-body .hint {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+}
+
+.pipeline-step .btn[hidden] {
+  display: none;
+}
+
+/* The "check the Discord application" list: label on the left, verdict right. */
+.checks {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.check-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 0.84rem;
+}
+
+.check-item .check-mark {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.check-item[data-ok="true"] .check-mark {
+  color: var(--ok);
+}
+
+.check-item[data-ok="false"] .check-mark,
+.check-item.is-problem .check-mark {
+  color: #ff9a9a;
+}
+
+.check-item .check-value {
+  color: var(--muted);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.78rem;
+}
+
+.check-item.is-problem {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  color: #ffc0c0;
+}
+
 .members-list {
   display: flex;
   flex-direction: column;
@@ -1669,6 +1799,64 @@ body.site {
   font-size: 0.78rem;
   color: var(--muted);
   text-align: center;
+}
+
+/* The three steps a visitor actually walks, in order. */
+.steps3 {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
+  margin: 30px 0 0;
+  padding: 0;
+  counter-reset: step;
+  text-align: left;
+}
+
+.step3 {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 16px 16px 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgba(88, 101, 242, 0.09), transparent 65%), var(--surface-2);
+}
+
+.step3-num {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.step3 strong {
+  font-size: 0.9rem;
+}
+
+.step3 span:last-child {
+  font-size: 0.79rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.step3 em {
+  font-style: normal;
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .steps3 {
+    grid-template-columns: 1fr;
+  }
 }
 
 .flags {

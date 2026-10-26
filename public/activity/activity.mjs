@@ -50,7 +50,14 @@ const el = {
   buttons: $("#pv-buttons"),
   buttonsNote: $("#buttons-note"),
   dashboardLink: $("#dashboard-link"),
-  bootHint: $("#boot-hint")
+  bootHint: $("#boot-hint"),
+  linkCard: $("#link-card"),
+  linkCode: $("#link-code"),
+  linkCopy: $("#link-copy"),
+  linkOpen: $("#link-open"),
+  linkNew: $("#link-new"),
+  linkExpiry: $("#link-expiry"),
+  linkError: $("#link-error")
 };
 
 let sdk = null;
@@ -59,6 +66,10 @@ let timer = null;
 let elapsedTimer = null;
 let buttonsSupported = true;
 let startedAt = null;
+/** What the link panel is showing, so a poll does not fetch a code twice. */
+let linkCode = null;
+let linkFetchedAt = 0;
+let linkExpiresAt = 0;
 /** Set after a failure that retrying cannot fix (signed out, not linked). */
 let stopped = false;
 /** What the client is currently showing, so an unchanged card is not re-pushed. */
@@ -70,7 +81,9 @@ function setPill(state, text) {
 }
 
 function show(card) {
-  for (const section of [el.setup, el.preview, el.error]) section.hidden = section !== card;
+  for (const section of [el.setup, el.preview, el.error, el.linkCard]) {
+    if (section) section.hidden = section !== card;
+  }
 }
 
 function fail(title, message, { retry = true, dashboard = false, terminal = false } = {}) {
@@ -192,6 +205,64 @@ async function push(activity) {
   }
 }
 
+/**
+ * Ask the server for the code that connects this Discord account to an account
+ * on the website, and put it on screen.
+ *
+ * Throttled: the panel polls every five seconds, but a code lives for fifteen
+ * minutes and the server hands back the same one until it expires, so asking on
+ * every tick would be pure noise.
+ */
+async function showLinkCode({ force = false } = {}) {
+  const fresh = linkCode && Date.now() - linkFetchedAt < 30_000;
+  if (!force && fresh) return;
+  try {
+    const res = await fetch("./api/link-code", {
+      method: "POST",
+      headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      body: "{}"
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      el.linkError.textContent = body.error || `Could not get a code (HTTP ${res.status}).`;
+      el.linkError.hidden = false;
+      return;
+    }
+    if (body.linked) {
+      // Someone connected it from the website while this was open.
+      linkCode = null;
+      await tick();
+      return;
+    }
+
+    linkCode = body.code;
+    linkFetchedAt = Date.now();
+    linkExpiresAt = body.expiresAt ? new Date(body.expiresAt).getTime() : Date.now() + 15 * 60_000;
+    el.linkCode.textContent = body.code;
+    el.linkError.hidden = true;
+    drawExpiry();
+    if (body.url) el.linkOpen.dataset.url = body.url;
+    setPill("busy", "Waiting for the website");
+    show(el.linkCard);
+  } catch (error) {
+    el.linkError.textContent = error.message || "Could not reach the website.";
+    el.linkError.hidden = false;
+  }
+}
+
+function drawExpiry() {
+  if (!el.linkExpiry) return;
+  if (!linkExpiresAt) {
+    el.linkExpiry.textContent = "";
+    return;
+  }
+  const left = Math.max(0, Math.round((linkExpiresAt - Date.now()) / 1000));
+  el.linkExpiry.textContent =
+    left > 0
+      ? `Valid for another ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} — single use.`
+      : "That code has expired. Press “New code”.";
+}
+
 async function tick() {
   try {
     const res = await fetch("./api/presence", {
@@ -209,8 +280,22 @@ async function tick() {
 
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      // 403 means "no account linked yet" - only the dashboard can fix that.
-      fail("Cannot load your presence", body.error || `HTTP ${res.status}`, { terminal: res.status === 403 });
+      // Not connected yet is not a failure: it is the one step only the person
+      // can take, and this panel is where they take it.
+      if (res.status === 403 && body.code === "not_linked") {
+        await showLinkCode();
+        return;
+      }
+      if (res.status === 403 && body.code === "not_allowed") {
+        fail("Not allowed here", body.error || "This account is not on this instance's allowlist.", {
+          retry: false,
+          terminal: true
+        });
+        return;
+      }
+      fail("Cannot load your presence", body.error || `HTTP ${res.status}`, {
+        terminal: res.status === 403
+      });
       return;
     }
 
@@ -244,6 +329,7 @@ async function tick() {
       });
       return;
     }
+    linkCode = null;
     renderPreview(body);
     show(el.preview);
     setPill("live", buttonsSupported ? "On your profile" : "On your profile · no buttons");
@@ -256,7 +342,10 @@ function startPolling() {
   stopPolling();
   stopped = false;
   timer = setInterval(tick, POLL_MS);
-  elapsedTimer = setInterval(drawElapsed, 1000);
+  elapsedTimer = setInterval(() => {
+    drawElapsed();
+    if (linkCode) drawExpiry();
+  }, 1000);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && !stopped) tick();
   });
@@ -322,6 +411,39 @@ async function boot() {
 }
 
 el.retry.addEventListener("click", () => window.location.reload());
+
+el.linkNew?.addEventListener("click", () => showLinkCode({ force: true }));
+
+el.linkCopy?.addEventListener("click", async () => {
+  const code = el.linkCode?.textContent?.trim() || "";
+  if (!code || code.startsWith("·")) return;
+  try {
+    await navigator.clipboard.writeText(code);
+    el.linkCopy.textContent = "Copied";
+    setTimeout(() => {
+      el.linkCopy.textContent = "Copy";
+    }, 1600);
+  } catch {
+    // Clipboard access inside an iframe can be refused; selecting the code is
+    // the next best thing and never fails.
+    const range = document.createRange();
+    range.selectNodeContents(el.linkCode);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    el.linkCopy.textContent = "Selected";
+  }
+});
+
+el.linkOpen?.addEventListener("click", async () => {
+  const url = el.linkOpen.dataset.url || DASHBOARD_URL;
+  if (!url) return;
+  try {
+    await sdk.commands.openExternalLink({ url });
+  } catch {
+    window.open(url, "_blank", "noreferrer");
+  }
+});
 el.openDashboard.addEventListener("click", async () => {
   const url = el.dashboardLink.href || DASHBOARD_URL;
   if (!url) return;

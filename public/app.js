@@ -521,6 +521,82 @@
     $("#profile-pill-text").textContent = live ? "Profile live (Discord)" : "Profile not live";
   }
 
+  /**
+   * The three steps, as they actually stand.
+   *
+   * Every row is state, not a tour: a card that is saved but not published, an
+   * unlinked Discord account and a closed panel each look different, and the
+   * next action is the button on that row.
+   */
+  function renderPipeline(meta, presence, session) {
+    const list = $("#pipeline");
+    if (!list) return;
+
+    const built = Boolean(presence?.enabled && presence?.name);
+    const connected = Boolean(meta?.linkedDiscord);
+    const live = activityIsLive(session);
+
+    const steps = [
+      {
+        id: "card",
+        done: built,
+        hint: built
+          ? `“${presence.name}” is saved${presence.updatedAt ? ` since ${timeAgo(presence.updatedAt)}` : ""}.`
+          : "Give it a title and two lines. A photo and two buttons are optional."
+      },
+      {
+        id: "discord",
+        done: connected,
+        hint: connected
+          ? "Connected. Discord knows which account owns this card."
+          : "One click on Discord's own authorise screen — no bot permissions, nothing installed."
+      },
+      {
+        id: "launch",
+        done: live,
+        hint: live
+          ? `Live on ${session.username || "your profile"} — updates within five seconds of a publish.`
+          : connected
+            ? "Open the app in Discord and leave the panel open. It re-reads this card every five seconds."
+            : "Available once your Discord account is connected."
+      }
+    ];
+
+    let done = 0;
+    for (const step of steps) {
+      const row = list.querySelector(`[data-step="${step.id}"]`);
+      if (!row) continue;
+      if (step.done) done += 1;
+      row.classList.toggle("is-done", step.done);
+      row.classList.toggle("is-todo", !step.done);
+      const hint = row.querySelector(".hint");
+      if (hint) hint.textContent = step.hint;
+      const action = row.querySelector("button, a");
+      if (action) {
+        action.hidden = step.done;
+        if (action.tagName === "A") {
+          if (step.id === "launch") {
+            action.href = meta?.clientId ? "https://discord.com/activities" : "/auth/discord/install";
+          } else {
+            action.href = "/auth/discord/install";
+          }
+        }
+      }
+    }
+
+    const tag = $("#pipeline-tag");
+    if (tag) {
+      tag.textContent = `${done} of 3 done`;
+      tag.className = done === 3 ? "tag is-live" : "tag";
+    }
+    const card = $("#pipeline-card");
+    if (card) card.classList.toggle("is-complete", done === 3);
+
+    // One primary action when nothing is connected: authorise.
+    const connect = $("#pipeline-connect");
+    if (connect) connect.textContent = connected ? "Reconnect" : "Add to Discord";
+  }
+
   /** The in-Discord app card: launch link, live status and the one-time setup. */
   function renderActivity(meta, session) {
     const link = $("#activity-link");
@@ -563,9 +639,15 @@
         statusEl.className = linked ? "hint is-live" : "hint";
       }
       if (button) {
-        button.hidden = linked;
-        button.href = "/auth/discord/link";
+        // Authorising is also how a link is made, so the same button keeps its
+        // place after linking - it just stops being the thing to do first.
+        button.textContent = linked ? "Re-authorise" : "Add to Discord";
+        button.href = meta?.installPath || "/auth/discord/install";
+        button.classList.toggle("primary", !linked);
+        button.classList.toggle("ghost", linked);
       }
+      const install = $("#activity-install");
+      if (install) install.hidden = linked;
     }
 
     const live = activityIsLive(session);
@@ -714,6 +796,7 @@
   function applyState(next, { fill = true } = {}) {
     state = next;
     renderActivity(next.meta, next.activitySession);
+    renderPipeline(next.meta, next.presence, next.activitySession);
     renderBot(next.bot);
     renderProfilePill();
     renderAssets(next.assets || []);
@@ -1430,20 +1513,123 @@
   if (linkResult) {
     const LINK_MESSAGES = {
       ok: "Discord connected. Open the app in Discord and this card goes live.",
-      taken: "That Discord account is already linked to another StatusC0rd account.",
+      installed:
+        "Added to your Discord account and connected. Open the App Launcher in Discord and press Launch.",
+      taken: "That Discord account is already connected to another account on this site.",
       failed: "Discord could not be connected. Try again in a moment.",
       unconfigured: "The owner has not added a Discord application ID and secret yet.",
-      cancelled: "Discord linking was cancelled."
+      cancelled: "Discord authorising was cancelled. Nothing was changed."
     };
-    toast(LINK_MESSAGES[linkResult] || "Discord linking finished.", linkResult !== "ok");
+    toast(LINK_MESSAGES[linkResult] || "Discord linking finished.", !["ok", "installed"].includes(linkResult));
     history.replaceState(null, "", `${location.pathname}${location.hash}`);
+  }
+
+  /**
+   * "Check the Discord application": read-only, admin only.
+   *
+   * The website cannot fix a Developer Portal setting, so this exists purely to
+   * turn a silent non-launching app into a sentence with a place to click.
+   */
+  function renderAppCheck(result) {
+    const tag = $("#app-check-tag");
+    const list = $("#app-check-list");
+    const errorBox = $("#app-check-error");
+    if (!tag || !list || !errorBox) return;
+
+    if (!result) {
+      tag.textContent = "Not checked";
+      tag.className = "tag";
+      list.hidden = true;
+      errorBox.hidden = true;
+      return;
+    }
+    if (!result.ok) {
+      tag.textContent = "Could not check";
+      tag.className = "tag";
+      list.hidden = true;
+      errorBox.textContent = result.error || "The check failed.";
+      errorBox.hidden = false;
+      return;
+    }
+
+    errorBox.hidden = true;
+    list.textContent = "";
+    const rows = [
+      { label: "Application", value: result.name || result.id || "found" },
+      { label: "User Install", ok: Boolean(result.install?.user) },
+      { label: "Guild Install (for the bot)", ok: Boolean(result.install?.guild) },
+      {
+        label: "Launch command",
+        ok: Boolean(result.entryPointOk),
+        value: result.entryPoint ? `/${result.entryPoint.name}` : "missing"
+      }
+    ];
+    for (const row of rows) {
+      const item = document.createElement("li");
+      item.className = "check-item";
+      if (row.ok !== undefined) item.dataset.ok = String(row.ok);
+      const mark = document.createElement("span");
+      mark.className = "check-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = row.ok === undefined ? "•" : row.ok ? "✓" : "✕";
+      const label = document.createElement("span");
+      label.className = "check-label";
+      label.textContent = row.label;
+      const value = document.createElement("span");
+      value.className = "check-value";
+      value.textContent = row.value === undefined ? (row.ok ? "on" : "off") : String(row.value);
+      item.append(mark, label, value);
+      list.append(item);
+    }
+
+    for (const problem of result.problems || []) {
+      const item = document.createElement("li");
+      item.className = "check-item is-problem";
+      const mark = document.createElement("span");
+      mark.className = "check-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = "!";
+      const text = document.createElement("span");
+      text.className = "check-label";
+      text.textContent = problem;
+      item.append(mark, text);
+      list.append(item);
+    }
+    list.hidden = false;
+
+    const clean = (result.problems || []).length === 0;
+    tag.textContent = clean ? "Ready to launch" : `${result.problems.length} to fix`;
+    tag.className = clean ? "tag is-live" : "tag";
+    if (result.checkedAt) tag.title = `Checked ${new Date(result.checkedAt).toLocaleTimeString()}`;
+  }
+
+  function wireAppCheck() {
+    const run = $("#app-check-run");
+    if (!run) return;
+    run.addEventListener("click", async () => {
+      run.disabled = true;
+      run.textContent = "Checking…";
+      try {
+        const res = await fetch("/api/discord/app", { headers: { accept: "application/json" } });
+        const body = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+        renderAppCheck(body);
+      } catch (error) {
+        renderAppCheck({ ok: false, error: error.message || "The check failed." });
+      } finally {
+        run.disabled = false;
+        run.textContent = "Check now";
+      }
+    });
   }
 
   wireCardPanel();
   wireSiteForm();
+  wireAppCheck();
 
   void (async () => {
     await refresh();
+    // A previous check is stored server-side, so a reload does not lose it.
+    if (state?.meta?.discordCheck) renderAppCheck({ ok: true, ...state.meta.discordCheck });
     connectEvents();
     setInterval(tickTimer, 1000);
     // The session's last-seen time ages out, so the pill needs a nudge.

@@ -289,6 +289,41 @@ code {
   border-radius: 5px;
 }
 
+/* The link panel: a code someone reads off this window and types on the site. */
+
+.link-card .code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 8px;
+}
+
+.link-card .code {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: clamp(1.4rem, 6vw, 2rem);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-align: center;
+  padding: 10px 4px 10px 14px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: #fff;
+  user-select: all;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+#link-error {
+  color: var(--err);
+}
+
 .footer {
   text-align: center;
   font-size: 0.72rem;
