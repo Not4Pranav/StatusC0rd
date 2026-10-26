@@ -14,19 +14,19 @@ services:
       - key: NODE_ENV
         value: production
       # Everything below is optional: the dashboard stores the same values in
-      # data/settings.json, and variables win when both exist - they are the
-      # only thing that survives this plan, which wipes the disk on restart.
-      # Step by step: SETUP.md, section 1.
+      # data/data.json, and variables win when both exist - they are the only
+      # thing that survives this plan, which wipes the disk on restart.
+      # Step by step: SETUP.md, sections 1-2.
       # Your own Discord application ID. Leave blank to enter it in the dashboard.
       - key: CLIENT_ID
         sync: false
       - key: DISCORD_TOKEN
         sync: false
-      - key: DASHBOARD_KEY
-        sync: false
       - key: CLIENT_SECRET
         sync: false
-      - key: ALLOWED_DISCORD_IDS
+      # Admins (comma-separated Discord ids). Leave blank: the first account
+      # to sign in becomes the admin.
+      - key: ADMIN_DISCORD_IDS
         sync: false
       - key: SESSION_SECRET
         sync: false
@@ -34,7 +34,7 @@ services:
       - key: SITE_NAME
         sync: false
       # Leave blank: Render publishes the service's own URL as RENDER_EXTERNAL_URL
-      # and the app uses it for photo links, the keep-alive and the card page.
+      # and the app uses it for photo links, the keep-alive and the card pages.
       # Set this only for a custom domain.
       - key: PUBLIC_URL
         sync: false
