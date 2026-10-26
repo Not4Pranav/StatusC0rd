@@ -23,6 +23,25 @@
         <strong>StatusC0rd</strong> — rather than from a browser tab.
       </p>
 
+      <section class="card link-card" id="link-card" hidden>
+        <h1>Connect your account</h1>
+        <p class="hint" id="link-lead">
+          This Discord account is not connected to one on the website yet. Open the site, sign in,
+          and type this code under <strong>Discord → Use a code</strong>. This panel picks it up
+          within five seconds.
+        </p>
+        <div class="code-row">
+          <strong class="code" id="link-code" aria-live="polite">········</strong>
+          <button class="btn" id="link-copy" type="button">Copy</button>
+        </div>
+        <p class="hint" id="link-expiry"></p>
+        <div class="actions">
+          <button class="btn primary" id="link-open" type="button">Open the website</button>
+          <button class="btn ghost" id="link-new" type="button">New code</button>
+        </div>
+        <p class="hint" id="link-error" hidden></p>
+      </section>
+
       <section class="card" id="setup-card" hidden>
         <h1 id="setup-title">Almost there</h1>
         <p id="setup-body"></p>

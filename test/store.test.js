@@ -12,6 +12,7 @@ const { KeepAlive } = require("../src/keepalive");
 const { RateLimiter, LoginLimiter, safeEqual } = require("../src/auth");
 const { parseUpload } = require("../src/assets");
 const { normalizeEnv } = require("../src/env");
+const { LINK_CODE_TTL_MS } = require("../src/settings");
 
 function tmpDir(label) {
   return fs.mkdtempSync(path.join(os.tmpdir(), `sc-${label}-`));
@@ -488,4 +489,78 @@ test("Render's own service URL becomes the public URL when nothing else is set",
   const junk = normalizeEnv({ RENDER_EXTERNAL_URL: "not-a-url" });
   assert.equal(junk.env.PUBLIC_URL, "");
   assert.equal(junk.problems.length, 0);
+});
+
+test("a link code connects a Discord account to an account here, once", () => {
+  const dir = tmpDir("link-code");
+  let clock = 1_700_000_000_000;
+  const s = new SettingsStore(path.join(dir, "settings.json"), { now: () => clock });
+  const user = s.createUser({ email: "code@example.com", password: "password-1234", name: "Cody" });
+
+  const created = s.createLinkCode({ discordId: "444444444444444444", discordName: "cody" });
+  assert.equal(created.code.length, 8);
+  assert.match(created.code, /^[ACDEFGHJKMNPQRTUVWXY234679]{8}$/);
+  // Polling the panel must not mint a new code under the person's fingers.
+  const again = s.createLinkCode({ discordId: "444444444444444444" });
+  assert.equal(again.code, created.code);
+  assert.equal(again.reused, true);
+
+  // Lowercase and spaces are what a keyboard produces, not an error.
+  const claim = s.claimLinkCode(` ${created.code.toLowerCase().slice(0, 4)} ${created.code.slice(4)} `, user.id);
+  assert.equal(claim.discordId, "444444444444444444");
+  assert.equal(s.discordIdForUser(user.id), "444444444444444444");
+  assert.equal(s.linkCodeFor("444444444444444444"), null);
+  assert.throws(() => s.claimLinkCode(created.code, user.id), /not valid/);
+});
+
+test("a link code expires, and one account cannot steal another's Discord", () => {
+  const dir = tmpDir("link-code-2");
+  let clock = 1_700_000_000_000;
+  const s = new SettingsStore(path.join(dir, "settings.json"), { now: () => clock });
+  const mine = s.createUser({ email: "mine@example.com", password: "password-1234" });
+  const theirs = s.createUser({ email: "theirs@example.com", password: "password-1234" });
+
+  const code = s.createLinkCode({ discordId: "555555555555555555" });
+  clock += LINK_CODE_TTL_MS + 1;
+  assert.equal(s.linkCodeFor("555555555555555555"), null);
+  assert.throws(() => s.claimLinkCode(code.code, mine.id), /not valid/);
+
+  const second = s.createLinkCode({ discordId: "666666666666666666" });
+  assert.equal(s.claimLinkCode(second.code, theirs.id).discordId, "666666666666666666");
+  // A connected account needs no code, and cannot be claimed twice.
+  assert.throws(() => s.createLinkCode({ discordId: "666666666666666666" }), /already connected/);
+
+  // Somebody else connects that Discord account while a code is on screen: the
+  // code must die, and the link must stay where it already is.
+  const pending = s.createLinkCode({ discordId: "777777777777777777" });
+  s.linkDiscord("777777777777777777", theirs.id);
+  assert.throws(() => s.claimLinkCode(pending.code, mine.id), /not valid/);
+  assert.equal(s.userIdForDiscord("777777777777777777"), theirs.id);
+
+  // Re-connecting with a different Discord account replaces the old link.
+  const fourth = s.createLinkCode({ discordId: "888888888888888888" });
+  s.claimLinkCode(fourth.code, theirs.id);
+  assert.equal(s.discordIdForUser(theirs.id), "888888888888888888");
+  assert.equal(s.userIdForDiscord("666666666666666666"), null);
+});
+
+test("expired and half-written link codes are dropped on load", () => {
+  const dir = tmpDir("link-code-3");
+  const file = path.join(dir, "settings.json");
+  const now = 1_700_000_000_000;
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      version: 5,
+      setupComplete: true,
+      linkCodes: {
+        GOODCODE: { discordId: "888888888888888888", discordName: "good", createdAt: new Date(now).toISOString(), expiresAt: now + 60_000 },
+        STALE123: { discordId: "999999999999999999", expiresAt: now - 1 },
+        short: { discordId: "888888888888888888", expiresAt: now + 60_000 },
+        BADDISCORD: { discordId: "not-an-id", expiresAt: now + 60_000 }
+      }
+    })
+  );
+  const s = new SettingsStore(file, { now: () => now + 1_000 });
+  assert.deepEqual(Object.keys(s.data.linkCodes), ["GOODCODE"]);
 });

@@ -90,19 +90,30 @@ FIRST RUN - open the setup wizard to finish configuring
 Do this in <https://discord.com/developers/applications>. SETUP.md Part 1 has
 screenshots-in-words for each field.
 
-1. **New Application** → name it (this is what Discord shows for the bot and the
-   Activity; it does not have to match your site name).
-2. **General Information** → copy **Application ID** and **Public Key**'s
-   neighbour **Client Secret** (OAuth2 page).
+1. **New Application** → name it. This name is what Discord shows in the App
+   Launcher, so pick the one your friends should see; it does not have to match
+   your site name.
+2. **General Information** → copy the **Application ID**; **OAuth2** → copy the
+   **Client Secret**.
 3. **OAuth2 → Redirects → Add Redirect**:
    `https://NAME.onrender.com/auth/discord/callback` — exact string, no trailing
-   slash. This is what **Connect Discord** uses.
-4. **Activities → Settings** → tick **Enable Activities**.
-5. **Activities → URL Mappings** → prefix `/`, target
+   slash. This is what authorising and **Connect Discord** use.
+4. **Installation → Installation Contexts** → tick **User Install** *and*
+   **Guild Install** → **Save Changes**. User Install is what lets a person add
+   the app to **their own account**, which is how it appears in the App Launcher
+   everywhere; Guild Install is what lets the bot join a server.
+   Also set **Install Link** to `Discord Provided Link`.
+5. **Activities → Settings** → tick **Enable Activities** (a URL Mapping has to
+   exist first, hence step 6).
+6. **Activities → URL Mappings** → prefix `/`, target
    `https://NAME.onrender.com/activity/` — **with** the trailing slash.
-6. **Bot** (only if you want the 24/7 card) → **Reset Token** → copy it.
-7. **OAuth2 → URL Generator** → scopes `bot` + `applications.commands` → open the
-   generated URL → pick your server → **Authorize**.
+7. **Bot** (only if you want the 24/7 card) → **Reset Token** → copy it.
+
+> **These two settings are the ones that fail silently.** With User Install off, or
+> with the Launch command only installable to servers, everything on the website
+> looks fine and the app is simply never listed in anyone's App Launcher. Once
+> your instance is running, the dashboard's **Discord → Check the Discord
+> application** button asks Discord and names exactly what is missing.
 
 ---
 
@@ -139,10 +150,18 @@ Press **Finish setup**. You are signed in as the owner.
    says so.)*
 2. **Presence** tab → build a card: title, type, both lines, large/small photo,
    buttons. **Publish**.
-3. **Discord** tab → **Connect Discord**, then **Open in Discord** → join a voice
-   channel → **App Launcher** → your app. Keep it open; your profile updates
-   within a few seconds of every publish.
-4. **Discord** tab → **Your public card page** → choose a handle, switch it on.
+3. **Discord** tab → **Add to Discord**: Discord's own screen asks you to allow
+   the app for **your account** (this is User Install — no bot permissions, no
+   server needed). Approve it and you land back on the dashboard with the account
+   connected.
+4. Open Discord → **App Launcher** — the shapes icon next to the chat bar, or the
+   rocket inside a voice channel → your app → **Launch**. Leave the panel open:
+   your profile updates within seconds of every publish, photos and buttons
+   included.
+   *Already inside Discord first? The panel shows an eight-character code; type it
+   at `/link` on the site instead of authorising. Same result, fifteen minutes to
+   use it, single use.*
+5. **Discord** tab → **Your public card page** → choose a handle, switch it on.
    You now have `https://NAME.onrender.com/c/HANDLE` — a page with your photo,
    both lines, a live timer and working buttons. That is the "website" half, and
    it is what you paste when someone asks what you are doing.
@@ -253,7 +272,8 @@ paid.
 | `/setup` asks for a token you do not have | logs rotated | `SETUP_TOKEN` in **Environment** pins one you choose |
 | "That setup token is not correct" | extra space, or a different deploy's token | copy it again from **Logs** of *this* service |
 | Connect Discord: "Invalid OAuth2 redirect_uri" | mismatch in Step 3.3 | the string must be exactly `https://NAME.onrender.com/auth/discord/callback` |
-| The Activity is missing from the App Launcher | invited without `applications.commands`, or Activities off | re-invite; Step 3.4 and 3.7 |
+| The Activity is missing from the App Launcher | app not added to **your account** (User Install off), or Activities off | press **Add to Discord** in the dashboard, then **Check the Discord application**; Step 3.4 |
+| The panel says "Connect your account" and shows a code | this Discord account is not connected to the site yet | type the code at `/link` while signed in — the panel goes live in about five seconds |
 | Activity opens a blank frame | URL mapping missing the trailing slash | `/` → `https://NAME.onrender.com/activity/` |
 | Photos show as a letter | the URL Discord sees is not https, or it cannot reach the host | check `PUBLIC_URL` in **Environment**; open the photo URL directly |
 | Bot offline after ~15 minutes | keep-alive off | Step 6 |

@@ -19,6 +19,29 @@ card online**.
 
 ---
 
+## How it works, end to end
+
+The whole pipeline is four steps, and every one of them happens in a browser —
+nothing is installed, nothing is edited on a server, and no step needs a terminal.
+
+| # | Step | Where | What happens |
+| --- | --- | --- | --- |
+| 1 | **Build the card** | `/` dashboard | Title, type, both lines, photo, timer, two buttons. The preview is the card. |
+| 2 | **Connect Discord** | `/auth/discord/install` | One click on **Discord's own authorise screen**, install context *User Install*: the app joins your account, and this site learns your Discord id. No bot permissions are requested. |
+| 3 | **Launch it** | Discord → **App Launcher** → *your app* | The page opens as a panel inside Discord. It holds `rpc.activities.write`, so it can put the card — photos and buttons included — on **your** profile. |
+| 4 | **Keep it live** | dashboard → **Bot & 24/7** | Optional: the bot holds a text-only card 24/7, and the keep-alive stops a free host from sleeping. |
+
+Step 2 has a second door for when you are already inside Discord: the panel shows
+an **eight-character code**, you type it at `/link` where you are signed in, and
+the accounts are connected. Codes expire in 15 minutes and work once.
+
+The dashboard shows this as a live checklist (**Get it live**) with the next action
+on each row, and the owner can press **Check the Discord application** to have
+Discord itself confirm that User Install is on and the Launch command is available
+to users — the two settings that otherwise fail silently.
+
+---
+
 ## What it does
 
 | | Bot card | Your profile — in-Discord app |
