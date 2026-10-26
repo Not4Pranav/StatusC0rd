@@ -3,7 +3,7 @@
   "use strict";
 
   var TYPES = { 0: "PLAYING", 1: "STREAMING", 2: "LISTENING", 3: "WATCHING", 4: "CUSTOM STATUS", 5: "COMPETING" };
-  var IDS = ["pill-bot", "pill-bot-text", "pill-activity", "pill-activity-text", "logout", "f-name", "f-type", "f-status", "f-details", "f-state", "row-url", "f-url", "pick-large", "thumb-large", "fallback-large", "pick-small", "thumb-small", "fallback-small", "f-large-text", "f-small-text", "btn-rows", "add-button", "f-timer", "row-restart", "f-restart", "f-bot", "f-profile", "f-enabled", "save", "take-down", "save-note", "errors", "photo-input", "upload", "photo-grid", "discord-user", "activity-status", "publish-card", "card-link", "copy-link", "open-card", "s-site-name", "s-keepalive", "s-interval", "s-client-id", "s-client-secret", "s-bot-token", "save-settings", "pv-large", "pv-fallback", "pv-small-wrap", "pv-small", "pv-type", "pv-name", "pv-details", "pv-state", "pv-time", "pv-buttons", "picker", "picker-close", "picker-grid", "picker-empty", "toast"];
+  var IDS = ["pill-bot", "pill-bot-text", "pill-activity", "pill-activity-text", "logout", "f-name", "f-type", "f-details", "f-state", "row-url", "f-url", "pick-large", "thumb-large", "fallback-large", "pick-small", "thumb-small", "fallback-small", "f-large-text", "f-small-text", "btn-rows", "add-button", "f-timer", "row-restart", "f-restart", "f-bot", "f-profile", "f-enabled", "save", "take-down", "save-note", "errors", "photo-input", "upload", "photo-grid", "discord-user", "activity-status", "publish-card", "card-link", "copy-link", "open-card", "s-site-name", "s-keepalive", "s-interval", "s-client-id", "s-client-secret", "s-bot-token", "save-settings", "pv-large", "pv-fallback", "pv-small-wrap", "pv-small", "pv-type", "pv-name", "pv-details", "pv-state", "pv-time", "pv-buttons", "picker", "picker-close", "picker-grid", "picker-empty", "toast"];
   var el = {};
   IDS.forEach(function (id) { el[id] = document.getElementById(id); });
 
@@ -12,6 +12,7 @@
   var csrf = "";
   var previewStart = null;
   var pickerSlot = null;
+  var slotTarget = null;
   var pollTimer = null;
 
   function $(id) { return el[id]; }
@@ -25,6 +26,18 @@
   }
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
+
+  function node(id) { return document.getElementById(id); }
+
+  var STATUS_BUTTONS = ["online", "idle", "dnd", "invisible"];
+
+  function selectStatus(value) {
+    var wanted = STATUS_BUTTONS.indexOf(value) >= 0 ? value : "online";
+    if (draft) draft.status = wanted;
+    document.querySelectorAll("#status-row .status-btn").forEach(function (button) {
+      button.classList.toggle("selected", button.dataset.status === wanted);
+    });
+  }
 
   function api(path, options) {
     options = options || {};
@@ -146,7 +159,7 @@
     draft = clone(p);
     $("f-name").value = draft.name || "";
     $("f-type").value = String(Number(draft.type) || 0);
-    $("f-status").value = draft.status || "online";
+    selectStatus(draft.status || "online");
     $("f-details").value = draft.details || "";
     $("f-state").value = draft.state || "";
     $("f-url").value = draft.url || "";
@@ -167,7 +180,7 @@
     return {
       name: $("f-name").value,
       type: Number($("f-type").value),
-      status: $("f-status").value,
+      status: draft.status || "online",
       details: $("f-details").value,
       state: $("f-state").value,
       url: $("f-url").value,
@@ -243,6 +256,7 @@
     if (!list.length) return;
     var done = 0;
     var failed = 0;
+    var uploadedIds = [];
     Promise.all(list.map(function (file) {
       return fetch("/api/assets", {
         method: "POST",
@@ -250,12 +264,18 @@
         body: file
       }).then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (body) {
-          if (res.ok) done += 1;
+          if (res.ok) { done += 1; if (body.asset && body.asset.id) uploadedIds.push(body.asset.id); }
           else { failed += 1; toast(body.error || "Upload failed."); }
         });
       }).catch(function () { failed += 1; });
     })).then(function () {
       return refresh().then(function () {
+        if (slotTarget && uploadedIds.length) {
+          draft[slotTarget === "large" ? "largeImage" : "smallImage"] = "asset:" + uploadedIds[0];
+          renderImageSlots();
+          renderPreview();
+        }
+        slotTarget = null;
         if (done && !failed) toast("Uploaded " + done + (done > 1 ? " photos." : " photo."));
       });
     });
@@ -331,6 +351,11 @@
     var path = state.cardPath || "/card";
     $("card-link").value = base.replace(/\/+$/, "") + path;
     $("open-card").href = path;
+    var supportBtn = node("support-server");
+    if (supportBtn) {
+      supportBtn.href = state.supportUrl || "#";
+      supportBtn.hidden = !state.supportUrl;
+    }
   }
 
   /* ---------- boot ---------- */
@@ -338,6 +363,7 @@
   function fillSettings() {
     var s = state.settings || {};
     $("s-site-name").value = s.siteName || "";
+    node("s-support-url").value = state.supportUrl || "";
     $("s-keepalive").value = s.keepAlive === false ? "off" : "on";
     $("s-interval").value = String(s.keepAliveMinutes || 10);
     $("s-client-id").value = s.clientId || "";
@@ -349,7 +375,7 @@
 
   function applyRole() {
     var admin = Boolean(state.user && state.user.admin);
-    ["field-status", "row-bot", "pill-bot", "panel-instance"].forEach(function (id) {
+    ["status-row", "row-bot", "pill-bot", "panel-instance"].forEach(function (id) {
       var node = document.getElementById(id);
       if (node) node.hidden = !admin;
     });
@@ -421,6 +447,31 @@
       uploadPhotos($("photo-input").files);
       $("photo-input").value = "";
     });
+    document.querySelectorAll("#status-row .status-btn").forEach(function (button) {
+      button.addEventListener("click", function () {
+        selectStatus(button.dataset.status);
+        renderPreview();
+      });
+    });
+    node("upload-large").addEventListener("click", function () { slotTarget = "large"; node("slot-input").click(); });
+    node("upload-small").addEventListener("click", function () { slotTarget = "small"; node("slot-input").click(); });
+    node("slot-input").addEventListener("change", function () {
+      uploadPhotos(node("slot-input").files);
+      node("slot-input").value = "";
+    });
+    node("clear-large").addEventListener("click", function () { draft.largeImage = ""; renderImageSlots(); renderPreview(); });
+    node("clear-small").addEventListener("click", function () { draft.smallImage = ""; renderImageSlots(); renderPreview(); });
+    node("refresh").addEventListener("click", function () {
+      draft = null;
+      refresh().then(function () { toast("Refreshed."); });
+    });
+    node("delete-account").addEventListener("click", function () {
+      if (!window.confirm("Delete your account? Your card, your photos and your public card page all go.")) return;
+      api("/api/account", { method: "DELETE" }).then(function (r) {
+        if (r.ok) location.href = "/";
+        else toast(r.body.error || "Could not delete the account.");
+      });
+    });
     $("pick-large").addEventListener("click", function () { openPicker("large"); });
     $("pick-small").addEventListener("click", function () { openPicker("small"); });
     $("picker-close").addEventListener("click", function () { $("picker").close(); });
@@ -440,6 +491,7 @@
       if (!(state.user && state.user.admin)) { toast("Those settings are admin-only."); return; }
       var body = {
         siteName: $("s-site-name").value,
+        supportUrl: node("s-support-url").value.trim(),
         keepAlive: $("s-keepalive").value === "on",
         keepAliveMinutes: Number($("s-interval").value) || 10,
         clientId: $("s-client-id").value.trim()

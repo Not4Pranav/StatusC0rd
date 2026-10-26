@@ -217,3 +217,44 @@ body.gate { display: flex; flex-direction: column; align-items: center; justify-
   .panel.sticky { position: static; }
   .row2 { grid-template-columns: 1fr; }
 }
+
+/* ---- reference-style dashboard: single column, status pills, toggles ---- */
+
+.single { max-width: 720px; margin: 0 auto; padding: 18px clamp(14px, 3vw, 28px) 40px; }
+
+.status-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+.status-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-2);
+  font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--text);
+}
+.status-btn:hover { filter: brightness(1.18); }
+.status-btn.selected { border-color: var(--accent); background: rgba(88, 101, 242, 0.18); }
+.status-btn .dot { width: 9px; height: 9px; border-radius: 50%; }
+.dot-online { background: var(--ok); }
+.dot-idle { background: var(--warn); }
+.dot-dnd { background: var(--err); }
+.dot-off { background: #808a9d; }
+
+.toggle-row { display: flex; align-items: center; margin: 2px 0 14px; }
+.toggle-row .check { font-size: 0.92rem; font-weight: 650; }
+.toggle-row .check input {
+  width: 36px; height: 20px; appearance: none; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  position: relative; cursor: pointer; transition: background 0.15s ease;
+}
+.toggle-row .check input::before {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--muted); transition: transform 0.15s ease, background 0.15s ease;
+}
+.toggle-row .check input:checked { background: rgba(88, 101, 242, 0.35); border-color: var(--accent); }
+.toggle-row .check input:checked::before { transform: translateX(15px); background: var(--accent-hover); }
+
+.img-actions { display: flex; gap: 6px; margin-top: 4px; }
+.img-actions .btn { flex: 1; }
+
+.btn.danger { background: rgba(248, 113, 113, 0.12); border-color: rgba(248, 113, 113, 0.45); color: #f87171; }
+.btn.danger:hover { background: rgba(248, 113, 113, 0.24); }
+
+.foot { text-align: center; font-size: 0.76rem; color: var(--muted); padding: 4px 16px 28px; margin: 0; }
