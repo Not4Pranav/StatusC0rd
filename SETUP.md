@@ -93,6 +93,12 @@ and their card is profile-only (the gateway bot is single-card: the admin's).
   The admin's card also answers at plain <code>/card</code>.
 - The **bot card** (text-only — Discord drops images for bots) shows the
   admin's card and goes online the moment the service starts.
+- **The bot drives the approval flow**: when it is added to a server it posts
+  the dashboard link in the channel, and the <code>/dashboard</code>,
+  <code>/card</code> and <code>/invite</code> slash commands work in servers
+  and (after a user install) in DMs. A member presses **Open the dashboard**,
+  signs in with Discord - and their account is approved on the spot. No
+  manual accept-list to maintain.
 
 ## 5 · Keep it awake (24/7 bot)
 
@@ -128,6 +134,8 @@ one process.
 | Sign-in bounces back to the landing page | <code>CLIENT_ID</code>/<code>CLIENT_SECRET</code> missing, or the redirect in section 2.4 is not exact |
 | Invalid OAuth2 redirect_uri | must be exactly <code>https://NAME.onrender.com/auth/discord/callback</code> |
 | Someone is not the admin | put their Discord id in <code>ADMIN_DISCORD_IDS</code> and redeploy |
+| No welcome message when the bot joins | the channel blocks bot messages, or the bot token / <code>PUBLIC_URL</code> is missing |
+| Slash commands do not answer | give it a minute after the bot comes online, or re-invite with <code>applications.commands</code> |
 | Activity missing from the App Launcher | user-install the app ("Add to my apps" via <code>/invite</code>); Activities enabled (section 2.5) |
 | Activity opens a blank frame | URL mapping needs the trailing slash: <code>/activity/</code> |
 | The Activity says "No account here yet" | that user has not signed in on the website yet — one click, then reopen the app |

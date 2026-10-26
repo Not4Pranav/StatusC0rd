@@ -20,6 +20,7 @@ const { Store } = require("./src/store");
 const { DiscordBot } = require("./src/bot");
 const { KeepAlive } = require("./src/keepalive");
 const { createActivityService } = require("./src/activity");
+const { createCommandsService } = require("./src/commands");
 const { createApp } = require("./server");
 
 function flag(name, fallback) {
@@ -79,6 +80,15 @@ function applyBotPresence() {
 // The saved card is the bot's desired presence from the first second; the
 // queue applies it the moment the gateway is ready.
 applyBotPresence();
+
+// The in-Discord half of the approval flow: slash commands and a welcome
+// with dashboard buttons whenever the bot is added to a server.
+const commands = createCommandsService({ effective });
+bot.on("ready", () => {
+  commands.wire(bot.client);
+  void commands.onReady({ token: effective().botToken, clientId: effective().clientId });
+});
+
 void bot.start();
 
 const keepAlive = new KeepAlive({});
