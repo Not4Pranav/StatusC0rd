@@ -17,8 +17,8 @@
         <span class="version">v{{VERSION}}</span>
       </div>
       <div class="topbar-right">
-        <span class="pill" id="pill-bot" title="The 24/7 bot card"><span class="dot"></span><span id="pill-bot-text">…</span></span>
-        <span class="pill" id="pill-activity" title="The in-Discord app on your profile"><span class="dot"></span><span id="pill-activity-text">…</span></span>
+        <span class="pill" id="pill-bot" title="The 24/7 bot card" data-state="off"><span class="dot"></span><span id="pill-bot-text">…</span></span>
+        <span class="pill" id="pill-activity" title="The in-Discord app on your profile" data-state="off"><span class="dot"></span><span id="pill-activity-text">…</span></span>
         <button class="btn ghost small" id="logout" type="button">Sign out</button>
       </div>
     </header>
@@ -44,17 +44,27 @@
             <label class="field"><span>Details</span><input id="f-details" maxlength="128" placeholder="second line" /></label>
             <label class="field"><span>State</span><input id="f-state" maxlength="128" placeholder="third line" /></label>
           </div>
-          <label class="field" id="row-url" hidden><span>Stream URL (twitch/youtube)</span><input id="f-url" placeholder="https://twitch.tv/…" /></label>
+          <div class="row2">
+            <label class="field"><span>Status (bot)</span>
+              <select id="f-status">
+                <option value="online">Online</option>
+                <option value="idle">Idle</option>
+                <option value="dnd">Do not disturb</option>
+                <option value="invisible">Invisible</option>
+              </select>
+            </label>
+            <label class="field" id="row-url" hidden><span>Stream URL (twitch / youtube)</span><input id="f-url" placeholder="https://twitch.tv/…" /></label>
+          </div>
 
           <div class="img-row">
             <div class="img-slot">
               <span class="img-label">Large image</span>
-              <button class="img-box" id="pick-large" type="button"><img id="thumb-large" alt="" hidden /><span class="pv-fallback" id="fallback-large">＋</span></button>
+              <button class="img-box" id="pick-large" type="button" title="Pick a photo"><img id="thumb-large" alt="" hidden /><span class="pv-fallback" id="fallback-large">＋</span></button>
               <input id="f-large-text" maxlength="128" placeholder="hover text" />
             </div>
             <div class="img-slot">
               <span class="img-label">Small image</span>
-              <button class="img-box" id="pick-small" type="button"><img id="thumb-small" alt="" hidden /><span class="pv-fallback" id="fallback-small">＋</span></button>
+              <button class="img-box" id="pick-small" type="button" title="Pick a photo"><img id="thumb-small" alt="" hidden /><span class="pv-fallback" id="fallback-small">＋</span></button>
               <input id="f-small-text" maxlength="128" placeholder="hover text" />
             </div>
           </div>
@@ -63,10 +73,10 @@
           <button class="btn ghost small" id="add-button" type="button">＋ Add a button (max 2)</button>
 
           <div class="checks">
-            <label class="check"><input type="checkbox" id="f-timer" /> Show elapsed time</label>
-            <label class="check" id="row-restart" hidden><input type="checkbox" id="f-restart" checked /> Restart the timer now</label>
-            <label class="check"><input type="checkbox" id="f-bot" /> Show on the bot (24/7, text only)</label>
-            <label class="check"><input type="checkbox" id="f-profile" /> Show on my profile (photos + buttons)</label>
+            <label class="check"><input type="checkbox" id="f-timer" /> Elapsed timer</label>
+            <label class="check" id="row-restart" hidden><input type="checkbox" id="f-restart" checked /> Restart it now</label>
+            <label class="check"><input type="checkbox" id="f-bot" /> On the bot (24/7, text only)</label>
+            <label class="check"><input type="checkbox" id="f-profile" /> On my profile (photos + buttons)</label>
             <label class="check"><input type="checkbox" id="f-enabled" /> Card is live</label>
           </div>
 
@@ -80,7 +90,7 @@
 
         <div class="panel">
           <h2>Photos</h2>
-          <p class="hint">PNG, JPEG, GIF or WebP up to 2 MB. 512×512 looks best.</p>
+          <p class="hint">PNG, JPEG, GIF or WebP up to 2 MB — 512×512 looks best. Hover a photo for actions.</p>
           <div class="photo-bar">
             <input type="file" id="photo-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden />
             <button class="btn small" id="upload" type="button">Upload photos</button>
@@ -107,7 +117,7 @@
               <div class="pv-buttons" id="pv-buttons"></div>
             </div>
           </article>
-          <p class="hint">Exactly what your friends see.</p>
+          <p class="hint">Exactly what your friends see — photos and buttons land on your profile through the in-Discord app.</p>
         </div>
 
         <div class="panel">
@@ -138,10 +148,10 @@
             <label class="field"><span>Application ID</span><input id="s-client-id" maxlength="32" placeholder="Discord application id" /></label>
           </div>
           <div class="row2">
-            <label class="field"><span>Client secret</span><input id="s-client-secret" type="password" placeholder="(unchanged)" /></label>
-            <label class="field"><span>Bot token</span><input id="s-bot-token" type="password" placeholder="(unchanged)" /></label>
+            <label class="field"><span>Client secret</span><input id="s-client-secret" type="password" placeholder="(unchanged)" autocomplete="new-password" /></label>
+            <label class="field"><span>Bot token</span><input id="s-bot-token" type="password" placeholder="(unchanged)" autocomplete="new-password" /></label>
           </div>
-          <p class="hint">Blank secret fields mean "unchanged". Env vars win over everything here.</p>
+          <p class="hint">Blank secret fields mean unchanged. Environment variables win over everything here.</p>
           <button class="btn primary small" id="save-settings" type="button">Save instance</button>
         </div>
       </section>

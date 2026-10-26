@@ -1,1460 +1,459 @@
-"use strict";
+/* StatusC0rd dashboard — one page, vanilla JS, no build step. */
+(function () {
+  "use strict";
 
-(() => {
-  const $ = (selector, root = document) => root.querySelector(selector);
-  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-  const form = $("#presence-form");
-  const field = (name) => form.elements.namedItem(name);
-  const upload = window.StatusC0rdUpload;
+  var TYPES = { 0: "PLAYING", 1: "STREAMING", 2: "LISTING", 3: "WATCHING", 4: "CUSTOM STATUS", 5: "COMPETING" };
+  var IDS = ["pill-bot", "pill-bot-text", "pill-activity", "pill-activity-text", "logout", "f-name", "f-type", "f-status", "f-details", "f-state", "row-url", "f-url", "pick-large", "thumb-large", "fallback-large", "pick-small", "thumb-small", "fallback-small", "f-large-text", "f-small-text", "btn-rows", "add-button", "f-timer", "row-restart", "f-restart", "f-bot", "f-profile", "f-enabled", "save", "take-down", "save-note", "errors", "photo-input", "upload", "photo-grid", "discord-user", "activity-status", "publish-card", "card-link", "copy-link", "open-card", "s-site-name", "s-keepalive", "s-interval", "s-client-id", "s-client-secret", "s-bot-token", "save-settings", "pv-large", "pv-fallback", "pv-small-wrap", "pv-small", "pv-type", "pv-name", "pv-details", "pv-state", "pv-time", "pv-buttons", "picker", "picker-close", "picker-grid", "picker-empty", "toast"];
+  var el = {};
+  IDS.forEach(function (id) { el[id] = document.getElementById(id); });
 
-  const csrf = $('meta[name="csrf-token"]')?.content || "";
-  const appId = $('meta[name="app-id"]')?.content || "";
+  var state = null;
+  var draft = null;
+  var csrf = "";
+  var previewStart = null;
+  var pickerSlot = null;
+  var pollTimer = null;
 
-  const TYPE_LABELS = ["PLAYING", "STREAMING", "LISTENING TO", "WATCHING", "", "COMPETING IN"];
-  const BOT_STATES = {
-    online: { className: "is-online", text: "Bot online" },
-    connecting: { className: "is-idle", text: "Connecting…" },
-    reconnecting: { className: "is-idle", text: "Reconnecting…" },
-    idle: { className: "is-muted", text: "Bot idle" },
-    error: { className: "is-error", text: "Bot offline" },
-    disabled: { className: "is-muted", text: "No bot" },
-    stopped: { className: "is-muted", text: "Bot stopped" }
-  };
+  function $(id) { return el[id]; }
 
-  let state = null;
-  let draft = { largeImage: "", smallImage: "" };
-  let dirty = false;
-  let previewStart = null;
-  let toastTimer = null;
-
-  // ---------------------------------------------------------------- helpers
-
-  const pad = (value) => String(value).padStart(2, "0");
-
-  function formatDuration(ms) {
-    const total = Math.max(0, Math.floor(ms / 1000));
-    return `${pad(Math.floor(total / 3600))}:${pad(Math.floor((total % 3600) / 60))}:${pad(total % 60)}`;
+  function toast(message) {
+    var t = $("toast");
+    t.textContent = message;
+    t.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove("show"); }, 3200);
   }
 
-  function formatUptime(seconds) {
-    if (!Number.isFinite(seconds)) return "—";
-    const s = Math.max(0, Math.floor(seconds));
-    if (s < 60) return `${s}s`;
-    if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
-    if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
-    return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
-  }
+  function clone(value) { return JSON.parse(JSON.stringify(value)); }
 
-  function timeAgo(iso) {
-    if (!iso) return "never";
-    const delta = Date.now() - new Date(iso).getTime();
-    if (!Number.isFinite(delta)) return "—";
-    if (delta < 45_000) return "just now";
-    if (delta < 3_600_000) return `${Math.round(delta / 60_000)}m ago`;
-    if (delta < 86_400_000) return `${Math.round(delta / 3_600_000)}h ago`;
-    return `${Math.round(delta / 86_400_000)}d ago`;
-  }
-
-  /**
-   * True when the caret is in a field of this form. State updates must never
-   * overwrite text somebody is in the middle of typing.
-   */
-  function typingIn(form) {
-    const active = document.activeElement;
-    if (!form || !active || !form.contains(active)) return false;
-    return /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) && active.type !== "submit";
-  }
-
-  function toast(message, isError = false) {
-    const el = $("#toast");
-    el.textContent = message;
-    el.className = `toast is-visible${isError ? " is-error" : ""}`;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      el.className = "toast";
-    }, 3200);
-  }
-
-  async function api(path, method = "GET", body) {
-    const response = await fetch(path, {
-      method,
-      credentials: "same-origin",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "x-csrf-token": csrf
-      },
-      body: body === undefined ? undefined : JSON.stringify(body)
-    });
-    if (response.status === 401) {
-      location.href = "/login";
-      throw new Error("Session expired.");
-    }
-    let data = null;
-    try {
-      data = await response.json();
-    } catch {
-      /* non-JSON */
-    }
-    if (!response.ok) {
-      const error = new Error(data?.error || `Request failed (${response.status})`);
-      error.details = data?.errors || [];
-      throw error;
-    }
-    return data || {};
-  }
-
-  function copyText(text) {
-    if (navigator.clipboard?.writeText) {
-      return navigator.clipboard.writeText(text).then(
-        () => true,
-        () => false
-      );
-    }
-    const area = document.createElement("textarea");
-    area.value = text;
-    document.body.append(area);
-    area.select();
-    const ok = document.execCommand("copy");
-    area.remove();
-    return Promise.resolve(ok);
-  }
-
-  // ------------------------------------------------------------------- tabs
-
-  function showTab(name) {
-    for (const tab of $$(".tab")) {
-      const active = tab.dataset.tab === name;
-      tab.classList.toggle("is-active", active);
-      tab.setAttribute("aria-selected", active ? "true" : "false");
-    }
-    for (const pane of $$(".pane")) pane.classList.toggle("is-active", pane.dataset.pane === name);
-    if (location.hash.slice(1) !== name) history.replaceState(null, "", `#${name}`);
-  }
-
-  const isAdmin = document.body.dataset.role === "admin";
-  // Panes only the owner may open; a member typing `#settings` must not land there.
-  const ADMIN_PANES = new Set(["bot", "members", "settings"]);
-  const allowed = (name) => Boolean(name) && (isAdmin || !ADMIN_PANES.has(name));
-
-  for (const tab of $$(".tab")) {
-    tab.addEventListener("click", () => showTab(allowed(tab.dataset.tab) ? tab.dataset.tab : "profile"));
-  }
-  // `/?tab=profile` is where the setup wizard drops you, and it is linkable.
-  const tabParam = new URLSearchParams(location.search).get("tab");
-  for (const link of $$("[data-goto]")) {
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      showTab(allowed(link.dataset.goto) ? link.dataset.goto : "profile");
+  function api(path, options) {
+    options = options || {};
+    options.headers = Object.assign({ "content-type": "application/json" }, options.headers || {});
+    if (csrf) options.headers["x-csrf"] = csrf;
+    return fetch(path, options).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (res.status === 401) { location.href = "/"; throw new Error("signed out"); }
+        return { ok: res.ok, status: res.status, body: body };
+      });
     });
   }
-  if (tabParam) {
-    const name = allowed(tabParam) ? tabParam : "profile";
-    showTab(name);
-    history.replaceState(null, "", `${location.pathname}#${name}`);
-  } else if (location.hash.length > 1) {
-    showTab(allowed(location.hash.slice(1)) ? location.hash.slice(1) : "profile");
-  }
 
-  // ---------------------------------------------------------------- preview
+  /* ---------- images ---------- */
 
-  function imageUrl(value) {
-    if (!value) return "";
-    if (value.startsWith("asset:")) {
-      const asset = state?.assets?.find((item) => item.id === value.slice(6));
+  function assetUrl(value) {
+    var text = String(value || "");
+    var match = /^asset:([a-f0-9]+)$/.exec(text);
+    if (match) {
+      var asset = (state && state.assets || []).filter(function (a) { return a.id === match[1]; })[0];
       return asset ? asset.url : "";
     }
-    if (/^https?:\/\//.test(value)) return value;
-    return appId ? `https://cdn.discordapp.com/app-assets/${appId}/${encodeURIComponent(value)}.png` : "";
+    return /^https?:\/\//i.test(text) ? text : "";
   }
 
-  function renderPreview(config) {
-    const type = Number(config.type) || 0;
-    const custom = type === 4;
-    const name = String(config.name || "").trim();
+  /* ---------- preview ---------- */
 
-    $("#preview-type").textContent = custom ? "" : TYPE_LABELS[type] || "";
-    $("#preview-name").textContent = name || "Your activity";
-    $("#preview-details").textContent = custom ? "" : config.details || "";
-    $("#preview-state").textContent = custom ? "" : config.state || "";
-
-    const large = custom ? "" : imageUrl(config.largeImage ?? draft.largeImage);
-    const small = custom ? "" : imageUrl(config.smallImage ?? draft.smallImage);
-    const largeEl = $("#preview-large");
-    const fallback = $("#preview-fallback");
-    if (large) {
-      largeEl.src = large;
-      largeEl.hidden = false;
-      fallback.hidden = true;
-    } else {
-      largeEl.hidden = true;
-      largeEl.removeAttribute("src");
-      fallback.hidden = false;
-    }
-    $("#preview-small-wrap").hidden = !small;
-    if (small) $("#preview-small").src = small;
-
-    // Discord only fetches public HTTPS images. A local URL is fine for the
-    // preview, and the server strips it from what it sends - say so, rather than
-    // leaving someone wondering why the photo is missing in Discord.
-    const photoHint = $("#photo-hint");
-    if (photoHint) photoHint.hidden = !/^http:\/\//.test(large) && !/^http:\/\//.test(small);
-
-    previewStart = config.startedAt ? Number(config.startTimestamp) || Date.now() : null;
-    tickTimer();
-
-    const buttons = $("#preview-buttons");
-    buttons.textContent = "";
-    for (const button of Array.isArray(config.buttons) ? config.buttons.slice(0, 2) : []) {
-      const chip = document.createElement("span");
-      chip.className = "preview-button";
-      chip.textContent = button.label;
-      buttons.append(chip);
-    }
-    renderTargetHint(config);
-    syncSlotImages();
+  function drawElapsed() {
+    var t = $("pv-time");
+    if (!previewStart) { t.textContent = ""; return; }
+    var seconds = Math.max(0, Math.floor((Date.now() - previewStart) / 1000));
+    var pad = function (v) { return String(v).padStart(2, "0"); };
+    var h = Math.floor(seconds / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    var s = seconds % 60;
+    t.textContent = (h > 0 ? h + ":" + pad(m) : pad(m)) + ":" + pad(s) + " elapsed";
   }
 
-  function renderTargetHint(config) {
-    const targets = config.targets || { bot: true, profile: true };
-    const hint = $("#target-hint");
-    const parts = [];
-    if (targets.bot) parts.push("the bot card (text only, 24/7)");
-    if (targets.profile) parts.push("your profile (photos + buttons)");
-    hint.textContent = `Showing on ${parts.join(" and ") || "nothing yet"}.`;
-  }
+  function renderPreview() {
+    if (!draft) return;
+    var type = Number(draft.type) || 0;
+    $("pv-type").textContent = TYPES[type] || "PLAYING";
+    $("pv-name").textContent = draft.name || "—";
+    $("pv-details").textContent = type === 4 ? "" : (draft.details || "");
+    $("pv-state").textContent = type === 4 ? (draft.name || "") : (draft.state || "");
 
-  function tickTimer() {
-    $("#preview-time").textContent = previewStart ? `${formatDuration(Date.now() - previewStart)} elapsed` : "";
-  }
+    var large = assetUrl(draft.largeImage);
+    var small = assetUrl(draft.smallImage);
+    if (large) { $("pv-large").src = large; $("pv-large").hidden = false; $("pv-fallback").hidden = true; }
+    else { $("pv-large").hidden = true; $("pv-large").removeAttribute("src"); $("pv-fallback").hidden = false; }
+    if (small) { $("pv-small").src = small; $("pv-small-wrap").hidden = false; }
+    else { $("pv-small-wrap").hidden = true; }
 
-  // ------------------------------------------------------- templates & chrome
-
-  let draftTimer = null;
-  let draftSavedAt = null;
-  let pendingSave = false;
-
-  /** Presets come from the server, so the list has one definition. */
-  function renderTemplates(templates) {
-    const row = $("#template-row");
-    const chips = $("#template-chips");
-    if (!row || !chips) return;
-    // State arrives over SSE too; rebuilding the same chips would only steal
-    // focus and flicker, so redraw when the list actually changes.
-    const signature = Array.isArray(templates)
-      ? templates.map((template) => `${template.id}:${template.name}`).join("|")
-      : "";
-    if (chips.dataset.signature === signature) return;
-    chips.dataset.signature = signature;
-    chips.textContent = "";
-    if (!Array.isArray(templates) || templates.length === 0) {
-      row.hidden = true;
-      return;
-    }
-    for (const template of templates) {
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "template-chip";
-      chip.dataset.templateId = template.id;
-      chip.innerHTML = "";
-      const dot = document.createElement("span");
-      dot.className = "template-dot";
-      dot.style.background = template.accent || "var(--accent)";
-      const label = document.createElement("strong");
-      label.textContent = template.name;
-      const blurb = document.createElement("small");
-      blurb.textContent = template.blurb;
-      chip.append(dot, label, blurb);
-      chip.addEventListener("click", async () => {
-        try {
-          const result = await api(`/api/templates/${encodeURIComponent(template.id)}`, "POST", {});
-          fillForm(result.presence);
-          renderPreview(result.presence);
-          markEdited();
-          toast(`“${template.name}” applied — publish when you like it`);
-        } catch (error) {
-          toast(error.message, true);
-        }
-      });
-      chips.append(chip);
-    }
-    row.hidden = false;
-  }
-
-  /**
-   * Preview fidelity: Discord has a light theme and a compact card, and the
-   * card looks wrong if you only ever check one of them.
-   */
-  function applyPreviewAppearance() {
-    const preview = $("#preview");
-    if (!preview) return;
-    const theme = localStorage.getItem("statusc0rd.previewTheme") === "light" ? "light" : "dark";
-    const compact = localStorage.getItem("statusc0rd.previewDensity") === "compact";
-    preview.classList.toggle("is-light", theme === "light");
-    preview.classList.toggle("is-compact", compact);
-    for (const button of $$("[data-preview-theme]")) {
-      button.classList.toggle("is-active", button.dataset.previewTheme === theme);
-      button.setAttribute("aria-pressed", button.dataset.previewTheme === theme ? "true" : "false");
-    }
-    const density = $("#preview-density");
-    if (density) {
-      density.textContent = compact ? "Full" : "Compact";
-      density.setAttribute("aria-pressed", compact ? "true" : "false");
-    }
-  }
-
-  for (const button of $$("[data-preview-theme]")) {
-    button.addEventListener("click", () => {
-      localStorage.setItem("statusc0rd.previewTheme", button.dataset.previewTheme);
-      applyPreviewAppearance();
-    });
-  }
-
-  $("#preview-density")?.addEventListener("click", () => {
-    const compact = localStorage.getItem("statusc0rd.previewDensity") === "compact";
-    localStorage.setItem("statusc0rd.previewDensity", compact ? "full" : "compact");
-    applyPreviewAppearance();
-  });
-
-  applyPreviewAppearance();
-
-  // -------------------------------------------------------------- form sync
-
-  function readForm() {
-    const buttons = [];
-    for (let index = 1; index <= 2; index += 1) {
-      const label = field(`btn${index}Label`).value.trim();
-      const url = field(`btn${index}Url`).value.trim();
-      if (label && url) buttons.push({ label, url });
-    }
-    return {
-      enabled: true,
-      name: field("name").value,
-      type: Number(field("type").value),
-      status: field("status").value,
-      details: field("details").value,
-      state: field("state").value,
-      url: field("url").value,
-      largeImage: draft.largeImage,
-      smallImage: draft.smallImage,
-      largeText: field("largeText").value,
-      smallText: field("smallText").value,
-      startedAt: field("startedAt").checked,
-      restartTimer: field("restartTimer").checked,
-      buttons,
-      targets: {
-        bot: field("targetBot").checked,
-        profile: field("targetProfile").checked
-      }
-    };
-  }
-
-  function fillForm(presence) {
-    const set = (name, value) => {
-      const el = field(name);
-      if (el) el.value = value ?? "";
-    };
-    set("name", presence.name);
-    set("type", String(presence.type ?? 0));
-    set("status", presence.status);
-    set("details", presence.details);
-    set("state", presence.state);
-    set("url", presence.url);
-    set("largeText", presence.largeText);
-    set("smallText", presence.smallText);
-    draft.largeImage = presence.largeImage || "";
-    draft.smallImage = presence.smallImage || "";
-
-    const buttons = Array.isArray(presence.buttons) ? presence.buttons : [];
-    for (let index = 1; index <= 2; index += 1) {
-      const button = buttons[index - 1];
-      field(`btn${index}Label`).value = button?.label || "";
-      field(`btn${index}Url`).value = button?.url || "";
-    }
-    field("startedAt").checked = Boolean(presence.startedAt);
-    field("restartTimer").checked = false;
-    field("targetBot").checked = presence.targets?.bot !== false;
-    field("targetProfile").checked = presence.targets?.profile !== false;
-    updateVisibility();
-  }
-
-  function updateVisibility() {
-    const type = Number(field("type").value) || 0;
-    const custom = type === 4;
-    for (const el of $$('[data-when="details"]', form)) el.hidden = custom;
-    for (const el of $$('[data-when="timer"]', form)) el.hidden = custom;
-    for (const el of $$('[data-when="advanced"]', form)) el.hidden = custom;
-    for (const el of $$('[data-when="url"]', form)) el.hidden = type !== 1;
-    for (const el of $$('[data-when="targets"]', form)) el.hidden = false;
-    field("restartTimer").disabled = !field("startedAt").checked || custom;
-  }
-
-  function setDirty(value) {
-    dirty = value;
-    $("#form-note").hidden = !value;
-    $("#form-note").textContent = "Unpublished changes";
-    $("#discard-btn").hidden = !value && !draftSavedAt;
-  }
-
-  /** Everything the editor changes funnels through here: mark dirty, autosave. */
-  function markEdited() {
-    setDirty(true);
-    scheduleDraftSave();
-  }
-
-  function setDraftHint(text, kind = "") {
-    const hint = $("#draft-hint");
-    if (!hint) return;
-    hint.hidden = !text;
-    hint.textContent = text || "";
-    hint.className = `hint${kind ? ` is-${kind}` : ""}`;
-  }
-
-  /**
-   * Draft = "staged but not live". Discord keeps showing the published card
-   * until the person presses Publish, so a half-typed line never leaks onto
-   * their profile.
-   */
-  function scheduleDraftSave() {
-    if (draftTimer) clearTimeout(draftTimer);
-    pendingSave = true;
-    draftTimer = setTimeout(() => void saveDraft(), 1200);
-  }
-
-  async function saveDraft() {
-    const payload = readForm();
-    if (!String(payload.name || "").trim()) {
-      setDraftHint("Give it a name and this saves itself as a draft.");
-      return;
-    }
-    try {
-      const result = await api("/api/presence/draft", "POST", payload);
-      draftSavedAt = result.draft?.savedAt || new Date().toISOString();
-      if (state) state.draft = result.draft;
-      setDraftHint(`Draft saved ${timeAgo(draftSavedAt)} — not live until you publish.`);
-      $("#discard-btn").hidden = false;
-    } catch (error) {
-      if (error.details?.length) {
-        // Validation problems are the person's business only when publishing.
-        setDraftHint(error.details[0]);
-      }
-    } finally {
-      pendingSave = false;
-    }
-  }
-
-  // ------------------------------------------------------------- state sync
-
-  /** Show or hide the split-hosting explainer on the Bot tab. */
-  function renderSplitHosting(meta) {
-    const note = document.getElementById("bot-hosted-note");
-    if (note) note.hidden = !meta?.splitHosting;
-  }
-
-  function renderBot(bot) {
-    // Split hosting: the gateway lives in another process, so the local state is
-    // "disabled" even when the bot is online. The worker's own report is the
-    // truth in that case, and a stale report means "not connected".
-    const worker = state?.botWorker;
-    if (worker?.lastSeenAt) {
-      const fresh = Date.now() - new Date(worker.lastSeenAt).getTime() < 90_000;
-      if (fresh && worker.connected) {
-        const pill = $("#bot-pill");
-        const where = "Bot online (hosted separately)";
-        pill.className = "pill is-online";
-        $("#bot-pill-text").textContent = "Bot online";
-        pill.title = `${where}${worker.tag ? ` · ${worker.tag}` : ""}`;
-        $("#bot-status").textContent = where;
-        $("#bot-tag").textContent = worker.tag || "—";
-        $("#bot-last").textContent = worker.lastActivity || "—";
-        $("#bot-uptime").textContent = formatUptime(bot?.uptimeSeconds);
-        const errorBox = $("#bot-error");
-        if (worker.error) {
-          errorBox.className = "alert";
-          errorBox.textContent = worker.error;
-          errorBox.hidden = false;
-        } else {
-          errorBox.hidden = true;
-        }
-        return;
-      }
-      if (fresh && !worker.connected) {
-        $("#bot-pill").className = "pill is-error";
-        $("#bot-pill-text").textContent = "Bot offline";
-        $("#bot-pill").title = worker.error || "The bot worker is running but is not connected to Discord.";
-      }
-    }
-
-    const info = BOT_STATES[bot?.status] || BOT_STATES.idle;
-    const pill = $("#bot-pill");
-    pill.className = `pill ${info.className}`;
-    $("#bot-pill-text").textContent = info.text;
-    pill.title = bot?.error ? `${info.text}: ${bot.error}` : info.text;
-
-    $("#bot-status").textContent = info.text;
-    $("#bot-tag").textContent = bot?.tag || (bot?.enabled === false ? "Not configured" : "—");
-    $("#bot-last").textContent = bot?.lastAppliedAt ? new Date(bot.lastAppliedAt).toLocaleString() : "—";
-    $("#bot-uptime").textContent = formatUptime(bot?.uptimeSeconds);
-
-    const errorBox = $("#bot-error");
-    const message = bot?.error || (bot?.enabled === false ? bot?.note : null);
-    if (message) {
-      errorBox.className = bot?.error ? "alert" : "alert is-info";
-      errorBox.textContent = message;
-      errorBox.hidden = false;
-    } else {
-      errorBox.hidden = true;
-    }
-  }
-
-  function activityIsLive(session) {
-    return Boolean(
-      session?.lastSeenAt && Date.now() - new Date(session.lastSeenAt).getTime() < 2 * 60_000 && session.connected
-    );
-  }
-
-  /** The top-bar profile pill: is the in-Discord app pushing this card? */
-  function renderProfilePill() {
-    const pill = $("#profile-pill");
-    const live = activityIsLive(state?.activitySession);
-    pill.className = live ? "pill is-online" : "pill is-muted";
-    $("#profile-pill-text").textContent = live ? "Profile live (Discord)" : "Profile not live";
-  }
-
-  /** The in-Discord app card: launch link, live status and the one-time setup. */
-  function renderActivity(meta, session) {
-    const link = $("#activity-link");
-    const warning = $("#activity-warning");
-    const mapping = $("#activity-mapping");
-    const status = $("#activity-status");
-    const tag = $("#activity-tag");
-    if (!link) return;
-
-    const publicUrl = (meta?.publicUrl || location.origin).replace(/\/+$/, "");
-    const appId = meta?.clientId || "";
-    const ready = Boolean(appId && meta?.hasClientSecret);
-
-    if (appId) {
-      link.href = `https://discord.com/activities/${encodeURIComponent(appId)}`;
-      link.removeAttribute("aria-disabled");
-      link.hidden = false;
-      link.classList.remove("is-disabled");
-    } else {
-      link.href = "#";
-      link.setAttribute("aria-disabled", "true");
-      link.classList.add("is-disabled");
-    }
-
-    if (warning) warning.hidden = ready;
-    if (mapping) mapping.textContent = `${publicUrl}/activity/`;
-
-    // Whose card is this? The in-Discord app matches the Discord account that
-    // opened it to an account here, so an unlinked member gets a plain
-    // instruction instead of a silent failure inside Discord.
-    const linkRow = $("#discord-link-row");
-    if (linkRow) {
-      const linked = Boolean(meta?.linkedDiscord);
-      const statusEl = $("#discord-link-status");
-      const button = $("#discord-link-btn");
-      if (statusEl) {
-        statusEl.textContent = linked
-          ? "Connected. The in-Discord app will push this card onto your Discord profile."
-          : "Not connected yet — link your Discord account so the app knows this card is yours.";
-        statusEl.className = linked ? "hint is-live" : "hint";
-      }
-      if (button) {
-        button.hidden = linked;
-        button.href = "/auth/discord/link";
-      }
-    }
-
-    const live = activityIsLive(session);
-    if (tag) {
-      tag.textContent = live ? "Live now" : "In Discord";
-      tag.className = live ? "tag is-live" : "tag";
-    }
-
-    if (!status) return;
-    if (live) {
-      const when = new Date(session.lastSeenAt);
-      status.textContent = `Live on ${session.username || "your profile"} — last update ${when.toLocaleTimeString()}.`;
-      status.className = "hint is-live";
-    } else if (session?.lastSeenAt) {
-      status.textContent = `Last seen ${new Date(session.lastSeenAt).toLocaleString()}. Launch the app again to bring it back.`;
-      status.className = "hint";
-    } else {
-      status.textContent = "Not connected yet — press “Open in Discord” and leave the window open.";
-      status.className = "hint";
-    }
-  }
-
-  function renderAssets(assets) {
-    const grid = $("#asset-grid");
-    grid.textContent = "";
-    $("#asset-empty").hidden = assets.length > 0;
-    for (const asset of assets) {
-      const card = document.createElement("figure");
-      card.className = "asset";
-      const img = document.createElement("img");
-      img.src = asset.url;
-      img.alt = asset.name;
-      img.loading = "lazy";
-      const caption = document.createElement("figcaption");
-      caption.textContent = `${asset.width || "?"}×${asset.height || "?"} · ${Math.round(asset.bytes / 1024)} KB`;
-      const actions = document.createElement("div");
-      actions.className = "asset-actions";
-
-      const large = document.createElement("button");
-      large.className = "btn ghost small";
-      large.textContent = "Large";
-      large.addEventListener("click", () => setImage("large", `asset:${asset.id}`, asset.url));
-
-      const small = document.createElement("button");
-      small.className = "btn ghost small";
-      small.textContent = "Small";
-      small.addEventListener("click", () => setImage("small", `asset:${asset.id}`, asset.url));
-
-      const remove = document.createElement("button");
-      remove.className = "btn ghost small danger";
-      remove.textContent = "Delete";
-      remove.addEventListener("click", async () => {
-        if (!confirm(`Delete ${asset.name}?`)) return;
-        try {
-          await api(`/api/assets/${asset.id}`, "DELETE");
-          state.assets = state.assets.filter((item) => item.id !== asset.id);
-          // If this image was staged in the editor, drop the dangling reference.
-          const ref = `asset:${asset.id}`;
-          let cleared = false;
-          for (const key of ["largeImage", "smallImage"]) {
-            if (draft[key] === ref) {
-              draft[key] = "";
-              cleared = true;
-            }
-          }
-          renderAssets(state.assets);
-          if (cleared) {
-            syncSlotImages();
-            renderPreview(readForm());
-            setDirty(true);
-          }
-          toast(cleared ? "Image deleted — pick another one, then publish" : "Image deleted");
-        } catch (error) {
-          toast(error.message, true);
-        }
-      });
-
-      actions.append(large, small, remove);
-      card.append(img, caption, actions);
-      grid.append(card);
-    }
-    renderPickerAssets(assets);
-  }
-
-  function syncSlotImages() {
-    for (const [slotId, key] of [
-      ["#slot-large", "large"],
-      ["#slot-small", "small"]
-    ]) {
-      const slot = $(slotId);
-      if (!slot) continue;
-      const img = slot.querySelector("img");
-      const label = slot.querySelector("span");
-      const url = imageUrl(draft[key]);
-      if (url) {
-        img.src = url;
-        img.hidden = false;
-        label.hidden = true;
-      } else {
-        img.hidden = true;
-        img.removeAttribute("src");
-        label.hidden = false;
-      }
-    }
-  }
-
-
-  function renderKeepAlive(keepAlive, meta, settings) {
-    const tag = $("#keepalive-tag");
-    if (!keepAlive || !keepAlive.enabled) {
-      tag.textContent = keepAlive?.target ? "Paused" : "Off";
-      tag.className = "tag";
-    } else {
-      tag.textContent = keepAlive.lastStatus === 200 || keepAlive.lastOkAt ? "Active" : "Waiting";
-      tag.className = "tag is-live";
-    }
-    const info = $("#keepalive-info");
-    if (keepAlive?.lastOkAt) {
-      info.textContent = `Last ping ${timeAgo(keepAlive.lastOkAt)} · ${keepAlive.pings} pings`;
-    } else if (keepAlive?.target) {
-      info.textContent = `Will ping ${keepAlive.target}/health every ${keepAlive.intervalMinutes}m`;
-    } else {
-      info.textContent = "Set a public URL to enable";
-    }
-
-    if (settings) {
-      const form = $("#keepalive-form");
-      if (!typingIn(form)) {
-        form.elements.publicUrl.value = settings.publicUrl || "";
-        form.elements.enabled.checked = Boolean(settings.keepAlive?.enabled);
-        form.elements.intervalMinutes.value = settings.keepAlive?.intervalMinutes || 10;
-      }
-      const locked = Boolean(settings.managed?.publicUrl);
-      form.elements.publicUrl.disabled = locked;
-      // On a managed host the address is not yours to type: Render publishes the
-      // service URL itself. Say where it came from instead of a greyed-out field.
-      if (locked && info) {
-        info.textContent = `Public URL comes from this host: ${settings.publicUrl}`;
-      }
-    }
-
-    const warning = $("#https-warning");
-    warning.hidden = Boolean(meta?.publicUrlIsHttps);
-  }
-
-  function applyState(next, { fill = true } = {}) {
-    state = next;
-    renderActivity(next.meta, next.activitySession);
-    renderBot(next.bot);
-    renderProfilePill();
-    renderAssets(next.assets || []);
-    renderKeepAlive(next.keepAlive, next.meta);
-    if (fill && !dirty) {
-      // A staged draft is what the person was last editing, on any device.
-      const source = next.draft || next.presence;
-      fillForm(source);
-      renderPreview(source);
-      draftSavedAt = next.draft?.savedAt || null;
-      if (next.draft) {
-        setDirty(true);
-        setDraftHint(`Draft from ${timeAgo(next.draft.savedAt)} — publish to put it on your profile.`);
-      } else {
-        setDirty(false);
-        setDraftHint("");
-      }
-    }
-    renderTemplates(next.templates);
-    renderCardPanel(next.meta?.card);
-    renderSplitHosting(next.meta);
-    renderPreviewNote(next.presence);
-    renderUser(next.user);
-    const redirect = $("#redirect-hint");
-    if (redirect) redirect.textContent = `${next.meta?.publicUrl || location.origin}/auth/discord/callback`;
-  }
-
-  function renderPreviewNote(presence) {
-    const note = $("#preview-note");
-    if (!presence?.enabled) {
-      note.textContent = "Cleared";
-      note.className = "tag";
-    } else if (activityIsLive(state?.activitySession)) {
-      note.textContent = "Live";
-      note.className = "tag is-live";
-    } else if (state?.bot?.connected) {
-      note.textContent = "On bot";
-      note.className = "tag is-live";
-    } else {
-      note.textContent = "Saved";
-      note.className = "tag is-warn";
-    }
-  }
-
-  function renderUser(user) {
-    if (!user) return;
-    $("#user-name").textContent = user.name || "Signed in";
-    const avatar = $("#user-avatar");
-    if (user.avatar) {
-      avatar.style.backgroundImage = `url("${user.avatar}")`;
-      avatar.textContent = "";
-    } else {
-      avatar.textContent = (user.name || "?").trim().charAt(0).toUpperCase();
-    }
-  }
-
-  // -------------------------------------------------------------- form logic
-
-  form.addEventListener("input", () => {
-    setDirty(true);
-    renderPreview(readForm());
-    updateVisibility();
-  });
-  form.addEventListener("change", () => {
-    setDirty(true);
-    renderPreview(readForm());
-    updateVisibility();
-  });
-
-  function showErrors(error) {
-    const box = $("#form-errors");
-    const messages = Array.isArray(error?.details) && error.details.length > 1 ? error.details : [];
+    var box = $("pv-buttons");
     box.textContent = "";
-    if (messages.length > 0) {
-      const list = document.createElement("ul");
-      for (const message of messages) {
-        const item = document.createElement("li");
-        item.textContent = message;
-        list.append(item);
-      }
-      box.append(list);
-    } else {
-      box.textContent = error?.message || "Something went wrong.";
-    }
-    box.hidden = false;
-  }
-
-  for (const input of $$("input, select, textarea", form)) {
-    input.addEventListener("input", () => {
-      updateVisibility();
-      renderPreview(readForm());
-      markEdited();
-    });
-    input.addEventListener("change", () => {
-      updateVisibility();
-      renderPreview(readForm());
-      markEdited();
-    });
-  }
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    // Publishing pushes the form as it stands; the server also accepts the
-    // stored draft when the body is empty (see POST /api/presence/publish).
-    const payload = readForm();
-    $("#form-errors").hidden = true;
-
-    if (!payload.name.trim()) return showErrors(new Error("Activity name is required."));
-    if (payload.type === 1 && !payload.url.trim()) return showErrors(new Error("A Streaming activity needs a URL."));
-    if (!payload.targets.bot && !payload.targets.profile) {
-      return showErrors(new Error("Pick at least one place to show the presence."));
-    }
-
-    const button = $("#apply-btn");
-    button.disabled = true;
-    button.textContent = "Publishing…";
-    try {
-      // Cancel any queued autosave: it would immediately recreate the draft we
-      // are about to publish.
-      if (draftTimer) {
-        clearTimeout(draftTimer);
-        draftTimer = null;
-      }
-      pendingSave = false;
-      const result = await api("/api/presence/publish", "POST", payload);
-      setDirty(false);
-      draftSavedAt = null;
-      if (state) state.draft = null;
-      setDraftHint("Published — this is what Discord shows now.");
-      $("#discard-btn").hidden = true;
-      field("restartTimer").checked = false;
-      state.presence = result.presence;
-      state.bot = result.bot;
-      renderPreview(result.presence);
-      renderBot(result.bot);
-      renderPreviewNote(result.presence);
-      toast("Published");
-    } catch (error) {
-      showErrors(error);
-      toast(error.message, true);
-    } finally {
-      button.disabled = false;
-      button.textContent = "Publish";
-    }
-  });
-
-  $("#discard-btn").addEventListener("click", async () => {
-    try {
-      if (draftTimer) {
-        clearTimeout(draftTimer);
-        draftTimer = null;
-      }
-      pendingSave = false;
-      await api("/api/presence/draft", "DELETE");
-      state.draft = null;
-      draftSavedAt = null;
-      fillForm(state.presence);
-      renderPreview(state.presence);
-      setDirty(false);
-      setDraftHint("Draft discarded — back to what is live.");
-      $("#discard-btn").hidden = true;
-      toast("Draft discarded");
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-
-  $("#clear-btn").addEventListener("click", async () => {
-    if (!confirm("Clear the presence everywhere?")) return;
-    try {
-      const result = await api("/api/presence/clear", "POST", {});
-      setDirty(false);
-      state.presence = result.presence;
-      state.bot = result.bot;
-      fillForm(result.presence);
-      renderPreview(result.presence);
-      renderBot(result.bot);
-      renderPreviewNote(result.presence);
-      toast("Presence cleared");
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-
-  // ------------------------------------------------------------------ photos
-
-  function setImage(kind, value, url) {
-    draft[kind === "large" ? "largeImage" : "smallImage"] = value;
-    const el = $(`#url-${kind}`);
-    if (el) el.value = /^https?:\/\//.test(value) ? value : "";
-    syncSlotImages();
-    markEdited();
-    renderPreview({ ...readForm(), largeImage: draft.largeImage, smallImage: draft.smallImage });
-    if (url) toast(`Set as ${kind} image — publish to show it`);
-  }
-
-  /** Upload one file into a slot: resize, POST, stage it. */
-  async function uploadToSlot(slot, file) {
-    if (!slot || !file) return;
-    const size = slot.dataset.size === "small" ? 256 : 512;
-    slot.classList.add("is-busy");
-    try {
-      const dataUrl = await upload.prepare(file, size);
-      const result = await api("/api/assets", "POST", { dataUrl, name: file.name });
-      state.assets = [result.asset, ...state.assets.filter((asset) => asset.id !== result.asset.id)];
-      renderAssets(state.assets);
-      renderPickerAssets(state.assets);
-      setImage(slot.dataset.size, `asset:${result.asset.id}`, result.asset.url);
-    } catch (error) {
-      toast(error.message, true);
-    } finally {
-      slot.classList.remove("is-busy");
-    }
-  }
-
-  let activeSlot = null;
-
-  for (const slot of $$(".upload-slot")) {
-    const input = slot.querySelector("input[type=file]");
-    const open = () => input.click();
-    slot.addEventListener("click", (event) => {
-      // The synthetic click on the hidden input bubbles back up here; ignoring it
-      // stops the file picker from being requested twice.
-      if (event.target === input) return;
-      open();
-    });
-    slot.addEventListener("focus", () => {
-      activeSlot = slot;
-    });
-    slot.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      open();
+    (draft.buttons || []).forEach(function (b) {
+      if (!b.label) return;
+      var chip = document.createElement("span");
+      chip.textContent = b.label;
+      box.appendChild(chip);
     });
 
-    // Drag and drop
-    slot.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      slot.classList.add("is-drop");
-    });
-    slot.addEventListener("dragleave", () => slot.classList.remove("is-drop"));
-    slot.addEventListener("drop", async (event) => {
-      event.preventDefault();
-      slot.classList.remove("is-drop");
-      const file = [...(event.dataTransfer?.files || [])].find((item) => item.type.startsWith("image/"));
-      if (!file) return toast("Drop an image file (PNG, JPEG, WebP or GIF).", true);
-      activeSlot = slot;
-      await uploadToSlot(slot, file);
-    });
-
-    input.addEventListener("change", async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      activeSlot = slot;
-      await uploadToSlot(slot, file);
-      input.value = "";
-    });
+    previewStart = draft.startedAt ? Number(draft.startTimestamp) > 0 ? Number(draft.startTimestamp) : (previewStart || Date.now()) : null;
+    drawElapsed();
   }
 
-  // Paste a screenshot straight in: ctrl/cmd+V anywhere on the dashboard goes to
-  // the slot you last touched (the large image by default).
-  document.addEventListener("paste", async (event) => {
-    const items = [...(event.clipboardData?.items || [])];
-    const item = items.find((entry) => entry.type.startsWith("image/"));
-    if (!item) return;
-    const file = item.getAsFile();
-    if (!file) return;
-    event.preventDefault();
-    const slot = activeSlot || $("#slot-large");
-    if (slot) slot.focus();
-    await uploadToSlot(slot, file);
-  });
+  /* ---------- form ---------- */
 
-  // Reuse picker: the same library, without leaving the editor.
-  function renderPickerAssets(assets) {
-    const grid = $("#picker-grid");
-    if (!grid) return;
-    grid.textContent = "";
-    const list = Array.isArray(assets) ? assets : [];
-    $("#picker-empty").hidden = list.length > 0;
-    for (const asset of list) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "picker-item";
-      const img = document.createElement("img");
-      img.src = asset.url;
-      img.alt = asset.name;
-      img.loading = "lazy";
-      button.append(img);
-      button.addEventListener("click", () => {
-        setImage(pickerTarget, `asset:${asset.id}`, asset.url);
-        $("#asset-picker")?.close();
-      });
-      grid.append(button);
-    }
+  function renderImageSlots() {
+    var large = assetUrl(draft.largeImage);
+    var small = assetUrl(draft.smallImage);
+    if (large) { $("thumb-large").src = large; $("thumb-large").hidden = false; $("fallback-large").hidden = true; }
+    else { $("thumb-large").hidden = true; $("fallback-large").hidden = false; }
+    if (small) { $("thumb-small").src = small; $("thumb-small").hidden = false; $("fallback-small").hidden = true; }
+    else { $("thumb-small").hidden = true; $("fallback-small").hidden = false; }
   }
 
-  let pickerTarget = "large";
-
-  for (const button of $$("[data-pick-asset]")) {
-    button.addEventListener("click", () => {
-      pickerTarget = button.dataset.pickAsset;
-      renderPickerAssets(state?.assets || []);
-      const dialog = $("#asset-picker");
-      if (dialog?.showModal) dialog.showModal();
-      else toast("Upload an image first", true);
-    });
-  }
-
-  $("#picker-close")?.addEventListener("click", () => $("#asset-picker")?.close());
-
-  for (const button of $$("[data-clear-image]")) {
-    button.addEventListener("click", () => setImage(button.dataset.clearImage, "", ""));
-  }
-
-  $("#use-urls").addEventListener("click", () => {
-    const large = $("#url-large").value.trim();
-    const small = $("#url-small").value.trim();
-    for (const [kind, value] of [
-      ["large", large],
-      ["small", small]
-    ]) {
-      if (value && !/^https:\/\//.test(value)) {
-        toast(`${kind} image URL must start with https://`, true);
-        return;
-      }
-      if (value) setImage(kind, value, value);
-    }
-    toast("URLs applied — press Publish to go live");
-  });
-
-  // ----------------------------------------------------------------- profile
-
-  // With no application id there is no invite link to give out: hide the empty
-  // input instead of handing over a discord.com URL that only errors.
-  const inviteValue = $("#invite-url").value.trim();
-  if (!inviteValue) {
-    $("#invite-field").hidden = true;
-    $("#invite-hint").hidden = false;
-  }
-
-  $("#copy-invite").addEventListener("click", async () => {
-    if (!inviteValue) {
-      toast("Add your application id first", true);
-      return;
-    }
-    const ok = await copyText(inviteValue);
-    toast(ok ? "Invite link copied" : "Copy failed", !ok);
-  });
-
-  $("#copy-activity")?.addEventListener("click", async () => {
-    const href = $("#activity-link")?.href;
-    if (!href || href.endsWith("#")) {
-      toast("Add your application id first", true);
-      return;
-    }
-    const ok = await copyText(href);
-    toast(ok ? "Activity link copied" : "Copy failed", !ok);
-  });
-
-  // ---------------------------------------------------------------- settings
-
-  $("#keepalive-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.target);
-    try {
-      await api("/api/settings", "POST", {
-        publicUrl: data.get("publicUrl"),
-        keepAlive: {
-          enabled: data.get("enabled") === "on",
-          intervalMinutes: Number(data.get("intervalMinutes")) || 10
-        }
-      });
-      toast("Saved");
-      refresh();
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-
-  $("#app-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.target);
-    const payload = { clientId: data.get("clientId") };
-    const token = String(data.get("botToken") || "").trim();
-    if (token) payload.botToken = token;
-    try {
-      await api("/api/settings", "POST", payload);
-      // Only the secret goes: a full reset() would blank the id the server keeps.
-      event.target.elements.botToken.value = "";
-      toast(token ? "Bot token saved — reconnecting" : "Saved");
-      refresh();
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-
-  $("#sso-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.target);
-    const payload = { allowedIds: String(data.get("allowedIds") || "").split(/[\s,]+/).filter(Boolean) };
-    const secret = String(data.get("clientSecret") || "").trim();
-    if (secret) payload.clientSecret = secret;
-    try {
-      await api("/api/settings", "POST", payload);
-      event.target.elements.clientSecret.value = "";
-      toast("Sign-in settings saved");
-      refresh();
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-
-  $("#key-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.target);
-    try {
-      await api("/api/settings", "POST", {
-        currentAdminKey: data.get("currentAdminKey"),
-        newAdminKey: data.get("newAdminKey")
-      });
-      event.target.reset();
-      toast("Dashboard key changed");
-    } catch (error) {
-      toast(error.message, true);
-    }
-  });
-
-  // ------------------------------------------------------------------- boot
-
-  async function refresh() {
-    try {
-      const next = await api("/api/state");
-      applyState(next, { fill: !dirty });
-      // The settings forms are the owner's; a member must not ask for them
-      // (the server answers 403, which would surface as a red toast).
-      if (isAdmin) {
-        const { settings } = await api("/api/settings");
-        renderKeepAlive(next.keepAlive, next.meta, settings);
-        const appForm = $("#app-form");
-        if (!typingIn(appForm)) appForm.elements.clientId.value = settings.discord.clientId || "";
-        $("#bot-token-hint").textContent = settings.discord.hasBotToken
-          ? `Current token ${settings.discord.botTokenPreview}`
-          : "No bot token saved yet";
-        const siteForm = $("#site-form");
-        if (siteForm && !typingIn(siteForm)) siteForm.elements.siteName.value = settings.siteName || "";
-        if (siteForm) {
-          siteForm.elements.siteName.disabled = Boolean(settings.siteNameManaged);
-          $("#site-name-hint").textContent = settings.siteNameManaged
-            ? "Set by SITE_NAME in the environment. Change it there and restart."
-            : "2–40 characters. A 0 in the name gets the same bold treatment as the default.";
-        }
-        const ssoForm = $("#sso-form");
-        if (!typingIn(ssoForm)) {
-          ssoForm.elements.allowedIds.value = (settings.discord.allowedIds || []).join(", ");
-        }
-      }
-      return next;
-    } catch (error) {
-      toast(error.message || "Could not load the dashboard", true);
-      return null;
-    }
-  }
-
-  let failures = 0;
-  let poller = null;
-
-  function startPolling() {
-    if (poller) return;
-    poller = setInterval(() => void refresh(), 20_000);
-  }
-
-  function connectEvents() {
-    if (typeof EventSource === "undefined") return startPolling();
-    const source = new EventSource("/api/events");
-    source.addEventListener("state", (event) => {
-      failures = 0;
-      try {
-        const message = JSON.parse(event.data);
-        if (message?.data) applyState(message.data, { fill: !dirty });
-      } catch {
-        /* ignore */
-      }
-    });
-    source.addEventListener("error", () => {
-      failures += 1;
-      if (failures >= 3) {
-        source.close();
-        startPolling();
-      }
-    });
-  }
-
-  // ----------------------------------------------------------------- members
-
-  /**
-   * The Members tab is the owner's only surface for accounts: nobody can be
-   * emailed an invite in this build, so accounts are made here (or at /register
-   * while sign-ups are open) and passwords are handed over out of band.
-   */
-  const membersPane = $("#pane-members");
-
-  function renderMembers(data) {
-    const list = $("#members-list");
-    const empty = $("#members-empty");
-    if (!list) return;
-    const users = data?.users || [];
-    list.innerHTML = "";
-    if (empty) empty.hidden = users.length > 0;
-
-    const count = $("#members-count");
-    if (count) count.textContent = String(users.length);
-
-    for (const user of users) {
-      const row = document.createElement("div");
-      row.className = "member-row";
-
-      const main = document.createElement("div");
-      main.className = "member-main";
-      const name = document.createElement("div");
-      name.className = "member-name";
-      name.textContent = user.name || user.email;
-      const meta = document.createElement("div");
-      meta.className = "member-meta";
-      const bits = [user.email];
-      if (user.linked) bits.push("Discord linked");
-      else bits.push("no Discord yet");
-      bits.push(user.presenceName ? `card: ${user.presenceName}` : "no card");
-      if (user.photos) bits.push(`${user.photos} photo${user.photos === 1 ? "" : "s"}`);
-      bits.push(`added ${timeAgo(user.createdAt)}`);
-      meta.textContent = bits.join(" · ");
-      meta.title = meta.textContent;
-      main.append(name, meta);
-
-      const actions = document.createElement("div");
-      actions.className = "member-actions";
-
-      const reset = document.createElement("button");
-      reset.className = "btn ghost small";
-      reset.type = "button";
-      reset.textContent = "Reset password";
-      reset.addEventListener("click", async () => {
-        const password = window.prompt(
-          `New password for ${user.email}\nAt least 10 characters. Send it to them yourself.`
-        );
-        if (!password) return;
-        try {
-          await api(`/api/admin/users/${encodeURIComponent(user.id)}/password`, "POST", { password });
-          toast("Password changed. Pass it on to them.");
-        } catch (error) {
-          toast(error.message, true);
-        }
-      });
-
-      const unlink = document.createElement("button");
-      unlink.className = "btn ghost small";
-      unlink.type = "button";
-      unlink.textContent = user.linked ? "Unlink Discord" : "Unlink";
-      unlink.disabled = !user.linked;
-      unlink.addEventListener("click", async () => {
-        if (!window.confirm(`Disconnect ${user.email} from their Discord account?`)) return;
-        try {
-          await api(`/api/admin/users/${encodeURIComponent(user.id)}/unlink`, "POST", {});
-          toast("Discord account unlinked.");
-          await loadMembers();
-        } catch (error) {
-          toast(error.message, true);
-        }
-      });
-
-      const remove = document.createElement("button");
-      remove.className = "btn ghost small danger";
+  function renderButtonRows() {
+    var box = $("btn-rows");
+    box.textContent = "";
+    (draft.buttons || []).forEach(function (button, index) {
+      var row = document.createElement("div");
+      row.className = "row2 btn-row";
+      var labelWrap = document.createElement("label");
+      labelWrap.className = "field";
+      var labelTag = document.createElement("span");
+      labelTag.textContent = "Button " + (index + 1);
+      var labelInput = document.createElement("input");
+      labelInput.maxLength = 32;
+      labelInput.placeholder = "label";
+      labelInput.value = button.label || "";
+      labelInput.addEventListener("input", function () { draft.buttons[index].label = labelInput.value; renderPreview(); });
+      labelWrap.appendChild(labelTag);
+      labelWrap.appendChild(labelInput);
+      var urlWrap = document.createElement("label");
+      urlWrap.className = "field";
+      var urlTag = document.createElement("span");
+      urlTag.textContent = "Link";
+      var urlInput = document.createElement("input");
+      urlInput.placeholder = "https://…";
+      urlInput.value = button.url || "";
+      urlInput.addEventListener("input", function () { draft.buttons[index].url = urlInput.value; renderPreview(); });
+      urlWrap.appendChild(urlTag);
+      urlWrap.appendChild(urlInput);
+      var remove = document.createElement("button");
       remove.type = "button";
-      remove.textContent = "Remove";
-      remove.addEventListener("click", async () => {
-        const ok = window.confirm(
-          `Delete ${user.email}?\nTheir card and photos go with it. This cannot be undone.`
-        );
-        if (!ok) return;
-        try {
-          await api(`/api/admin/users/${encodeURIComponent(user.id)}`, "DELETE");
-          toast("Account removed.");
-          await loadMembers();
-        } catch (error) {
-          toast(error.message, true);
+      remove.className = "btn ghost small";
+      remove.textContent = "×";
+      remove.title = "Remove this button";
+      remove.addEventListener("click", function () { draft.buttons.splice(index, 1); renderButtonRows(); renderPreview(); });
+      row.appendChild(labelWrap);
+      row.appendChild(urlWrap);
+      row.appendChild(remove);
+      box.appendChild(row);
+    });
+  }
+
+  function fillForm(p) {
+    draft = clone(p);
+    $("f-name").value = draft.name || "";
+    $("f-type").value = String(Number(draft.type) || 0);
+    $("f-status").value = draft.status || "online";
+    $("f-details").value = draft.details || "";
+    $("f-state").value = draft.state || "";
+    $("f-url").value = draft.url || "";
+    $("row-url").hidden = String(draft.type) !== "1";
+    $("f-timer").checked = Boolean(draft.startedAt);
+    $("row-restart").hidden = !draft.startedAt;
+    $("f-bot").checked = !draft.targets || draft.targets.bot !== false;
+    $("f-profile").checked = !draft.targets || draft.targets.profile !== false;
+    $("f-enabled").checked = Boolean(draft.enabled);
+    $("f-large-text").value = draft.largeText || "";
+    $("f-small-text").value = draft.smallText || "";
+    renderButtonRows();
+    renderImageSlots();
+    renderPreview();
+  }
+
+  function payload() {
+    return {
+      name: $("f-name").value,
+      type: Number($("f-type").value),
+      status: $("f-status").value,
+      details: $("f-details").value,
+      state: $("f-state").value,
+      url: $("f-url").value,
+      largeImage: draft.largeImage || "",
+      smallImage: draft.smallImage || "",
+      largeText: $("f-large-text").value,
+      smallText: $("f-small-text").value,
+      startedAt: $("f-timer").checked,
+      restartTimer: $("f-restart").checked,
+      buttons: (draft.buttons || []).filter(function (b) { return b.label || b.url; }),
+      targets: { bot: $("f-bot").checked, profile: $("f-profile").checked },
+      enabled: $("f-enabled").checked
+    };
+  }
+
+  function showErrors(errors) {
+    var box = $("errors");
+    box.textContent = "";
+    (errors || []).forEach(function (message) {
+      var li = document.createElement("li");
+      li.textContent = message;
+      box.appendChild(li);
+    });
+    box.hidden = !errors || errors.length === 0;
+  }
+
+  /* ---------- photos ---------- */
+
+  function renderPhotos() {
+    var grid = $("photo-grid");
+    grid.textContent = "";
+    $("picker-empty").hidden = (state.assets || []).length > 0;
+    (state.assets || []).forEach(function (asset) {
+      var tile = document.createElement("div");
+      tile.className = "tile";
+      var img = document.createElement("img");
+      img.src = asset.url;
+      img.alt = "";
+      img.loading = "lazy";
+      var actions = document.createElement("div");
+      actions.className = "tile-actions";
+      [["L", "Use as large", function () { draft.largeImage = "asset:" + asset.id; renderImageSlots(); renderPreview(); }],
+       ["S", "Use as small", function () { draft.smallImage = "asset:" + asset.id; renderImageSlots(); renderPreview(); }],
+       ["×", "Delete", function () { removePhoto(asset.id); }]].forEach(function (entry) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn ghost tiny";
+        b.textContent = entry[0];
+        b.title = entry[1];
+        b.addEventListener("click", entry[2]);
+        actions.appendChild(b);
+      });
+      tile.appendChild(img);
+      tile.appendChild(actions);
+      grid.appendChild(tile);
+    });
+  }
+
+  function removePhoto(id) {
+    api("/api/assets/" + id, { method: "DELETE" }).then(function (r) {
+      if (!r.ok) { toast(r.body.error || "Could not delete that photo."); return; }
+      var ref = "asset:" + id;
+      if (draft.largeImage === ref) draft.largeImage = "";
+      if (draft.smallImage === ref) draft.smallImage = "";
+      renderImageSlots();
+      renderPreview();
+      refresh().then(function () { toast("Photo deleted."); });
+    });
+  }
+
+  function uploadPhotos(files) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return;
+    var done = 0;
+    var failed = 0;
+    Promise.all(list.map(function (file) {
+      return fetch("/api/assets", {
+        method: "POST",
+        headers: { "content-type": "application/octet-stream", "x-csrf": csrf },
+        body: file
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (body) {
+          if (res.ok) done += 1;
+          else { failed += 1; toast(body.error || "Upload failed."); }
+        });
+      }).catch(function () { failed += 1; });
+    })).then(function () {
+      return refresh().then(function () {
+        if (done && !failed) toast("Uploaded " + done + (done > 1 ? " photos." : " photo."));
+      });
+    });
+  }
+
+  /* ---------- picker ---------- */
+
+  function openPicker(slot) {
+    if (!(state.assets || []).length) { toast("Upload a photo first."); return; }
+    pickerSlot = slot;
+    var grid = $("picker-grid");
+    grid.textContent = "";
+    state.assets.forEach(function (asset) {
+      var tile = document.createElement("div");
+      tile.className = "tile";
+      var img = document.createElement("img");
+      img.src = asset.url;
+      img.alt = "";
+      img.loading = "lazy";
+      tile.appendChild(img);
+      tile.addEventListener("click", function () {
+        if (pickerSlot === "large") draft.largeImage = "asset:" + asset.id;
+        else draft.smallImage = "asset:" + asset.id;
+        $("picker").close();
+        renderImageSlots();
+        renderPreview();
+      });
+      grid.appendChild(tile);
+    });
+    $("picker").showModal();
+  }
+
+  /* ---------- status ---------- */
+
+  function timeAgo(iso) {
+    var ms = Date.now() - Date.parse(iso);
+    if (!Number.isFinite(ms) || ms < 0) return "just now";
+    var minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return "seconds ago";
+    if (minutes < 60) return minutes + " min ago";
+    return Math.floor(minutes / 60) + " h ago";
+  }
+
+  function renderStatus() {
+    var bot = state.bot || {};
+    var botPill = $("pill-bot");
+    var botText = $("pill-bot-text");
+    if (!bot.enabled) { botPill.dataset.state = "off"; botText.textContent = "Bot off"; }
+    else if (bot.connected) { botPill.dataset.state = "live"; botText.textContent = "Bot online"; }
+    else { botPill.dataset.state = "busy"; botText.textContent = "Bot " + (bot.status || "connecting"); }
+
+    var act = state.activity || {};
+    var actPill = $("pill-activity");
+    var actText = $("pill-activity-text");
+    if (act.connected) { actPill.dataset.state = "live"; actText.textContent = "On your profile"; }
+    else if (act.lastSeenAt) { actPill.dataset.state = "busy"; actText.textContent = "Seen " + timeAgo(act.lastSeenAt); }
+    else { actPill.dataset.state = "off"; actText.textContent = "Activity idle"; }
+
+    var owner = state.owner || {};
+    $("discord-user").textContent = owner.discordId ? "Linked as " + (owner.username || "your Discord account") + "." : "Not linked yet - Connect Discord once so the in-Discord app knows it is you.";
+
+    var lines = [];
+    if (act.connected) lines.push("Your card is on your profile right now" + (act.username ? " (as " + act.username + ")" : "") + ".");
+    else if (act.error) lines.push(act.error);
+    else if (act.lastSeenAt) lines.push("The in-Discord app last checked in " + timeAgo(act.lastSeenAt) + ".");
+    else lines.push("The in-Discord app has not checked in yet. Open it: Discord → a voice channel → App Launcher → " + (state.siteName || "StatusC0rd") + ".");
+    $("activity-status").textContent = lines.join(" ");
+  }
+
+  function renderCardPage() {
+    $("publish-card").checked = Boolean(state.settings && state.settings.cardPublished);
+    var base = state.publicUrl || location.origin;
+    $("card-link").value = base.replace(/\/+$/, "") + "/card";
+  }
+
+  /* ---------- boot ---------- */
+
+  function fillSettings() {
+    var s = state.settings || {};
+    $("s-site-name").value = s.siteName || "";
+    $("s-keepalive").value = s.keepAlive === false ? "off" : "on";
+    $("s-interval").value = String(s.keepAliveMinutes || 10);
+    $("s-client-id").value = s.clientId || "";
+    $("s-client-secret").value = "";
+    $("s-bot-token").value = "";
+  }
+
+  function refresh() {
+    return api("/api/state").then(function (r) {
+      if (!r.ok) { toast(r.body && r.body.error || "Could not load the dashboard."); return; }
+      var hadDraft = Boolean(draft);
+      state = r.body;
+      csrf = state.csrf;
+      if (!hadDraft) {
+        fillForm(state.presence);
+        fillSettings();
+      }
+      renderPhotos();
+      renderStatus();
+      renderCardPage();
+    });
+  }
+
+  function bind() {
+    $("f-name").addEventListener("input", function () { draft.name = $("f-name").value; renderPreview(); });
+    $("f-type").addEventListener("change", function () {
+      draft.type = Number($("f-type").value);
+      $("row-url").hidden = draft.type !== 1;
+      renderPreview();
+    });
+    $("f-details").addEventListener("input", function () { draft.details = $("f-details").value; renderPreview(); });
+    $("f-state").addEventListener("input", function () { draft.state = $("f-state").value; renderPreview(); });
+    $("f-timer").addEventListener("change", function () {
+      draft.startedAt = $("f-timer").checked;
+      $("row-restart").hidden = !draft.startedAt;
+      renderPreview();
+    });
+    $("f-large-text").addEventListener("input", function () { draft.largeText = $("f-large-text").value; });
+    $("f-small-text").addEventListener("input", function () { draft.smallText = $("f-small-text").value; });
+    $("add-button").addEventListener("click", function () {
+      draft.buttons = draft.buttons || [];
+      if (draft.buttons.length >= 2) { toast("Discord shows two buttons at most."); return; }
+      draft.buttons.push({ label: "", url: "" });
+      renderButtonRows();
+    });
+    $("save").addEventListener("click", function () {
+      $("save-note").textContent = "Saving…";
+      api("/api/presence", { method: "POST", body: JSON.stringify(payload()) }).then(function (r) {
+        if (r.ok) {
+          fillForm(r.body.presence);
+          showErrors([]);
+          $("save-note").textContent = "Live · " + new Date().toLocaleTimeString();
+        } else {
+          $("save-note").textContent = "";
+          showErrors(r.body.errors || [r.body.error || "Could not save the card."]);
         }
       });
-
-      actions.append(reset, unlink, remove);
-      row.append(main, actions);
-      list.append(row);
-    }
-  }
-
-  async function loadMembers() {
-    if (!isAdmin || !membersPane) return;
-    try {
-      renderMembers(await api("/api/admin/users"));
-    } catch (error) {
-      toast(error.message, true);
-    }
-  }
-
-  if (isAdmin && membersPane) {
-    const toggle = $("#allow-signup");
-    toggle?.addEventListener("change", async () => {
-      try {
-        await api("/api/settings", "POST", { allowSignup: toggle.checked });
-        toast(toggle.checked ? "Anyone with the link can sign up." : "Sign-ups closed.");
-      } catch (error) {
-        toggle.checked = !toggle.checked;
-        toast(error.message, true);
-      }
     });
-
-    $("#member-create")?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const formEl = event.currentTarget;
-      const email = formEl.elements.namedItem("email").value.trim();
-      const name = formEl.elements.namedItem("name").value.trim();
-      const password = formEl.elements.namedItem("password").value;
-      try {
-        await api("/api/admin/users", "POST", { email, name, password });
-        formEl.reset();
-        toast("Account created. Send them the password.");
-        await loadMembers();
-      } catch (error) {
-        toast(error.message, true);
-      }
+    $("take-down").addEventListener("click", function () {
+      api("/api/presence/clear", { method: "POST", body: "{}" }).then(function (r) {
+        if (r.ok) {
+          fillForm(r.body.presence);
+          $("save-note").textContent = "Taken down";
+          toast("The card is down everywhere.");
+        } else toast(r.body.error || "Could not take the card down.");
+      });
     });
-
-    // Refetched on focus so a new sign-up shows up without a reload.
-    $('.tab[data-tab="members"]')?.addEventListener("click", () => void loadMembers());
-    void loadMembers();
-  }
-
-  // ------------------------------------------------------- public card page
-
-  function renderCardPanel(card) {
-    const handle = $("card-handle") || document.getElementById("card-handle");
-    if (!handle || !card) return;
-    if (document.activeElement !== handle) handle.value = card.handle || "";
-    const toggle = document.getElementById("card-public");
-    if (toggle && document.activeElement !== toggle) toggle.checked = Boolean(card.publicCard);
-    const tag = document.getElementById("card-tag");
-    if (tag) tag.textContent = card.publicCard ? "Public" : "Private";
-    const open = document.getElementById("card-open");
-    if (open && card.url) {
-      open.href = card.url;
-      // A private card 404s, so the link is not offered until it is public.
-      open.setAttribute("aria-disabled", card.publicCard ? "false" : "true");
-      open.classList.toggle("is-disabled", !card.publicCard);
-    }
-    const status = document.getElementById("card-status");
-    if (status) {
-      status.textContent = card.publicCard
-        ? "Anyone with the link can view it. Turn the switch off to close it again."
-        : "The link is private: only you can open it until you switch it on.";
-    }
-  }
-
-  /** The instance name: header, titles and card pages all follow it. */
-  function wireSiteForm() {
-    const form = document.getElementById("site-form");
-    if (!form) return;
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const siteName = form.elements.siteName.value.trim();
-      try {
-        await api("/api/settings", "POST", { siteName });
-        toast("Name saved. Reload to see it everywhere.");
-        // The header is rendered server-side, so the page has to reload to show
-        // the new wordmark; the toast would be a lie otherwise.
-        setTimeout(() => location.reload(), 700);
-      } catch (error) {
-        toast(error.message, true);
-      }
+    $("upload").addEventListener("click", function () { $("photo-input").click(); });
+    $("photo-input").addEventListener("change", function () {
+      uploadPhotos($("photo-input").files);
+      $("photo-input").value = "";
+    });
+    $("pick-large").addEventListener("click", function () { openPicker("large"); });
+    $("pick-small").addEventListener("click", function () { openPicker("small"); });
+    $("picker-close").addEventListener("click", function () { $("picker").close(); });
+    $("copy-link").addEventListener("click", function () {
+      var input = $("card-link");
+      input.select();
+      if (navigator.clipboard) navigator.clipboard.writeText(input.value).then(function () { toast("Link copied."); });
+      else { document.execCommand("copy"); toast("Link copied."); }
+    });
+    $("publish-card").addEventListener("change", function () {
+      api("/api/settings", { method: "POST", body: JSON.stringify({ cardPublished: $("publish-card").checked }) }).then(function (r) {
+        if (r.ok) toast($("publish-card").checked ? "The card page is public." : "The card page is private.");
+        else toast(r.body.error || "Could not change the card page.");
+      });
+    });
+    $("save-settings").addEventListener("click", function () {
+      var body = {
+        siteName: $("s-site-name").value,
+        keepAlive: $("s-keepalive").value === "on",
+        keepAliveMinutes: Number($("s-interval").value) || 10,
+        clientId: $("s-client-id").value.trim()
+      };
+      if ($("s-client-secret").value.trim()) body.clientSecret = $("s-client-secret").value.trim();
+      if ($("s-bot-token").value.trim()) body.botToken = $("s-bot-token").value.trim();
+      api("/api/settings", { method: "POST", body: JSON.stringify(body) }).then(function (r) {
+        if (r.ok) {
+          fillSettings();
+          toast("Instance saved.");
+        } else toast(r.body.error || "Could not save the instance.");
+      });
+    });
+    $("logout").addEventListener("click", function () {
+      fetch("/logout", { method: "POST" }).then(function () { location.href = "/"; });
+    });
+    document.querySelectorAll("[data-preset]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var preset = JSON.parse(button.dataset.preset);
+        draft = Object.assign(clone(draft), preset, { buttons: clone(preset.buttons || draft.buttons || []) });
+        fillForm(draft);
+      });
     });
   }
 
-  function wireCardPanel() {
-    const formEl = document.getElementById("card-form");
-    if (!formEl) return;
-    formEl.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const handle = document.getElementById("card-handle").value.trim().toLowerCase();
-      const publicCard = document.getElementById("card-public").checked;
-      const save = document.getElementById("card-save");
-      save.disabled = true;
-      try {
-        const result = await api("/api/card", "POST", { handle, publicCard });
-        renderCardPanel(result.card);
-        toast(result.card.publicCard ? "Card published. The link works now." : "Card page is private.");
-      } catch (error) {
-        toast(error.message, true);
-      } finally {
-        save.disabled = false;
-      }
-    });
-
-    document.getElementById("card-copy")?.addEventListener("click", async () => {
-      const open = document.getElementById("card-open");
-      if (open?.getAttribute("aria-disabled") === "true") {
-        toast("Switch the card page on first, then the link works.", true);
-        return;
-      }
-      const ok = await copyText(open.href);
-      toast(ok ? "Link copied." : "Could not copy. Select the link and copy it.");
-    });
-  }
-
-  // The OAuth link round-trip drops its answer in the query string.
-  const linkResult = new URLSearchParams(location.search).get("link");
-  if (linkResult) {
-    const LINK_MESSAGES = {
-      ok: "Discord connected. Open the app in Discord and this card goes live.",
-      taken: "That Discord account is already linked to another StatusC0rd account.",
-      failed: "Discord could not be connected. Try again in a moment.",
-      unconfigured: "The owner has not added a Discord application ID and secret yet.",
-      cancelled: "Discord linking was cancelled."
-    };
-    toast(LINK_MESSAGES[linkResult] || "Discord linking finished.", linkResult !== "ok");
-    history.replaceState(null, "", `${location.pathname}${location.hash}`);
-  }
-
-  wireCardPanel();
-  wireSiteForm();
-
-  void (async () => {
-    await refresh();
-    connectEvents();
-    setInterval(tickTimer, 1000);
-    // The session's last-seen time ages out, so the pill needs a nudge.
-    setInterval(renderProfilePill, 30_000);
-  })();
-
-  window.addEventListener("beforeunload", (event) => {
-    // Drafts autosave, so only an in-flight save is worth a prompt.
-    if (!pendingSave) return undefined;
-    event.preventDefault();
-    event.returnValue = "";
-    return "";
+  setInterval(drawElapsed, 1000);
+  bind();
+  refresh().then(function () {
+    pollTimer = setInterval(function () { refresh(); }, 12000);
   });
 })();
