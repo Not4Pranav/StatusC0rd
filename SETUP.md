@@ -60,11 +60,12 @@ At <https://discord.com/developers/applications>:
    <code>applications.commands</code> scope to **User Install**, and
    <code>applications.commands</code> + <code>bot</code> (any permissions) to
    **Guild Install** → **Save Changes**.
-10. Invite: open the **Install Link** from that page - or press
-    <strong>Add to Discord</strong> on your site (it serves <code>/invite</code>).
-    One link, two choices: <strong>Add to my apps</strong> installs it to the
-    user's account (this is what puts it in their App Launcher anywhere),
-    <strong>Add to server</strong> invites the bot for the admin's 24/7 card.
+10. Invite - two links, both needed: <code>/invite</code> installs the app
+    to the user's account (this is what puts it in their App Launcher
+    anywhere), and <code>/invite?guild=1</code> invites the bot to a server
+    with the permissions it needs (View Channels, Send Messages, Embed
+    Links, Read Message History). The bot in the server answers <code>;rpc</code>;
+    the user install is what carries the profile card.
 
 ## 3 · The approval pipeline (how anyone gets in)
 

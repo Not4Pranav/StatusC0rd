@@ -215,11 +215,15 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     res.json({ status: "ok", uptime: Math.floor(process.uptime()), version });
   });
 
-  // The user-install link: the app lands in anyone's App Launcher with no
-  // server invite - the same Discord-provided flow the reference site uses.
+  // Two invite links: /invite adds the app to the user's account (it lands
+  // in their App Launcher, no server needed); /invite?guild=1 invites the
+  // bot to a server with the four permissions it needs.
   app.get("/invite", (req, res) => {
     const clientId = effective().clientId;
     if (!clientId) return res.redirect("/?e=3");
+    if (["1", "true", "yes"].includes(String(req.query.guild || "").toLowerCase())) {
+      return res.redirect("https://discord.com/oauth2/authorize?client_id=" + encodeURIComponent(clientId) + "&scope=bot%20applications.commands&permissions=84992");
+    }
     res.redirect("https://discord.com/oauth2/authorize?client_id=" + encodeURIComponent(clientId) + "&integration_type=1&scope=applications.commands");
   });
 
