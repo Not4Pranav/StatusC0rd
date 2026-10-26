@@ -434,3 +434,34 @@ test("cards are re-created for principals the upgrade did not know about", () =>
   assert.equal(s.cardFor(user.id).handle, "late-arrival");
   assert.equal(s.findCardByHandle("late-arrival").publicCard, false);
 });
+
+test("a site name is printable, bounded, and never empty", () => {
+  const { sanitizeSiteName } = require("../src/settings");
+  assert.equal(sanitizeSiteName("StatusC0rd"), "StatusC0rd");
+  assert.equal(sanitizeSiteName("  Star   Statusc0rd  "), "Star Statusc0rd", "whitespace collapses");
+  assert.equal(sanitizeSiteName("a\u0000b\tc"), "a b c", "control characters become spaces");
+  assert.equal(sanitizeSiteName("x"), "StatusC0rd", "too short falls back");
+  assert.equal(sanitizeSiteName(""), "StatusC0rd");
+  assert.equal(sanitizeSiteName(null), "StatusC0rd");
+  assert.equal(sanitizeSiteName("z".repeat(60)).length, 40, "bounded to 40 characters");
+});
+
+test("any name gets the branded zero, and markup in it stays inert", () => {
+  const { brandHtml } = require("../src/views");
+  assert.equal(brandHtml("StatusC0rd"), "StatusC<strong>0</strong>rd");
+  assert.equal(brandHtml("Star StatusC0rd"), "Star StatusC<strong>0</strong>rd");
+  assert.equal(brandHtml("No zero here"), "No zero here");
+  assert.equal(brandHtml('<img src=x onerror=alert(1)>'), "&lt;img src=x onerror=alert(1)&gt;");
+  assert.equal(brandHtml(""), "StatusC<strong>0</strong>rd");
+});
+
+test("the stored site name survives a reload and never becomes blank", () => {
+  const dir = tmpDir("site-name");
+  const s = store(dir);
+  assert.equal(s.siteName, "StatusC0rd", "a fresh store has the product name");
+  assert.equal(s.setSiteName("Star Statusc0rd"), "Star Statusc0rd");
+  assert.equal(s.effective().siteName, "Star Statusc0rd");
+  const reopened = store(dir);
+  assert.equal(reopened.siteName, "Star Statusc0rd", "persisted");
+  assert.equal(reopened.setSiteName(" "), "StatusC0rd", "blank falls back, never an empty header");
+});

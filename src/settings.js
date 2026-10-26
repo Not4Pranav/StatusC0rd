@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   createdAt: null,
   updatedAt: null,
   publicUrl: "",
+  // What the site calls itself: a free instance can carry its own name.
+  siteName: "StatusC0rd",
   sessionSecret: "",
   // The admin panel key. Distinct from a member password on purpose.
   admin: { keyHash: "", keySalt: "", updatedAt: null },
@@ -77,6 +79,21 @@ const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{1,22}[a-z0-9])$/;
 function normalizeEmail(value) {
   const email = String(value ?? "").trim().toLowerCase();
   return EMAIL_RE.test(email) && email.length <= 254 ? email : "";
+}
+
+/**
+ * Keep a site name printable in a page title and a brand row.
+ *
+ * Trimmed, single-spaced, no control characters, 2-40 characters. Anything
+ * unusable falls back to the product name rather than leaving an empty header.
+ */
+function sanitizeSiteName(value) {
+  const text = String(value ?? "")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40);
+  return text.length >= 2 ? text : "StatusC0rd";
 }
 
 /** Turn a display name or email into an acceptable handle, or "" if hopeless. */
@@ -361,6 +378,17 @@ class SettingsStore {
   /** True when the dashboard key is supplied by the environment. */
   get keyFromEnv() {
     return Boolean(this.env.DASHBOARD_KEY);
+  }
+
+  /** The name this instance shows in its header, titles and card pages. */
+  get siteName() {
+    return sanitizeSiteName(this.data.siteName);
+  }
+
+  setSiteName(name) {
+    this.data.siteName = sanitizeSiteName(name);
+    this._commit();
+    return this.data.siteName;
   }
 
   get hasAdminKey() {
@@ -779,6 +807,7 @@ class SettingsStore {
         : discord.allowedIds,
       redirectUri: String(env.REDIRECT_URI || discord.redirectUri || "").trim(),
       publicUrl,
+      siteName: sanitizeSiteName(env.SITE_NAME || stored.siteName),
       botEnabled: parseFlag(env.BOT_ENABLED, Boolean(botToken)),
       keepAlive: {
         enabled: keepAliveEnabled && Boolean(publicUrl),
@@ -798,7 +827,8 @@ class SettingsStore {
         allowedDiscordIds: Boolean(env.ALLOWED_DISCORD_IDS),
         redirectUri: Boolean(env.REDIRECT_URI),
         dashboardKey: Boolean(env.DASHBOARD_KEY),
-        publicUrl: Boolean(env.PUBLIC_URL)
+        publicUrl: Boolean(env.PUBLIC_URL),
+        siteName: Boolean(env.SITE_NAME)
       }
     };
   }
@@ -869,6 +899,7 @@ class SettingsStore {
 
 module.exports = {
   SettingsStore,
+  sanitizeSiteName,
   ADMIN_USER_ID,
   MIN_PASSWORD,
   MIN_KEY_LENGTH,

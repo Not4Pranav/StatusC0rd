@@ -2020,3 +2020,50 @@ body.site {
 .share-card .actions {
   margin-top: 12px;
 }
+
+/* ------------------------------------------------------------ landing hero */
+
+.hero-eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.btn.large {
+  padding: 12px 22px;
+  font-size: 0.95rem;
+  border-radius: 10px;
+}
+
+.hero-fine {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* The reference site keeps one column and one idea; the proof comes after. */
+.hero-card {
+  margin-top: 22px;
+}
+
+.hero .preview-time {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .flags {
+    grid-template-columns: 1fr;
+  }
+}

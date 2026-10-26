@@ -90,6 +90,13 @@ function normalizeEnv(env = process.env) {
   }
   // Split hosting: the gateway connection runs in its own worker process, which
   // fetches the card from the website. Both sides need the same shared secret.
+  // A managed host can pin the site name from the environment, which wins over
+  // the dashboard field exactly like every other setting.
+  const siteName = trim(env.SITE_NAME);
+  if (siteName && (siteName.length < 2 || siteName.length > 40)) {
+    problems.push(`SITE_NAME "${siteName}" is ${siteName.length} characters; use 2-40.`);
+  }
+
   const botUrl = trim(env.BOT_URL).replace(/\/+$/, "");
   if (botUrl) {
     try {
@@ -131,6 +138,7 @@ function normalizeEnv(env = process.env) {
     REDIRECT_URI: redirectUri,
     PUBLIC_URL: publicUrl,
     SETUP_TOKEN: trim(env.SETUP_TOKEN),
+    SITE_NAME: siteName,
     BOT_URL: botUrl,
     BOT_WORKER_TOKEN: botWorkerToken,
     DATA_DIR: trim(env.DATA_DIR),

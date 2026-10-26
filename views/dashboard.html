@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark" />
     <meta name="csrf-token" content="{{CSRF}}" />
     <meta name="app-id" content="{{CLIENT_ID}}" />
-    <title>StatusC0rd</title>
+    <title>{{SITE_NAME}}</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/upload.js" defer></script>
@@ -16,7 +16,7 @@
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">S</span>
-        <span>StatusC<strong>0</strong>rd</span>
+        <span>{{{BRAND_HTML}}}</span>
         <span class="version">v{{VERSION}}</span>
       </div>
       <div class="topbar-right">
@@ -510,6 +510,30 @@
 
         <!-- =============================================== settings ======== -->
         <div class="pane admin-only" data-pane="settings" id="pane-settings" role="tabpanel">
+          <div class="card">
+            <div class="card-head"><h2>This instance</h2></div>
+            <p class="hint">
+              The name in the header, the page titles and the card pages. Change it to make this
+              deployment your own — nothing else is tied to it.
+            </p>
+            <form id="site-form" class="stack">
+              <label class="field">
+                <span>Site name</span>
+                <input
+                  name="siteName"
+                  type="text"
+                  maxlength="40"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="StatusC0rd"
+                  aria-describedby="site-name-hint"
+                />
+                <small id="site-name-hint">2–40 characters. A 0 in the name gets the same bold treatment as the default.</small>
+              </label>
+              <button class="btn primary" type="submit">Save name</button>
+            </form>
+          </div>
+
           <div class="card">
             <div class="card-head"><h2>Application &amp; bot</h2></div>
             <form id="app-form" class="stack">
