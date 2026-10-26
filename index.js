@@ -50,6 +50,7 @@ const effective = () => ({
   clientSecret: String(process.env.CLIENT_SECRET || store.settings.clientSecret || "").trim(),
   botToken: String(process.env.DISCORD_TOKEN || store.settings.botToken || "").trim(),
   siteName: String(process.env.SITE_NAME || store.settings.siteName || "").trim() || "StatusC0rd",
+  supportUrl: String(process.env.SUPPORT_URL || store.settings.supportUrl || "").trim(),
   publicUrl: String(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || store.settings.publicUrl || "").trim().replace(/\/+$/, ""),
   keepAlive: process.env.KEEP_ALIVE === undefined ? store.settings.keepAlive !== false : flag("KEEP_ALIVE", true),
   keepAliveMinutes: Number(process.env.KEEP_ALIVE_INTERVAL_MINUTES || store.settings.keepAliveMinutes || 10),

@@ -268,6 +268,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       ok: true,
       csrf: ensureCsrf(req),
       siteName: config.siteName,
+      supportUrl: config.supportUrl,
       version,
       publicUrl: config.publicUrl,
       publicUrlManaged: Boolean(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL),
@@ -285,6 +286,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
             hasClientSecret: Boolean(config.clientSecret),
             hasBotToken: Boolean(config.botToken),
             siteName: store.settings.siteName || "",
+            supportUrl: config.supportUrl,
             keepAlive: config.keepAlive,
             keepAliveMinutes: config.keepAliveMinutes
           }
@@ -318,6 +320,15 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     res.json({ ok: true, presence });
   });
 
+  // Delete my account: the card, the photos and their files all go.
+  app.delete("/api/account", requireAuth, requireCsrf, (req, res) => {
+    const user = currentUser(req);
+    store.removeUser(user.id);
+    if (isAdmin(req)) bot.clearPresence("online");
+    req.session = null;
+    res.json({ ok: true });
+  });
+
   app.post("/api/settings", requireAuth, requireCsrf, (req, res) => {
     const user = currentUser(req);
     const admin = isAdmin(req);
@@ -329,7 +340,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     }
 
     // Admins only: instance-wide values.
-    const adminOnly = ["clientId", "clientSecret", "botToken", "siteName", "keepAlive", "keepAliveMinutes"];
+    const adminOnly = ["clientId", "clientSecret", "botToken", "siteName", "supportUrl", "keepAlive", "keepAliveMinutes"];
     const touchedAdminFields = adminOnly.some((k) => body[k] !== undefined);
     if (touchedAdminFields && !admin) {
       return res.status(403).json({ ok: false, error: "Those settings are admin-only." });
@@ -340,6 +351,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       if (typeof body.clientSecret === "string" && body.clientSecret.trim() !== "") s.clientSecret = body.clientSecret.trim().slice(0, 128);
       if (typeof body.botToken === "string" && body.botToken.trim() !== "") s.botToken = body.botToken.trim().slice(0, 128);
       if (body.siteName !== undefined) s.siteName = sanitizeSiteName(body.siteName);
+      if (body.supportUrl !== undefined) s.supportUrl = /^https:\/\//i.test(String(body.supportUrl).trim()) ? String(body.supportUrl).trim().slice(0, 300) : "";
       if (body.keepAlive !== undefined) s.keepAlive = body.keepAlive === true || body.keepAlive === "true" || body.keepAlive === 1;
       if (body.keepAliveMinutes !== undefined) s.keepAliveMinutes = Math.min(60, Math.max(5, Number(body.keepAliveMinutes) || 10));
       store.save();

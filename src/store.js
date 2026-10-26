@@ -100,6 +100,7 @@ class Store {
         clientSecret: "",
         botToken: "",
         siteName: "",
+        supportUrl: "",
         publicUrl: "",
         keepAlive: true,
         keepAliveMinutes: 10
@@ -195,6 +196,23 @@ class Store {
     if (!user) return;
     user.cardPublished = value === true;
     this.save();
+  }
+
+  /** Delete an account and every file it owns. */
+  removeUser(id) {
+    const user = this.getUser(id);
+    if (!user) return false;
+    for (const asset of user.assets || []) {
+      try {
+        fs.rmSync(this.assetPath(asset));
+      } catch {
+        /* already gone */
+      }
+    }
+    delete this.data.users[String(id)];
+    this.data.adminIds = this.data.adminIds.filter((a) => a !== String(id));
+    this.save();
+    return true;
   }
 
   /* ---- photos (each asset belongs to one account) ---- */
