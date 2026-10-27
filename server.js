@@ -331,7 +331,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       version,
       publicUrl: config.publicUrl,
       publicUrlManaged: Boolean(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL),
-      user: Object.assign({ id: user.id, username: user.username, admin }, discordProfile(user)),
+      user: Object.assign({ id: user.id, username: user.username, email: user.email || "", admin }, discordProfile(user)),
       cardPath: "/card/" + user.id,
       presence: user.presence,
       assets: user.assets.map((a) => ({ id: a.id, ext: a.ext, bytes: a.bytes, width: a.width, height: a.height, addedAt: a.addedAt, url: store.assetUrl(a, config.publicUrl) })),

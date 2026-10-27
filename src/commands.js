@@ -156,9 +156,19 @@ function createCommandsService({ effective, store, logger = console }) {
             flags: 64
           });
         } else if (interaction.commandName === "live") {
-          const { MessageFlags } = require("discord.js");
+          const { MessageFlags, Routes } = require("discord.js");
           const launchFlag = MessageFlags && MessageFlags.LaunchActivity ? MessageFlags.LaunchActivity : (1 << 15);
-          await interaction.reply({ flags: launchFlag });
+          try {
+            await interaction.reply({ flags: launchFlag });
+          } catch (error) {
+            logger.warn("[commands] /live reply failed:", error.message);
+            try {
+              await interaction.client.rest.post(Routes.interactionCallback(interaction.id, interaction.token), { body: { type: 12, data: {} } });
+            } catch (error2) {
+              logger.warn("[commands] /live callback failed:", error2.message);
+              await interaction.reply({ content: "Could not launch the app here. Join a voice channel, open the App Launcher and start " + (interaction.client && interaction.client.user ? interaction.client.user.username : "the app") + " - then your card goes live on your profile.", flags: 64 }).catch(function () {});
+            }
+          }
         } else if (interaction.commandName === "invite") {
           await interaction.reply(Object.assign(
             { content: "Add me to your account - no server needed:", flags: 64 },
