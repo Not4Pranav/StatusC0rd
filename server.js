@@ -65,7 +65,13 @@ function makeLimiter({ max, windowMs }) {
     const now = Date.now();
     const entry = hits.get(key);
     if (!entry || entry.resetAt < now) {
-      if (hits.size > 1000) hits.clear();
+      if (hits.size > 1000) {
+        for (const key of hits.keys()) {
+          const entry = hits.get(key);
+          if (!entry || entry.resetAt < now) hits.delete(key);
+          if (hits.size <= 1000) break;
+        }
+      }
       hits.set(key, { count: 1, resetAt: now + windowMs });
       return true;
     }

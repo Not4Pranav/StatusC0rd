@@ -105,10 +105,12 @@ class Backup {
       const remote = await this.fetchRemote();
       if (remote && this.store.userCount() === 0) {
         const parsed = JSON.parse(remote);
-        if (parsed && typeof parsed === "object" && parsed.users && Object.keys(parsed.users).length) {
+        const restoredUsers = parsed && parsed.users ? Object.keys(parsed.users).length : 0;
+        const restoredSettings = parsed && parsed.settings && typeof parsed.settings === "object" ? Object.keys(parsed.settings).length : 0;
+        if (parsed && typeof parsed === "object" && (restoredUsers || restoredSettings)) {
           this.store.adopt(parsed);
           this.dirty = true;
-          console.log("[backup] restored " + Object.keys(parsed.users).length + " account(s) from " + this.config.repo + ".");
+          console.log("[backup] restored " + restoredUsers + " account(s) from " + this.config.repo + ".");
           await this.restoreAssets().catch((error) => console.warn("[backup] photo restore failed:", error.message));
         }
       } else if (!remote) {
