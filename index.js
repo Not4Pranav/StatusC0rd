@@ -137,10 +137,10 @@ server.listen(PORT, () => {
 function shutdown() {
   keepAlive.stop();
   backup.stop();
-  void backup.flush();
   void bot.stop();
   server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 3000).unref();
+  Promise.resolve(backup.flush()).finally(() => process.exit(0));
+  setTimeout(() => process.exit(0), 8000).unref();
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
