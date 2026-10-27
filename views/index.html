@@ -10,57 +10,46 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body class="gate">
-    <main class="gate-card gs-card">
-      <div class="gs-brand">
-        <div class="brand brand-lg">
-          <span class="brand-mark" aria-hidden="true">S</span>
-          <span>{{{BRAND_HTML}}}</span>
-        </div>
+    <main class="gate-card">
+      <div class="auth-logo">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">S</span><span>{{{BRAND_HTML}}}</span></div>
       </div>
-      <h1 class="gs-title" id="auth-title">Sign in</h1>
-      <p class="gs-sub" id="auth-sub">Use your {{SITE_NAME}} account.</p>
       {{{LINK_BANNER}}}
-      <form id="form-login" class="gs-form" autocomplete="on" data-title="Sign in" data-sub="Use your {{SITE_NAME}} account.">
-        <div class="gs-field">
+      <form id="form-login" autocomplete="on">
+        <div class="ff">
           <input id="l-email" type="email" placeholder=" " autocomplete="email" required />
           <label for="l-email">Email</label>
         </div>
-        <div id="login-pass-step" hidden>
-          <p class="gs-hi">Hi, <strong id="hi-email"></strong></p>
-          <div class="gs-field">
-            <input id="l-pass" type="password" placeholder=" " autocomplete="current-password" required />
-            <label for="l-pass">Enter your password</label>
-          </div>
-          <label class="gs-check"><input type="checkbox" id="l-show" /> Show password</label>
+        <div class="ff">
+          <input id="l-pass" type="password" placeholder=" " autocomplete="current-password" required />
+          <label for="l-pass">Password</label>
         </div>
-        <div class="gs-actions">
-          <button type="button" class="gs-link" id="goto-register">Create account</button>
-          <button type="submit" class="gs-btn" id="btn-login">Next</button>
-        </div>
+        <button type="submit" class="gs-btn">Log In</button>
+        <p class="auth-alt">Don't have an account? <button type="button" id="goto-register">Register</button></p>
       </form>
-      <form id="form-register" class="gs-form" hidden data-title="Create your account" data-sub="Use your email and password.">
-        <div class="gs-field">
+      <form id="form-register" hidden autocomplete="on">
+        <div class="ff">
           <input id="r-email" type="email" placeholder=" " autocomplete="email" required />
           <label for="r-email">Email</label>
         </div>
-        <div class="gs-field">
+        <div class="ff">
           <input id="r-pass" type="password" placeholder=" " autocomplete="new-password" minlength="8" required />
           <label for="r-pass">Password</label>
         </div>
-        <p class="gs-help">8 characters or more</p>
-        <label class="gs-check"><input type="checkbox" id="r-show" /> Show password</label>
-        <div class="gs-actions">
-          <button type="button" class="gs-link" id="goto-login">Sign in instead</button>
-          <button type="submit" class="gs-btn">Create account</button>
+        <div class="ff">
+          <input id="r-pass2" type="password" placeholder=" " autocomplete="new-password" minlength="8" required />
+          <label for="r-pass2">Confirm password</label>
         </div>
+        <button type="submit" class="gs-btn">Create Account</button>
+        <p class="auth-alt">Already registered? <button type="button" id="goto-login">Log In</button></p>
       </form>
-      <p class="hint gs-hint" id="need-link" hidden>No access link yet — type <strong>;rpc</strong> where the bot is and press <strong>Open Dashboard</strong> in its reply.</p>
+      <p class="hint" id="need-link" hidden>No access link yet — type <strong>;rpc</strong> where the bot is and press <strong>Open Dashboard</strong> in its reply.</p>
       <p class="auth-error" id="auth-error">{{ERROR}}</p>
     </main>
     {{{LINK_TOKEN_HTML}}}
-    <a class="btn ghost" href="/invite">Add to Discord — it works in your account, no server needed</a>
+    <a class="btn ghost small" href="/invite">Add to Discord — works in your account, no server needed</a>
     <p class="gate-note">One Discord account, one card. Approve with ;rpc, build it here, then open the app inside Discord (a voice channel → App Launcher) to put it on your profile.</p>
-    <p class="gate-foot">{{SITE_NAME}} v{{VERSION}} · <a href="https://github.com/Not4Pranav/StatusC0rd/blob/main/SETUP.md" target="_blank" rel="noreferrer noopener">Setup guide</a></p>
+    <p class="gate-note">{{SITE_NAME}} v{{VERSION}} · <a href="https://github.com/Not4Pranav/StatusC0rd/blob/main/SETUP.md" target="_blank" rel="noreferrer noopener">Setup guide</a></p>
     <script src="/auth.js" defer></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-/* StatusC0rd sign-in — Google-style card: email first, then password. */
+/* StatusC0rd sign-in — 400px card, email + password, register toggle. */
 (function () {
   "use strict";
 
@@ -10,20 +10,12 @@
   var registerForm = node("form-register");
   var errorBox = node("auth-error");
   var needLink = node("need-link");
-  var title = node("auth-title");
-  var sub = node("auth-sub");
-  var passStep = node("login-pass-step");
-  var loginBtn = node("btn-login");
-  var onPassStep = false;
 
   if (needLink) needLink.hidden = hasLink;
 
   function selectForm(register) {
-    var form = register ? registerForm : loginForm;
     loginForm.hidden = register;
     registerForm.hidden = !register;
-    title.textContent = form.getAttribute("data-title");
-    sub.textContent = form.getAttribute("data-sub");
     errorBox.textContent = "";
   }
 
@@ -44,26 +36,8 @@
     });
   }
 
-  function toggleShow(boxId, inputId) {
-    var box = node(boxId);
-    var input = node(inputId);
-    if (!box || !input) return;
-    box.addEventListener("change", function () { input.type = box.checked ? "text" : "password"; });
-  }
-
-  toggleShow("l-show", "l-pass");
-  toggleShow("r-show", "r-pass");
-
   loginForm.addEventListener("submit", function (event) {
     event.preventDefault();
-    if (!onPassStep) {
-      onPassStep = true;
-      passStep.hidden = false;
-      node("hi-email").textContent = node("l-email").value;
-      loginBtn.textContent = "Sign in";
-      node("l-pass").focus();
-      return;
-    }
     post("/api/auth/login", { email: node("l-email").value, password: node("l-pass").value }).then(function (r) {
       if (r.ok) location.href = "/";
       else showError((r.body && r.body.error) || "Could not log in.");
@@ -72,9 +46,14 @@
 
   registerForm.addEventListener("submit", function (event) {
     event.preventDefault();
+    var email = node("r-email").value;
+    var pass = node("r-pass").value;
+    var pass2 = node("r-pass2").value;
+    if (String(pass).length < 8) { showError("Password needs 8 characters or more."); return; }
+    if (pass !== pass2) { showError("Those passwords do not match."); return; }
     post("/api/auth/register", {
-      email: node("r-email").value,
-      password: node("r-pass").value,
+      email: email,
+      password: pass,
       token: tokenInput ? tokenInput.value : ""
     }).then(function (r) {
       if (r.ok) location.href = "/";
