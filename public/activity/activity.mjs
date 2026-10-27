@@ -139,7 +139,7 @@ function renderPreview(payload) {
     el.buttons.append(chip);
   }
 
-  startedAt = activity.timestamps?.start ? Number(activity.timestamps.start) : null;
+  startedAt = activity.timestamps?.start ? Number(activity.timestamps.start) * 1000 : null;
   drawElapsed();
 
   if (payload.publicUrl) {

@@ -24,16 +24,6 @@
     </header>
 
     <main class="workbench">
-      <section class="panel hero">
-        <h1 class="hero-title">{{{BRAND_HTML}}}</h1>
-        <p class="hero-sub">Your activity, your way. Build a custom Discord Rich Presence with your own title, details, images and buttons - then keep it live from here.</p>
-        <div class="hero-actions">
-          <button class="btn" id="hero-config" type="button"><strong>CONFIG</strong><span>Fill your activity</span></button>
-          <button class="btn primary" id="hero-run" type="button"><strong>RUN</strong><span>Save your card</span></button>
-          <button class="btn ghost" id="hero-show" type="button"><strong>SHOW</strong><span>See it live</span></button>
-        </div>
-      </section>
-
       <section class="panel pf">
         <div class="pf-avatar" aria-hidden="true"><span id="pf-avatar-fallback">S</span><img id="pf-avatar" alt="" hidden /><img id="pf-deco" alt="" hidden /></div>
         <div class="pf-user">
@@ -41,7 +31,6 @@
           <div class="pf-email" id="pf-email"></div>
         </div>
         <div class="pf-pills">
-          <span class="pill" id="pf-pill-rpc" data-state="off"><span class="dot"></span>RPC Active</span>
           <span class="pill pf-pill-linked" data-state="live"><span class="dot"></span>Account Linked</span>
           <span class="pill" id="pf-pill-admin" data-state="live" hidden><span class="dot"></span>Admin</span>
         </div>
@@ -52,7 +41,7 @@
           <h2>RPC Configuration</h2>
           <label class="check"><input class="toggle" type="checkbox" id="f-enabled" /> <span>Enable Rich Presence</span></label>
         </div>
-        <p class="hint">Fill it in, then press Save &amp; Update - then press <strong>Launch in Discord</strong> in the Delivery section.</p>
+        <p class="hint">Build your card, then press <strong>Save &amp; Update</strong>. The Live Preview below shows exactly what your friends see.</p>
         <div class="row2">
           <label class="field"><span>ACTIVITY TYPE</span>
             <select id="f-type">
@@ -79,6 +68,15 @@
           <button type="button" class="status-btn" data-status="dnd"><span class="dot dot-dnd"></span>DND</button>
           <button type="button" class="status-btn" data-status="invisible"><span class="dot dot-off"></span>Offline</button>
         </div>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="f-timer" /> Elapsed timer</label>
+          <label class="check" id="row-restart" hidden><input type="checkbox" id="f-restart" checked /> Restart it now</label>
+        </div>
+        <div class="actions">
+          <button class="btn primary" id="save" type="button">Save &amp; Update</button>
+          <span class="save-note" id="save-note"></span>
+        </div>
+        <ul class="errors" id="errors" hidden></ul>
       </section>
 
       <section class="panel">
@@ -112,28 +110,6 @@
       </section>
 
       <section class="panel">
-        <div class="panel-head"><h2>Delivery</h2></div>
-        <p class="hint">Discord only lets a profile be written from inside its own app. Press the button below - or type /live in Discord - and your card goes on your profile. It keeps running in the background and is visible to everyone, on every device.</p>
-        <div class="actions" style="margin-bottom:12px;">
-          <a class="btn primary" id="launch-btn" href="#" target="_blank" rel="noreferrer noopener">Launch in Discord</a>
-          <span class="save-note">One click. No commands.</span>
-        </div>
-        <div class="checks">
-          <label class="check"><input type="checkbox" id="f-timer" /> Elapsed timer</label>
-          <label class="check" id="row-restart" hidden><input type="checkbox" id="f-restart" checked /> Restart it now</label>
-          <label class="check" id="row-bot" hidden><input type="checkbox" id="f-bot" /> On the bot (24/7, text only)</label>
-          <label class="check"><input type="checkbox" id="f-profile" /> On my profile (photos + buttons)</label>
-        </div>
-        <div class="actions">
-          <button class="btn primary" id="save" type="button">Save &amp; Update</button>
-          <button class="btn ghost" id="refresh" type="button">Refresh</button>
-          <button class="btn ghost" id="take-down" type="button">Take down</button>
-          <span class="save-note" id="save-note"></span>
-        </div>
-        <ul class="errors" id="errors" hidden></ul>
-      </section>
-
-      <section class="panel">
         <div class="panel-head"><h2>Photos</h2>
           <button class="btn small" id="upload" type="button">Upload photos</button>
         </div>
@@ -144,8 +120,12 @@
       </section>
 
       <section class="panel" id="sec-preview">
-        <div class="panel-head"><h2>Live Preview</h2></div>
-        <p class="hint">Exactly what your friends see.</p>
+        <div class="panel-head">
+          <h2>Live Preview</h2>
+          <a class="btn primary small" id="launch-btn" href="#" target="_blank" rel="noreferrer noopener">Go live in Discord</a>
+        </div>
+        <p class="hint" id="activity-status">Checking whether your card is on your profile…</p>
+        <p class="hint">Exactly what your friends see - live on your profile while the StatusC0rd window in Discord stays open.</p>
         <article class="pc" aria-label="Discord profile preview">
           <div class="pc-banner"></div>
           <div class="pc-head">
@@ -182,10 +162,8 @@
       <section class="panel">
         <div class="panel-head"><h2>Account Center</h2></div>
         <p class="hint" id="discord-user">Signed in.</p>
-        <p class="hint" id="activity-status">The in-Discord app has not checked in yet.</p>
         <div class="actions" style="margin-top:6px;">
           <a class="btn small" id="support-server" href="#" target="_blank" rel="noreferrer noopener" hidden>Support server</a>
-          <a class="btn ghost small" href="/invite">Add to Discord</a>
           <button class="btn danger small" id="delete-account" type="button">Delete my account</button>
         </div>
         <hr />

@@ -3,7 +3,7 @@
   "use strict";
 
   var TYPES = { 0: "PLAYING A GAME", 1: "STREAMING", 2: "LISTENING TO", 3: "WATCHING", 4: "CUSTOM STATUS", 5: "COMPETING IN" };
-  var IDS = ["pill-bot", "pill-bot-text", "pill-activity", "pill-activity-text", "logout", "f-name", "f-type", "f-details", "f-state", "row-url", "f-url", "pick-large", "thumb-large", "fallback-large", "pick-small", "thumb-small", "fallback-small", "f-large-text", "f-small-text", "btn-rows", "add-button", "f-timer", "row-restart", "f-restart", "f-bot", "f-profile", "f-enabled", "save", "take-down", "save-note", "errors", "photo-input", "upload", "photo-grid", "discord-user", "activity-status", "publish-card", "card-link", "copy-link", "open-card", "s-site-name", "s-keepalive", "s-interval", "s-client-id", "s-client-secret", "s-bot-token", "save-settings", "pv-large", "pv-fallback", "pv-small-wrap", "pv-small", "pv-type", "pv-name", "pv-details", "pv-state", "pv-time", "pv-buttons", "picker", "picker-close", "picker-grid", "picker-empty", "toast"];
+  var IDS = ["pill-bot", "pill-bot-text", "pill-activity", "pill-activity-text", "logout", "f-name", "f-type", "f-details", "f-state", "row-url", "f-url", "pick-large", "thumb-large", "fallback-large", "pick-small", "thumb-small", "fallback-small", "f-large-text", "f-small-text", "btn-rows", "add-button", "f-timer", "row-restart", "f-restart", "f-enabled", "save", "save-note", "errors", "photo-input", "upload", "photo-grid", "discord-user", "activity-status", "publish-card", "card-link", "copy-link", "open-card", "s-site-name", "s-keepalive", "s-interval", "s-client-id", "s-client-secret", "s-bot-token", "save-settings", "pv-large", "pv-fallback", "pv-small-wrap", "pv-small", "pv-type", "pv-name", "pv-details", "pv-state", "pv-time", "pv-buttons", "picker", "picker-close", "picker-grid", "picker-empty", "toast"];
   var el = {};
   IDS.forEach(function (id) { el[id] = document.getElementById(id); });
 
@@ -173,8 +173,6 @@
     $("row-url").hidden = String(draft.type) !== "1";
     $("f-timer").checked = Boolean(draft.startedAt);
     $("row-restart").hidden = !draft.startedAt;
-    $("f-bot").checked = !draft.targets || draft.targets.bot !== false;
-    $("f-profile").checked = !draft.targets || draft.targets.profile !== false;
     $("f-enabled").checked = Boolean(draft.enabled);
     $("f-large-text").value = draft.largeText || "";
     $("f-small-text").value = draft.smallText || "";
@@ -199,7 +197,7 @@
       startedAt: $("f-timer").checked,
       restartTimer: $("f-restart").checked,
       buttons: (draft.buttons || []).filter(function (b) { return b.label || b.url; }),
-      targets: { bot: $("f-bot").checked, profile: $("f-profile").checked },
+      targets: { bot: Boolean(state && state.user && state.user.admin), profile: true },
       enabled: $("f-enabled").checked
     };
   }
@@ -372,8 +370,6 @@
       if (owner.decorationUrl) { pfDeco.src = owner.decorationUrl; pfDeco.hidden = false; }
       else { pfDeco.hidden = true; pfDeco.removeAttribute("src"); }
     }
-    var pfRpc = document.getElementById("pf-pill-rpc");
-    if (pfRpc) pfRpc.dataset.state = act.connected ? "live" : "off";
     var launchBtn = node("launch-btn");
     if (launchBtn) launchBtn.href = state.launchUrl || "#";
 
@@ -492,6 +488,7 @@
           fillForm(r.body.presence);
           showErrors([]);
           $("save-note").textContent = "Live · " + new Date().toLocaleTimeString();
+          refresh();
           if (window.matchMedia && window.matchMedia("(max-width: 1080px)").matches) {
             var livePreview = document.getElementById("sec-preview");
             if (livePreview) livePreview.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -500,15 +497,6 @@
           $("save-note").textContent = "";
           showErrors(r.body.errors || [r.body.error || "Could not save the card."]);
         }
-      });
-    });
-    $("take-down").addEventListener("click", function () {
-      api("/api/presence/clear", { method: "POST", body: "{}" }).then(function (r) {
-        if (r.ok) {
-          fillForm(r.body.presence);
-          $("save-note").textContent = "Taken down";
-          toast("The card is down everywhere.");
-        } else toast(r.body.error || "Could not take the card down.");
       });
     });
     $("upload").addEventListener("click", function () { $("photo-input").click(); });
@@ -530,10 +518,6 @@
     });
     node("clear-large").addEventListener("click", function () { draft.largeImage = ""; renderImageSlots(); renderPreview(); });
     node("clear-small").addEventListener("click", function () { draft.smallImage = ""; renderImageSlots(); renderPreview(); });
-    node("refresh").addEventListener("click", function () {
-      draft = null;
-      refresh().then(function () { toast("Refreshed."); });
-    });
     node("delete-account").addEventListener("click", function () {
       if (!window.confirm("Delete your account? Your card, your photos and your public card page all go.")) return;
       api("/api/account", { method: "DELETE" }).then(function (r) {
@@ -573,18 +557,6 @@
           toast("Instance saved.");
         } else toast(r.body.error || "Could not save the instance.");
       });
-    });
-    var heroConfig = node("hero-config");
-    if (heroConfig) heroConfig.addEventListener("click", function () {
-      var s = document.getElementById("sec-config");
-      if (s) s.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    var heroRun = node("hero-run");
-    if (heroRun) heroRun.addEventListener("click", function () { $("save").click(); });
-    var heroShow = node("hero-show");
-    if (heroShow) heroShow.addEventListener("click", function () {
-      var s = document.getElementById("sec-preview");
-      if (s) s.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     var devBtn = node("dev-toggle");
     if (devBtn) devBtn.addEventListener("click", function () { setDevVisible(!devVisible()); });

@@ -93,6 +93,10 @@ function createActivityService({ effective, store, now = Date.now }) {
         };
         const presenceConfig = account.presence;
         activity = buildActivity(presenceConfig, { target: "profile", publicUrl, resolveAsset });
+        // SET_ACTIVITY reads unix seconds; the stored value is milliseconds.
+        if (activity && activity.timestamps && Number(activity.timestamps.start) > 0) {
+          activity.timestamps = { start: Math.floor(Number(activity.timestamps.start) / 1000) };
+        }
         if (!activity) {
           if (!presenceConfig.enabled || !presenceConfig.name) {
             reason = "No card is live yet - save one on the website first.";
