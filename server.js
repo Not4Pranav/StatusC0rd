@@ -331,6 +331,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       version,
       publicUrl: config.publicUrl,
       publicUrlManaged: Boolean(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL),
+      launchUrl: config.clientId ? "https://discord.com/activities/" + config.clientId : "",
       user: Object.assign({ id: user.id, username: user.username, email: user.email || "", admin }, discordProfile(user)),
       cardPath: "/card/" + user.id,
       presence: user.presence,

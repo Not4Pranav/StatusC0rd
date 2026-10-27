@@ -29,7 +29,7 @@
         <p class="hero-sub">Your activity, your way. Build a custom Discord Rich Presence with your own title, details, images and buttons - then keep it live from here.</p>
         <div class="hero-actions">
           <button class="btn" id="hero-config" type="button"><strong>CONFIG</strong><span>Fill your activity</span></button>
-          <button class="btn primary" id="hero-run" type="button"><strong>RUN</strong><span>Save &amp; go live</span></button>
+          <button class="btn primary" id="hero-run" type="button"><strong>RUN</strong><span>Save your card</span></button>
           <button class="btn ghost" id="hero-show" type="button"><strong>SHOW</strong><span>See it live</span></button>
         </div>
       </section>
@@ -52,7 +52,7 @@
           <h2>RPC Configuration</h2>
           <label class="check"><input class="toggle" type="checkbox" id="f-enabled" /> <span>Enable Rich Presence</span></label>
         </div>
-        <p class="hint">Fill it in, then press Save &amp; Update. To put it on your profile, type <strong>/live</strong> in Discord.</p>
+        <p class="hint">Fill it in, then press Save &amp; Update - then press <strong>Launch in Discord</strong> in the Delivery section.</p>
         <div class="row2">
           <label class="field"><span>ACTIVITY TYPE</span>
             <select id="f-type">
@@ -113,7 +113,11 @@
 
       <section class="panel">
         <div class="panel-head"><h2>Delivery</h2></div>
-        <p class="hint">Discord only lets a profile be written from inside its own app. Type <strong>/live</strong> in Discord (or: voice channel → App Launcher → StatusC0rd) and your card goes on your profile - it keeps running in the background and is visible to everyone, on every device.</p>
+        <p class="hint">Discord only lets a profile be written from inside its own app. Press the button below - or type /live in Discord - and your card goes on your profile. It keeps running in the background and is visible to everyone, on every device.</p>
+        <div class="actions" style="margin-bottom:12px;">
+          <a class="btn primary" id="launch-btn" href="#" target="_blank" rel="noreferrer noopener">Launch in Discord</a>
+          <span class="save-note">One click. No commands.</span>
+        </div>
         <div class="checks">
           <label class="check"><input type="checkbox" id="f-timer" /> Elapsed timer</label>
           <label class="check" id="row-restart" hidden><input type="checkbox" id="f-restart" checked /> Restart it now</label>

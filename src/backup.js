@@ -76,7 +76,14 @@ class Backup {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) throw new Error("backup write failed: HTTP " + res.status);
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const err = await res.json();
+        if (err && err.message) detail = " (" + err.message + ")";
+      } catch {}
+      throw new Error("backup write failed: HTTP " + res.status + detail + " - the token needs Contents: Read and write on " + this.config.repo);
+    }
     const body = await res.json();
     if (body.content && body.content.sha) this.sha = body.content.sha;
     this.dirty = false;
@@ -103,6 +110,7 @@ class Backup {
     } catch (error) {
       console.warn("[backup] could not read the remote copy:", error.message);
     }
+    setTimeout(() => { void this.flush(); }, 15000).unref();
     this.timer = setInterval(() => { void this.flush(); }, this.config.intervalMinutes * 60 * 1000);
     this.timer.unref();
   }

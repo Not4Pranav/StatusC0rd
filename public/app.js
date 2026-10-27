@@ -374,6 +374,8 @@
     }
     var pfRpc = document.getElementById("pf-pill-rpc");
     if (pfRpc) pfRpc.dataset.state = act.connected ? "live" : "off";
+    var launchBtn = node("launch-btn");
+    if (launchBtn) launchBtn.href = state.launchUrl || "#";
 
     var lines = [];
     if (act.connected) lines.push("Your card is on your profile right now" + (act.username ? " (as " + act.username + ")" : "") + ".");

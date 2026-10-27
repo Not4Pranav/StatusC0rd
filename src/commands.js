@@ -18,7 +18,7 @@ const ACCESS_TOKEN_TTL_MS = 30 * 60_000;
 const RPC_COOLDOWN_MS = 5_000;
 
 const RPC_TITLE = "Custom RPC Dashboard";
-const RPC_DESCRIPTION = "Sign in, link your Discord and set your own status and images. Saved a card? Type /live in Discord to put it on your profile.";
+const RPC_DESCRIPTION = "Sign in, link your Discord and set your own status and images. Saved a card? Press Launch in Discord on the dashboard (or type /live) and it goes on your profile.";
 const WELCOME_TITLE = "Your activity, your way";
 const WELCOME_DESCRIPTION =
   "Create a custom, fully configurable Discord activity. Pick the title, details, images and buttons, then go live in seconds.";
