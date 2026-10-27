@@ -18,6 +18,7 @@
       </div>
       <div class="topbar-right">
         <span class="pill" id="pill-activity" title="The in-Discord app on your profile" data-state="off"><span class="dot"></span><span id="pill-activity-text">…</span></span>
+        <span class="pill" id="pill-sdk" title="The server-side presence connection" data-state="off"><span class="dot"></span><span id="pill-sdk-text">…</span></span>
         <span class="pill" id="pill-bot" title="The 24/7 bot card" data-state="off" hidden><span class="dot"></span><span id="pill-bot-text">…</span></span>
         <button class="btn ghost small" id="logout" type="button">Sign out</button>
       </div>
@@ -122,10 +123,12 @@
       <section class="panel" id="sec-preview">
         <div class="panel-head">
           <h2>Live Preview</h2>
-          <a class="btn primary small" id="launch-btn" href="#" target="_blank" rel="noreferrer noopener">Go live in Discord</a>
+          <button class="btn primary small" id="sdk-connect" type="button">Connect Discord</button>
+          <a class="btn ghost small" id="launch-btn" href="#" target="_blank" rel="noreferrer noopener">Go live in Discord</a>
         </div>
         <p class="hint" id="activity-status">Checking whether your card is on your profile…</p>
-        <p class="hint">Exactly what your friends see - live on your profile while the StatusC0rd window in Discord stays open.</p>
+        <p class="hint" id="sdk-status">Checking the server-side presence pipeline…</p>
+        <p class="hint">Connect Discord once and your card stays live on your profile from the server - no Discord window needed. The Go live in Discord button is the fallback: it keeps the card up while that window stays open.</p>
         <article class="pc" aria-label="Discord profile preview">
           <div class="pc-banner"></div>
           <div class="pc-head">

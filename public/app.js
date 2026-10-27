@@ -3,7 +3,7 @@
   "use strict";
 
   var TYPES = { 0: "PLAYING A GAME", 1: "STREAMING", 2: "LISTENING TO", 3: "WATCHING", 4: "CUSTOM STATUS", 5: "COMPETING IN" };
-  var IDS = ["pill-bot", "pill-bot-text", "pill-activity", "pill-activity-text", "logout", "f-name", "f-type", "f-details", "f-state", "row-url", "f-url", "pick-large", "thumb-large", "fallback-large", "pick-small", "thumb-small", "fallback-small", "f-large-text", "f-small-text", "btn-rows", "add-button", "f-timer", "row-restart", "f-restart", "f-enabled", "save", "save-note", "errors", "photo-input", "upload", "photo-grid", "discord-user", "activity-status", "publish-card", "card-link", "copy-link", "open-card", "s-site-name", "s-keepalive", "s-interval", "s-client-id", "s-client-secret", "s-bot-token", "save-settings", "pv-large", "pv-fallback", "pv-small-wrap", "pv-small", "pv-type", "pv-name", "pv-details", "pv-state", "pv-time", "pv-buttons", "picker", "picker-close", "picker-grid", "picker-empty", "toast"];
+  var IDS = ["pill-bot", "pill-bot-text", "pill-activity", "pill-activity-text", "logout", "f-name", "f-type", "f-details", "f-state", "row-url", "f-url", "pick-large", "thumb-large", "fallback-large", "pick-small", "thumb-small", "fallback-small", "f-large-text", "f-small-text", "btn-rows", "add-button", "f-timer", "row-restart", "f-restart", "f-enabled", "save", "save-note", "errors", "photo-input", "upload", "photo-grid", "discord-user", "activity-status", "publish-card", "card-link", "copy-link", "open-card", "s-site-name", "s-keepalive", "s-interval", "s-client-id", "s-client-secret", "s-bot-token", "save-settings", "pv-large", "pv-fallback", "pv-small-wrap", "pv-small", "pv-type", "pv-name", "pv-details", "pv-state", "pv-time", "pv-buttons", "picker", "picker-close", "picker-grid", "picker-empty", "sdk-connect", "sdk-status", "pill-sdk", "pill-sdk-text", "toast"];
   var el = {};
   IDS.forEach(function (id) { el[id] = document.getElementById(id); });
 
@@ -340,6 +340,27 @@
     else if (act.lastSeenAt) { actPill.dataset.state = "busy"; actText.textContent = "Seen " + timeAgo(act.lastSeenAt); }
     else { actPill.dataset.state = "off"; actText.textContent = "Activity idle"; }
 
+    var soc = state.social || {};
+    var socPill = node("pill-sdk");
+    var socText = node("pill-sdk-text");
+    if (socPill && socText) {
+      if (soc.connected && soc.status === "ready") { socPill.dataset.state = "live"; socText.textContent = "Card live from server"; }
+      else if (soc.connected) { socPill.dataset.state = "busy"; socText.textContent = "Discord " + (soc.status || "connecting"); }
+      else if (soc.authorized) { socPill.dataset.state = "busy"; socText.textContent = "Reconnecting"; }
+      else { socPill.dataset.state = "off"; socText.textContent = "Not connected"; }
+    }
+    var socLine = node("sdk-status");
+    if (socLine) {
+      var parts = [];
+      if (!soc.armed) parts.push("Server presence is not armed: " + (soc.loadError || "the Discord Social SDK library is not installed on the server."));
+      if (soc.authorized && soc.connected && soc.status === "ready") parts.push("Connected - your saved card is on your profile right now, pushed from the server. No Discord window needed.");
+      else if (soc.authorized && soc.connected) parts.push("Discord connection: " + (soc.status || "connecting") + (soc.lastError ? " - " + soc.lastError : "") + ".");
+      else if (soc.authorized) parts.push("Authorized - the server reconnects your card automatically; press Connect Discord if it stays quiet.");
+      else parts.push("Press Connect Discord once: authorize, and your card stays on your profile from the server - no window, no launcher.");
+      socLine.textContent = parts.join(" ");
+    }
+    var socBtn = node("sdk-connect");
+    if (socBtn) socBtn.hidden = Boolean(soc.connected && soc.status === "ready");
     var owner = state.user || {};
     $("discord-user").textContent = "Signed in as " + (owner.username || "your Discord account") + (owner.admin ? " (admin)." : ".");
     var pvUser = document.getElementById("pv-user");
@@ -374,7 +395,8 @@
     if (launchBtn) launchBtn.href = state.launchUrl || "#";
 
     var lines = [];
-    if (act.connected) lines.push("Your card is on your profile right now" + (act.username ? " (as " + act.username + ")" : "") + ".");
+    if (state.social && state.social.connected && state.social.status === "ready") lines.push("Your card is live on your profile via the server connection - nothing to keep open.");
+    else if (act.connected) lines.push("Your card is on your profile right now" + (act.username ? " (as " + act.username + ")" : "") + ".");
     else if (act.error) lines.push(act.error);
     else if (act.lastSeenAt) lines.push("The in-Discord app last checked in " + timeAgo(act.lastSeenAt) + ".");
     else lines.push("The in-Discord app has not checked in yet. Press Go live in Discord above, or open the App Launcher in Discord and start " + (state.siteName || "StatusC0rd") + ".");
@@ -560,6 +582,8 @@
     });
     var devBtn = node("dev-toggle");
     if (devBtn) devBtn.addEventListener("click", function () { setDevVisible(!devVisible()); });
+    var connectBtn = node("sdk-connect");
+    if (connectBtn) connectBtn.addEventListener("click", function () { location.href = "/oauth/connect"; });
     $("logout").addEventListener("click", function () {
       fetch("/logout", { method: "POST" }).then(function () { location.href = "/"; });
     });
