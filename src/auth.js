@@ -20,6 +20,8 @@ function createAccessToken(payload, secret, ttlMs) {
   const body = {
     id: String((payload && payload.id) || ""),
     name: String((payload && payload.name) || "Discord user"),
+    avatar: String((payload && payload.avatar) || ""),
+    decoration: String((payload && payload.decoration) || ""),
     exp: Date.now() + (ttlMs || DEFAULT_TOKEN_TTL_MS)
   };
   if (!body.id) throw new Error("An access link needs a Discord id.");
@@ -39,7 +41,7 @@ function readAccessToken(token, secret) {
   try {
     const body = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
     if (!body || !body.id || Number(body.exp) < Date.now()) return null;
-    return { id: String(body.id), name: String(body.name || "Discord user") };
+    return { id: String(body.id), name: String(body.name || "Discord user"), avatar: String(body.avatar || ""), decoration: String(body.decoration || "") };
   } catch {
     return null;
   }

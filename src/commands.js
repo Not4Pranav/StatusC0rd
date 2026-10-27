@@ -54,11 +54,20 @@ function createCommandsService({ effective, store, logger = console }) {
     return String(effective().publicUrl || "").replace(/\/+$/, "");
   }
 
+  /** The Discord side of a member: avatar hash and decoration asset, when they wear one. */
+  function profileOf(user) {
+    const deco = user && (user.avatarDecorationData || user.avatar_decoration_data);
+    return {
+      avatar: String((user && user.avatar) || ""),
+      decoration: String((deco && (deco.asset || deco.avatar_decoration_asset)) || "")
+    };
+  }
+
   /** A signed 30-minute link naming the member - the Discord half of the approval. */
-  function accessUrl(discordId, name) {
+  function accessUrl(discordId, name, profile) {
     const url = base();
     if (!url || !discordId) return "";
-    const token = createAccessToken({ id: discordId, name: name || "Discord user" }, store.sessionSecret(), ACCESS_TOKEN_TTL_MS);
+    const token = createAccessToken({ id: discordId, name: name || "Discord user", avatar: profile && profile.avatar, decoration: profile && profile.decoration }, store.sessionSecret(), ACCESS_TOKEN_TTL_MS);
     return url + "/access/" + token;
   }
 
@@ -67,9 +76,9 @@ function createCommandsService({ effective, store, logger = console }) {
   }
 
   /** The "Custom RPC Dashboard" card the reference bot sends on ;rpc. */
-  function rpcPayload(discordId, name) {
+  function rpcPayload(discordId, name, profile) {
     const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = builders();
-    const url = accessUrl(discordId, name);
+    const url = accessUrl(discordId, name, profile);
     const embed = new EmbedBuilder().setTitle(RPC_TITLE).setDescription(RPC_DESCRIPTION);
     const buttons = [];
     if (url) buttons.push(new ButtonBuilder().setLabel("Open Dashboard").setStyle(ButtonStyle.Link).setURL(url));
@@ -122,7 +131,7 @@ function createCommandsService({ effective, store, logger = console }) {
         if (typeof interaction.isChatInputCommand !== "function" || !interaction.isChatInputCommand()) return;
         if (!base()) return;
         if (interaction.commandName === "dashboard") {
-          await interaction.reply(Object.assign({ flags: 64 }, rpcPayload(interaction.user.id, interaction.user.username)));
+          await interaction.reply(Object.assign({ flags: 64 }, rpcPayload(interaction.user.id, interaction.user.username, profileOf(interaction.user))));
         } else if (interaction.commandName === "card") {
           await interaction.reply({
             content: "Your public card page (publish it in the dashboard first): " + base() + "/card/" + interaction.user.id,
@@ -131,7 +140,7 @@ function createCommandsService({ effective, store, logger = console }) {
         } else if (interaction.commandName === "invite") {
           await interaction.reply(Object.assign(
             { content: "Add me to your account - no server needed:", flags: 64 },
-            rpcPayload(interaction.user.id, interaction.user.username)
+            rpcPayload(interaction.user.id, interaction.user.username, profileOf(interaction.user))
           ));
         }
       } catch (error) {
@@ -151,7 +160,7 @@ function createCommandsService({ effective, store, logger = console }) {
         if (Date.now() - last < RPC_COOLDOWN_MS) return;
         cooldowns.set(message.author.id, Date.now());
         if (cooldowns.size > 5000) cooldowns.clear();
-        await message.reply(rpcPayload(message.author.id, message.author.username));
+        await message.reply(rpcPayload(message.author.id, message.author.username, profileOf(message.author)));
       } catch (error) {
         logger.warn("[commands] ;rpc failed:", error.message);
       }

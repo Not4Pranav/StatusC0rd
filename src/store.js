@@ -81,6 +81,8 @@ class Store {
     return {
       id: String(id),
       username: String(username || "Discord user"),
+      avatar: "",
+      decoration: "",
       createdAt: new Date().toISOString(),
       lastSeenAt: new Date().toISOString(),
       cardPublished: false,
@@ -121,6 +123,8 @@ class Store {
       u.email = typeof u.email === "string" ? u.email.toLowerCase() : "";
       u.passHash = typeof u.passHash === "string" ? u.passHash : "";
       u.passSalt = typeof u.passSalt === "string" ? u.passSalt : "";
+      u.avatar = typeof u.avatar === "string" ? u.avatar : "";
+      u.decoration = typeof u.decoration === "string" ? u.decoration : "";
     }
     // Email -> account index, rebuilt on every boot so it can never drift.
     d.emailIndex = {};
@@ -214,7 +218,7 @@ class Store {
    * An existing account without a password (the OAuth era) gets its
    * credentials set here - the signed link proved the Discord side already.
    */
-  registerUser({ discordId, username, email, passHash, passSalt }) {
+  registerUser({ discordId, username, email, passHash, passSalt, avatar, decoration }) {
     const key = String(discordId || "");
     let user = this.data.users[key];
     if (!user) {
@@ -225,6 +229,8 @@ class Store {
     user.email = String(email || "").toLowerCase();
     user.passHash = String(passHash || "");
     user.passSalt = String(passSalt || "");
+    if (typeof avatar === "string" && avatar) user.avatar = avatar;
+    if (typeof decoration === "string" && decoration) user.decoration = decoration;
     this.data.emailIndex[user.email] = key;
     this.save();
     return user;
@@ -255,6 +261,17 @@ class Store {
     if (!user) return;
     user.cardPublished = value === true;
     this.save();
+  }
+
+  /** Refresh the Discord profile a fresh link proved: name, avatar, decoration. */
+  updateDiscordProfile(id, { username, avatar, decoration } = {}) {
+    const user = this.getUser(id);
+    if (!user) return null;
+    if (typeof username === "string" && username && user.username !== username) user.username = username;
+    if (typeof avatar === "string" && avatar) user.avatar = avatar;
+    if (typeof decoration === "string" && decoration) user.decoration = decoration;
+    this.save();
+    return user;
   }
 
   /** Delete an account and every file it owns. */

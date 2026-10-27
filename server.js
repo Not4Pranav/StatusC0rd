@@ -192,6 +192,25 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     );
   }
 
+  /** Discord CDN URLs for a stored profile: avatar, decoration. */
+  function discordProfile(user) {
+    const id = String(user.id || "");
+    let avatarUrl = "";
+    try {
+      avatarUrl = user.avatar
+        ? "https://cdn.discordapp.com/avatars/" + id + "/" + user.avatar + ".png?size=160"
+        : "https://cdn.discordapp.com/embed/avatars/" + String((BigInt(id) >> 22n) % 6n) + ".png";
+    } catch {
+      avatarUrl = "";
+    }
+    return {
+      avatarUrl,
+      decorationUrl: user.decoration
+        ? "https://cdn.discordapp.com/avatar-decoration-presets/" + user.decoration + ".png?size=240&passthrough=true"
+        : ""
+    };
+  }
+
   /* ---- pages ---- */
 
   app.get("/", (req, res) => {
@@ -266,7 +285,9 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       username: link.name,
       email,
       passHash: credentials.hash,
-      passSalt: credentials.salt
+      passSalt: credentials.salt,
+      avatar: link.avatar,
+      decoration: link.decoration
     });
     // Nobody named an admin and this is the first account through the door:
     // it owns the instance.
@@ -286,6 +307,11 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     const body = req.body || {};
     const user = store.verifyLogin(normalizeEmail(body.email), String(body.password || ""));
     if (!user) return res.status(401).json({ ok: false, error: "Wrong email or password." });
+    // A fresh ;rpc link that names the same Discord account refreshes its profile.
+    const link = readAccessToken(String(body.token || ""), store.sessionSecret());
+    if (link && link.id === user.id) {
+      store.updateDiscordProfile(user.id, { username: link.name, avatar: link.avatar, decoration: link.decoration });
+    }
     req.session.uid = user.id;
     req.session.cs = crypto.randomBytes(24).toString("hex");
     res.json({ ok: true });
@@ -305,7 +331,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       version,
       publicUrl: config.publicUrl,
       publicUrlManaged: Boolean(process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL),
-      user: { id: user.id, username: user.username, admin },
+      user: Object.assign({ id: user.id, username: user.username, admin }, discordProfile(user)),
       cardPath: "/card/" + user.id,
       presence: user.presence,
       assets: user.assets.map((a) => ({ id: a.id, ext: a.ext, bytes: a.bytes, width: a.width, height: a.height, addedAt: a.addedAt, url: store.assetUrl(a, config.publicUrl) })),
