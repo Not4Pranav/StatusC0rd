@@ -105,7 +105,19 @@ function createCommandsService({ effective, store, logger = console }) {
     const route = guildId
       ? Routes.applicationGuildCommands(clientId, guildId)
       : Routes.applicationCommands(clientId);
-    await rest.put(route, { body: commandDefs() });
+    // Discord auto-adds an "Entry Point" command to apps with an Activity; a
+    // bulk overwrite that drops it is refused. Fetch it and keep it verbatim.
+    let body = commandDefs();
+    try {
+      const current = await rest.get(route);
+      const entryPoints = (current || [])
+        .filter((cmd) => Number(cmd && cmd.type) === 4)
+        .map((cmd) => Object.assign({}, cmd));
+      body = entryPoints.concat(body);
+    } catch {
+      /* first run or nothing to preserve: plain update */
+    }
+    await rest.put(route, { body: body });
   }
 
   /** Called when the gateway is ready: publish the commands globally, once. */
