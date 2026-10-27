@@ -440,3 +440,8 @@ input.toggle:checked::before { transform: translateX(16px); }
   .pf .pill { display: inline-flex; }
   .hero-actions { grid-template-columns: 1fr; }
 }
+
+/* ---- v6.5.1: section headings + fork-style pills ---- */
+.panel-head h2, .panel > h2 { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--text); }
+.pf-pill-linked { color: #7983F5; border-color: rgba(88, 101, 242, .45); }
+.pf-pill-linked .dot { background: #5865F2; }
