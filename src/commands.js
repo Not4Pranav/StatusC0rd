@@ -147,7 +147,10 @@ function createCommandsService({ effective, store, logger = console }) {
     client.on("interactionCreate", async (interaction) => {
       try {
         if (typeof interaction.isChatInputCommand !== "function" || !interaction.isChatInputCommand()) return;
-        if (!base()) return;
+        if (!base()) {
+          await interaction.reply({ content: "The dashboard has no public URL configured - the owner must set PUBLIC_URL.", flags: 64 }).catch(() => {});
+          return;
+        }
         if (interaction.commandName === "dashboard") {
           await interaction.reply(Object.assign({ flags: 64 }, rpcPayload(interaction.user.id, interaction.user.username, profileOf(interaction.user))));
         } else if (interaction.commandName === "card") {

@@ -493,8 +493,8 @@
           showErrors([]);
           $("save-note").textContent = "Live · " + new Date().toLocaleTimeString();
           if (window.matchMedia && window.matchMedia("(max-width: 1080px)").matches) {
-            var tabPreview = document.getElementById("tab-preview");
-            if (tabPreview) tabPreview.checked = true;
+            var livePreview = document.getElementById("sec-preview");
+            if (livePreview) livePreview.scrollIntoView({ behavior: "smooth", block: "start" });
           }
         } else {
           $("save-note").textContent = "";

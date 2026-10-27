@@ -47,16 +47,25 @@ function readAccessToken(token, secret) {
   }
 }
 
-/** scrypt with a random 16-byte salt; 64 derived bytes. */
-function hashPassword(password) {
+/** scrypt with a random 16-byte salt; 64 derived bytes; async so the event loop never blocks. */
+function scrypt(password, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(String(password || ""), salt, 64, (error, derived) => {
+      if (error) reject(error);
+      else resolve(derived);
+    });
+  });
+}
+
+async function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
-  const hash = crypto.scryptSync(String(password || ""), salt, 64).toString("hex");
+  const hash = (await scrypt(password, salt)).toString("hex");
   return { salt, hash };
 }
 
-function verifyPassword(password, salt, hash) {
+async function verifyPassword(password, salt, hash) {
   try {
-    const computed = crypto.scryptSync(String(password || ""), String(salt || ""), 64);
+    const computed = await scrypt(password, String(salt || ""));
     const expected = Buffer.from(String(hash || ""), "hex");
     return expected.length === computed.length && crypto.timingSafeEqual(computed, expected);
   } catch {

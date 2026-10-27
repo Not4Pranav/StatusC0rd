@@ -59,23 +59,36 @@ function loadTemplates() {
   return templates;
 }
 
-function makeLimiter({ max, windowMs }) {
+function makeLimiter({ max, windowMs, persist }) {
   const hits = new Map();
+  if (persist && typeof persist.load === "function") {
+    const saved = persist.load();
+    if (Array.isArray(saved)) {
+      for (const pair of saved) {
+        if (Array.isArray(pair) && pair[0] && pair[1] && pair[1].resetAt > Date.now()) hits.set(pair[0], pair[1]);
+      }
+    }
+  }
+  const snapshot = () => {
+    if (persist && typeof persist.save === "function") persist.save(Array.from(hits.entries()).slice(-1000));
+  };
   return function allowed(key) {
     const now = Date.now();
     const entry = hits.get(key);
     if (!entry || entry.resetAt < now) {
       if (hits.size > 1000) {
-        for (const key of hits.keys()) {
-          const entry = hits.get(key);
-          if (!entry || entry.resetAt < now) hits.delete(key);
+        for (const staleKey of Array.from(hits.keys())) {
+          const stale = hits.get(staleKey);
+          if (!stale || stale.resetAt < now) hits.delete(staleKey);
           if (hits.size <= 1000) break;
         }
       }
       hits.set(key, { count: 1, resetAt: now + windowMs });
+      snapshot();
       return true;
     }
     entry.count += 1;
+    snapshot();
     return entry.count <= max;
   };
 }
@@ -101,8 +114,8 @@ function elapsedText(startMs, now) {
 function createApp({ store, bot, keepAlive, activity, effective, version, production, applyKeepAlive, applyBotPresence }) {
   const app = express();
   const templates = loadTemplates();
-  const authLimiter = makeLimiter({ max: AUTH_ATTEMPTS_PER_WINDOW, windowMs: AUTH_WINDOW_MS });
-  const activityTokenLimiter = makeLimiter({ max: 10, windowMs: 60_000 });
+  const authLimiter = makeLimiter({ max: AUTH_ATTEMPTS_PER_WINDOW, windowMs: AUTH_WINDOW_MS, persist: { load: () => store.getLimiter("auth"), save: (entries) => store.saveLimiter("auth", entries) } });
+  const activityTokenLimiter = makeLimiter({ max: 10, windowMs: 60_000, persist: { load: () => store.getLimiter("tokens"), save: (entries) => store.saveLimiter("tokens", entries) } });
 
   app.disable("x-powered-by");
   app.set("trust proxy", process.env.TRUST_PROXY === undefined ? (production ? 1 : false) : process.env.TRUST_PROXY);
@@ -267,7 +280,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     render(res, "index.html", pageVars({ ERROR: "", LINK_BANNER: banner, LINK_TOKEN_HTML: tokenHtml }));
   });
 
-  app.post("/api/auth/register", (req, res) => {
+  app.post("/api/auth/register", async (req, res) => {
     if (!authLimiter(req.ip || "unknown")) {
       return res.status(429).json({ ok: false, error: "Too many attempts from this address - wait fifteen minutes." });
     }
@@ -285,7 +298,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     if (store.findUserByEmail(email)) {
       return res.status(409).json({ ok: false, error: "That email is already registered - log in instead." });
     }
-    const credentials = hashPassword(password);
+    const credentials = await hashPassword(password);
     const user = store.registerUser({
       discordId: link.id,
       username: link.name,
@@ -306,12 +319,12 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     res.json({ ok: true });
   });
 
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     if (!authLimiter(req.ip || "unknown")) {
       return res.status(429).json({ ok: false, error: "Too many attempts from this address - wait fifteen minutes." });
     }
     const body = req.body || {};
-    const user = store.verifyLogin(normalizeEmail(body.email), String(body.password || ""));
+    const user = await store.verifyLogin(normalizeEmail(body.email), String(body.password || ""));
     if (!user) return res.status(401).json({ ok: false, error: "Wrong email or password." });
     // A fresh ;rpc link that names the same Discord account refreshes its profile.
     const link = readAccessToken(String(body.token || ""), store.sessionSecret());

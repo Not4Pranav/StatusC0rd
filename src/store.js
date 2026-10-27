@@ -152,6 +152,26 @@ class Store {
     this.save();
   }
 
+  /** Rate-limiter state that should survive a restart, backed up like the rest. */
+  getLimiter(name) {
+    const table = this.data.limiters && typeof this.data.limiters === "object" ? this.data.limiters : null;
+    const saved = table ? table[name] : null;
+    return Array.isArray(saved) ? saved : null;
+  }
+
+  saveLimiter(name, entries) {
+    if (!this.data.limiters || typeof this.data.limiters !== "object") this.data.limiters = {};
+    this.data.limiters[name] = entries;
+    // Memory is always current (the backup exports it); the disk write is
+    // debounced so an IP storm cannot turn every attempt into a file write.
+    if (this._limiterTimer) return;
+    this._limiterTimer = setTimeout(() => {
+      this._limiterTimer = null;
+      this.save();
+    }, 30_000);
+    if (this._limiterTimer.unref) this._limiterTimer.unref();
+  }
+
   sessionSecret() {
     return process.env.SESSION_SECRET || this.data.sessionSecret;
   }
@@ -237,10 +257,10 @@ class Store {
   }
 
   /** The account when the email and password match, null otherwise. */
-  verifyLogin(email, password) {
+  async verifyLogin(email, password) {
     const user = this.findUserByEmail(email);
     if (!user || !user.passHash || !user.passSalt) return null;
-    return verifyPassword(password, user.passSalt, user.passHash) ? user : null;
+    return (await verifyPassword(password, user.passSalt, user.passHash)) ? user : null;
   }
 
   getPresence(id) {
