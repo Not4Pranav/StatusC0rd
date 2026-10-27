@@ -18,7 +18,7 @@ const ACCESS_TOKEN_TTL_MS = 30 * 60_000;
 const RPC_COOLDOWN_MS = 5_000;
 
 const RPC_TITLE = "Custom RPC Dashboard";
-const RPC_DESCRIPTION = "Sign in, link your Discord and set your own status and images. Saved a card? Press Go live in Discord on the dashboard (or type /live) and it goes on your profile.";
+const RPC_DESCRIPTION = "Sign in, build your card, then press Connect Discord on the dashboard once - it stays on your profile from the server, no window needed.";
 const WELCOME_TITLE = "Your activity, your way";
 const WELCOME_DESCRIPTION =
   "Create a custom, fully configurable Discord activity. Pick the title, details, images and buttons, then go live in seconds.";
@@ -228,3 +228,4 @@ function createCommandsService({ effective, store, logger = console }) {
 }
 
 module.exports = { createCommandsService };
+

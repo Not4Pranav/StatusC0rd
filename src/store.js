@@ -125,6 +125,8 @@ class Store {
       u.passSalt = typeof u.passSalt === "string" ? u.passSalt : "";
       u.avatar = typeof u.avatar === "string" ? u.avatar : "";
       u.decoration = typeof u.decoration === "string" ? u.decoration : "";
+      // v7: the OAuth tokens behind the server-side presence pipeline.
+      u.oauth = u.oauth && typeof u.oauth === "object" && typeof u.oauth.accessToken === "string" && u.oauth.accessToken ? u.oauth : null;
     }
     // Email -> account index, rebuilt on every boot so it can never drift.
     d.emailIndex = {};
@@ -294,6 +296,28 @@ class Store {
     return user;
   }
 
+  /* ---- OAuth tokens for the server-side presence pipeline ---- */
+
+  getOauth(id) {
+    const user = this.getUser(id);
+    return user && user.oauth ? user.oauth : null;
+  }
+
+  setOauth(id, value) {
+    const user = this.getUser(id);
+    if (!user) return;
+    user.oauth = value && typeof value === "object" && typeof value.accessToken === "string" && value.accessToken
+      ? {
+          accessToken: String(value.accessToken).slice(0, 512),
+          refreshToken: String(value.refreshToken || "").slice(0, 512),
+          expiresAt: Number(value.expiresAt) || 0,
+          scope: String(value.scope || "").slice(0, 256),
+          connectedAt: String(value.connectedAt || new Date().toISOString())
+        }
+      : null;
+    this.save();
+  }
+
   /** Delete an account and every file it owns. */
   removeUser(id) {
     const user = this.getUser(id);
@@ -385,3 +409,4 @@ class Store {
 }
 
 module.exports = { Store };
+
