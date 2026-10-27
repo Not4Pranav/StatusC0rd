@@ -7,7 +7,7 @@
     <title>{{SITE_NAME}} — your activity, your way</title>
     <meta name="description" content="Create a custom, fully configurable Discord activity. Pick the title, details, images and buttons, then go live in seconds." />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v={{VERSION}}" />
   </head>
   <body class="gate">
     <main class="gate-card">
@@ -50,6 +50,6 @@
     <a class="btn ghost small" href="/invite">Add to Discord — works in your account, no server needed</a>
     <p class="gate-note">One Discord account, one card. Approve with ;rpc, build it here, then open the app inside Discord (a voice channel → App Launcher) to put it on your profile.</p>
     <p class="gate-note">{{SITE_NAME}} v{{VERSION}}</p>
-    <script src="/auth.js" defer></script>
+    <script src="/auth.js?v={{VERSION}}" defer></script>
   </body>
 </html>

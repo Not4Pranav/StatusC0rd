@@ -403,3 +403,10 @@ input.toggle:checked::before { transform: translateX(16px); }
   pointer-events: none;
   z-index: 2;
 }
+/* ---- footer developer-options toggle ---- */
+#dev-toggle {
+  background: none; border: none; padding: 0;
+  color: var(--muted); font: inherit; font-size: 12.5px;
+  cursor: pointer; text-decoration: underline dotted;
+}
+#dev-toggle:hover { color: var(--text); }

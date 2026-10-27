@@ -394,12 +394,27 @@
 
   /* ---------- role ---------- */
 
+  function devVisible() {
+    try { return window.localStorage.getItem("statusc0rd-dev") === "1"; } catch (error) { return false; }
+  }
+
+  function setDevVisible(on) {
+    try { window.localStorage.setItem("statusc0rd-dev", on ? "1" : "0"); } catch (error) {}
+    applyRole();
+  }
+
   function applyRole() {
     var admin = Boolean(state.user && state.user.admin);
-    ["status-row", "row-bot", "row-client-id", "pill-bot", "panel-instance"].forEach(function (id) {
+    var show = admin && devVisible();
+    ["status-row", "status-row-label", "row-bot", "row-client-id", "pill-bot", "panel-instance"].forEach(function (id) {
       var node = document.getElementById(id);
-      if (node) node.hidden = !admin;
+      if (node) node.hidden = !show;
     });
+    var devBtn = document.getElementById("dev-toggle");
+    if (devBtn) {
+      devBtn.hidden = !admin;
+      devBtn.textContent = show ? "Hide developer options" : "Developer options";
+    }
   }
 
   function refresh() {
@@ -452,6 +467,10 @@
           fillForm(r.body.presence);
           showErrors([]);
           $("save-note").textContent = "Live · " + new Date().toLocaleTimeString();
+          if (window.matchMedia && window.matchMedia("(max-width: 1080px)").matches) {
+            var tabPreview = document.getElementById("tab-preview");
+            if (tabPreview) tabPreview.checked = true;
+          }
         } else {
           $("save-note").textContent = "";
           showErrors(r.body.errors || [r.body.error || "Could not save the card."]);
@@ -530,6 +549,8 @@
         } else toast(r.body.error || "Could not save the instance.");
       });
     });
+    var devBtn = node("dev-toggle");
+    if (devBtn) devBtn.addEventListener("click", function () { setDevVisible(!devVisible()); });
     $("logout").addEventListener("click", function () {
       fetch("/logout", { method: "POST" }).then(function () { location.href = "/"; });
     });
