@@ -433,3 +433,10 @@ input.toggle:checked::before { transform: translateX(16px); }
 .pf-name { color: #fff; font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
 .pf-email { color: #949BA4; font-size: 12.5px; overflow-wrap: anywhere; }
 .pf-pills { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; }
+
+/* ---- v6.4.1: single-column fixes ---- */
+.workbench { align-items: stretch; }
+@media (max-width: 640px) {
+  .pf .pill { display: inline-flex; }
+  .hero-actions { grid-template-columns: 1fr; }
+}
