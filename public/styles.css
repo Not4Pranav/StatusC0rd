@@ -410,3 +410,26 @@ input.toggle:checked::before { transform: translateX(16px); }
   cursor: pointer; text-decoration: underline dotted;
 }
 #dev-toggle:hover { color: var(--text); }
+/* ---- v6.4.0: single-column workbench, hero + profile card ---- */
+.workbench { display: flex; flex-direction: column; gap: 16px; max-width: 680px; margin: 0 auto; }
+.work-preview { position: static; }
+@media (max-width: 1080px) {
+  .work-tabs { display: none; }
+  .work-preview { display: block; position: static; }
+}
+.hero { padding: 22px 20px; }
+.hero-title { color: #fff; font-size: 26px; margin: 0 0 6px; letter-spacing: -0.02em; }
+.hero-sub { color: #949BA4; margin: 0 0 16px; line-height: 1.55; }
+.hero-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.hero-actions .btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px 8px; text-align: center; }
+.hero-actions .btn strong { font-size: 14px; letter-spacing: 0.08em; }
+.hero-actions .btn span { font-size: 11px; font-weight: 400; color: #949BA4; }
+.hero-actions .btn.primary span { color: rgba(255, 255, 255, 0.72); }
+.pf { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.pf-avatar { position: relative; width: 64px; height: 64px; flex: none; border-radius: 50%; background: #5865F2; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; }
+.pf-avatar #pf-avatar { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.pf-avatar #pf-deco { position: absolute; width: 150%; height: 150%; left: -25%; top: -25%; object-fit: contain; pointer-events: none; }
+.pf-user { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.pf-name { color: #fff; font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
+.pf-email { color: #949BA4; font-size: 12.5px; overflow-wrap: anywhere; }
+.pf-pills { display: flex; gap: 6px; flex-wrap: wrap; width: 100%; }

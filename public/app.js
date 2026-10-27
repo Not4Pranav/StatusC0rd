@@ -357,6 +357,23 @@
       if (owner.decorationUrl) { pvDeco.src = owner.decorationUrl; pvDeco.hidden = false; }
       else { pvDeco.hidden = true; pvDeco.removeAttribute("src"); }
     }
+    var pfUser = document.getElementById("pf-user");
+    if (pfUser) pfUser.textContent = owner.username || "you";
+    var pfEmail = document.getElementById("pf-email");
+    if (pfEmail) pfEmail.textContent = owner.email || "";
+    var pfAvatar = document.getElementById("pf-avatar");
+    var pfFallback = document.getElementById("pf-avatar-fallback");
+    var pfDeco = document.getElementById("pf-deco");
+    if (pfAvatar) {
+      if (owner.avatarUrl) { pfAvatar.src = owner.avatarUrl; pfAvatar.hidden = false; if (pfFallback) pfFallback.hidden = true; }
+      else { pfAvatar.hidden = true; pfAvatar.removeAttribute("src"); if (pfFallback) pfFallback.hidden = false; }
+    }
+    if (pfDeco) {
+      if (owner.decorationUrl) { pfDeco.src = owner.decorationUrl; pfDeco.hidden = false; }
+      else { pfDeco.hidden = true; pfDeco.removeAttribute("src"); }
+    }
+    var pfRpc = document.getElementById("pf-pill-rpc");
+    if (pfRpc) pfRpc.dataset.state = act.connected ? "live" : "off";
 
     var lines = [];
     if (act.connected) lines.push("Your card is on your profile right now" + (act.username ? " (as " + act.username + ")" : "") + ".");
@@ -405,16 +422,22 @@
 
   function applyRole() {
     var admin = Boolean(state.user && state.user.admin);
-    var show = admin && devVisible();
-    ["status-row", "status-row-label", "row-bot", "row-client-id", "pill-bot", "panel-instance"].forEach(function (id) {
+    var dev = admin && devVisible();
+    ["status-row", "status-row-label", "row-bot"].forEach(function (id) {
       var node = document.getElementById(id);
-      if (node) node.hidden = !show;
+      if (node) node.hidden = !admin;
+    });
+    ["row-client-id", "pill-bot", "panel-instance"].forEach(function (id) {
+      var node = document.getElementById(id);
+      if (node) node.hidden = !dev;
     });
     var devBtn = document.getElementById("dev-toggle");
     if (devBtn) {
       devBtn.hidden = !admin;
-      devBtn.textContent = show ? "Hide developer options" : "Developer options";
+      devBtn.textContent = dev ? "Hide developer options" : "Developer options";
     }
+    var pfAdmin = document.getElementById("pf-pill-admin");
+    if (pfAdmin) pfAdmin.hidden = !admin;
   }
 
   function refresh() {
@@ -548,6 +571,18 @@
           toast("Instance saved.");
         } else toast(r.body.error || "Could not save the instance.");
       });
+    });
+    var heroConfig = node("hero-config");
+    if (heroConfig) heroConfig.addEventListener("click", function () {
+      var s = document.getElementById("sec-config");
+      if (s) s.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    var heroRun = node("hero-run");
+    if (heroRun) heroRun.addEventListener("click", function () { $("save").click(); });
+    var heroShow = node("hero-show");
+    if (heroShow) heroShow.addEventListener("click", function () {
+      var s = document.getElementById("sec-preview");
+      if (s) s.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     var devBtn = node("dev-toggle");
     if (devBtn) devBtn.addEventListener("click", function () { setDevVisible(!devVisible()); });
