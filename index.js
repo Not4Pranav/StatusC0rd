@@ -22,6 +22,7 @@ const { DiscordBot } = require("./src/bot");
 const { KeepAlive } = require("./src/keepalive");
 const { createActivityService } = require("./src/activity");
 const { createCommandsService } = require("./src/commands");
+const { Backup } = require("./src/backup");
 const { createApp } = require("./server");
 
 function flag(name, fallback) {
@@ -38,6 +39,12 @@ const DATA_DIR = process.env.DATA_DIR || "./data";
 const PRODUCTION = process.env.NODE_ENV === "production";
 
 const store = new Store({ dir: DATA_DIR });
+
+// The free disk is wiped on every restart: the store backs itself up to a
+// private GitHub repository (BACKUP_GITHUB_REPO + BACKUP_GITHUB_TOKEN) and
+// restores from it at boot when the local file came up empty.
+const backup = new Backup({ store });
+store.onSave = () => { backup.dirty = true; };
 
 // ADMIN_DISCORD_IDS names the admins; ALLOWED_DISCORD_IDS is the v4 name,
 // still honoured so an old environment keeps working.
@@ -82,6 +89,7 @@ function applyBotPresence() {
 // The saved card is the bot's desired presence from the first second; the
 // queue applies it the moment the gateway is ready.
 applyBotPresence();
+void backup.init().then(() => applyBotPresence());
 
 // The in-Discord half of the approval flow: ";rpc" (and the slash commands)
 // hand out personal 30-minute dashboard links; the bot welcomes every server.
@@ -128,6 +136,8 @@ server.listen(PORT, () => {
 
 function shutdown() {
   keepAlive.stop();
+  backup.stop();
+  void backup.flush();
   void bot.stop();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();

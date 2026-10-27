@@ -126,9 +126,27 @@ UptimeRobot monitor at the same <code>/health</code> URL.
 | What happens | Why | What to do |
 | --- | --- | --- |
 | Disk wiped on restart/redeploy | free plan has no persistent disk | the section-1 variables bring the instance back configured |
-| Accounts, cards and photos vanish | they lived on that disk | users type <code>;rpc</code> and register again; a VPS or Oracle Always Free box has a real disk |
+| Accounts, cards and photos vanish | they lived on that disk | set the off-host backup below - accounts and cards survive; photos do not (external image URLs do), or move to a box with a real disk |
 | First request after idle is slow | ~1 minute cold start | section 5 prevents it |
 | Everyone is signed out | the cookie secret lived on that disk | set <code>SESSION_SECRET</code> in the environment |
+
+### The off-host backup (accounts survive the wipe)
+
+Two environment variables and the free wipe stops mattering:
+
+- <code>BACKUP_GITHUB_REPO</code> - a **private** GitHub repository of
+  yours, e.g. <code>Not4Pranav/StatusC0rd-data</code>. It holds one
+  <code>data.json</code>: every account (emails and salted scrypt password
+  hashes - never plain passwords), every card, every publish switch.
+- <code>BACKUP_GITHUB_TOKEN</code> - a fine-grained personal token with
+  **Contents: Read and write**, repository access limited to that one repo
+  (GitHub → Settings → Developer settings → Fine-grained tokens).
+
+Every few minutes the service ships the current store there, and at boot
+it restores the copy when the local disk came up empty - so redeploys and
+idle spin-downs no longer cost you accounts. Uploaded photo files are not
+JSON and are not backed up: after a wipe, re-upload them or point cards at
+external image URLs.
 
 **Truly always-on:** run this same repository on any always-on box — a free
 Oracle VM, a Raspberry Pi at home — with a real disk and the same

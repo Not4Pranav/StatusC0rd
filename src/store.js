@@ -133,6 +133,19 @@ class Store {
     const tmp = this.file + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2));
     fs.renameSync(tmp, this.file);
+    if (typeof this.onSave === "function") this.onSave();
+  }
+
+  /** The whole store as JSON text - what the off-host backup ships. */
+  export() {
+    return JSON.stringify(this.data, null, 2);
+  }
+
+  /** Take over a restored backup: defaults, index rebuild, atomic write. */
+  adopt(parsed) {
+    this.data = parsed && typeof parsed === "object" ? parsed : {};
+    this.#defaults();
+    this.save();
   }
 
   sessionSecret() {

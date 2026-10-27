@@ -30,6 +30,13 @@ services:
         sync: false
       - key: SESSION_SECRET
         sync: false
+      # Off-host backup: keeps accounts and cards across the disk wipe.
+      # A PRIVATE repository (BACKUP_GITHUB_REPO, e.g. owner/StatusC0rd-data)
+      # plus a fine-grained token with Contents read+write on it. Blank = off.
+      - key: BACKUP_GITHUB_REPO
+        sync: false
+      - key: BACKUP_GITHUB_TOKEN
+        sync: false
       # The name in the header and titles. Blank means "StatusC0rd".
       - key: SITE_NAME
         sync: false
