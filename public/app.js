@@ -346,6 +346,17 @@
     $("discord-user").textContent = "Signed in as " + (owner.username || "your Discord account") + (owner.admin ? " (admin)." : ".");
     var pvUser = document.getElementById("pv-user");
     if (pvUser) pvUser.textContent = owner.username || "you";
+    var pvAvatar = document.getElementById("pv-avatar");
+    var pvFallback = document.getElementById("pv-avatar-fallback");
+    var pvDeco = document.getElementById("pv-deco");
+    if (pvAvatar) {
+      if (owner.avatarUrl) { pvAvatar.src = owner.avatarUrl; pvAvatar.hidden = false; if (pvFallback) pvFallback.hidden = true; }
+      else { pvAvatar.hidden = true; pvAvatar.removeAttribute("src"); if (pvFallback) pvFallback.hidden = false; }
+    }
+    if (pvDeco) {
+      if (owner.decorationUrl) { pvDeco.src = owner.decorationUrl; pvDeco.hidden = false; }
+      else { pvDeco.hidden = true; pvDeco.removeAttribute("src"); }
+    }
 
     var lines = [];
     if (act.connected) lines.push("Your card is on your profile right now" + (act.username ? " (as " + act.username + ")" : "") + ".");

@@ -38,7 +38,7 @@
 
   loginForm.addEventListener("submit", function (event) {
     event.preventDefault();
-    post("/api/auth/login", { email: node("l-email").value, password: node("l-pass").value }).then(function (r) {
+    post("/api/auth/login", { email: node("l-email").value, password: node("l-pass").value, token: tokenInput ? tokenInput.value : "" }).then(function (r) {
       if (r.ok) location.href = "/";
       else showError((r.body && r.body.error) || "Could not log in.");
     });
