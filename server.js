@@ -6,6 +6,7 @@
  *   session  /access/:token  /api/auth/register  /api/auth/login  POST /logout
  *   api      /api/state /api/presence /api/presence/clear /api/settings /api/assets
  *   activity /activity/api/token  /activity/api/presence   (bearer-token, no session)
+ *   oauth    /oauth/connect /oauth/callback /api/social/*   (the presence pipeline)
  *
  * Security model: multi-user. Anyone an ;rpc link brings in registers with
  * email + password and lands in their own account - their card, their photos,
@@ -111,7 +112,7 @@ function elapsedText(startMs, now) {
   return h > 0 ? h + ":" + pad(m) + ":" + pad(s) : pad(m) + ":" + pad(s);
 }
 
-function createApp({ store, bot, keepAlive, activity, effective, version, production, applyKeepAlive, applyBotPresence }) {
+function createApp({ store, bot, keepAlive, activity, social, effective, version, production, applyKeepAlive, applyBotPresence }) {
   const app = express();
   const templates = loadTemplates();
   const authLimiter = makeLimiter({ max: AUTH_ATTEMPTS_PER_WINDOW, windowMs: AUTH_WINDOW_MS, persist: { load: () => store.getLimiter("auth"), save: (entries) => store.saveLimiter("auth", entries) } });
@@ -356,6 +357,7 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
       presence: user.presence,
       assets: user.assets.map((a) => ({ id: a.id, ext: a.ext, bytes: a.bytes, width: a.width, height: a.height, addedAt: a.addedAt, url: store.assetUrl(a, config.publicUrl) })),
       activity: activity.snapshot(user.id),
+      social: Object.assign({ authorized: Boolean(user.oauth) }, social.userStatus(user.id)),
       bot: admin ? bot.getState() : null,
       keepAlive: admin ? keepAlive.getState() : null,
       settings: admin
@@ -388,6 +390,9 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     if (!admin) result.value.targets.bot = false;
     store.setPresence(user.id, result.value);
     if (admin) bot.setPresence(result.value);
+    // The server-side pipeline: connected users get the new card pushed to
+    // their profile right away - no Discord window involved.
+    void social.syncUser(user.id);
     res.json({ ok: true, presence: result.value });
   });
 
@@ -396,12 +401,14 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     const presence = { ...user.presence, enabled: false, updatedAt: new Date().toISOString() };
     store.setPresence(user.id, presence);
     if (isAdmin(req)) bot.clearPresence(presence.status || "online");
+    void social.syncUser(user.id);
     res.json({ ok: true, presence });
   });
 
   // Delete my account: the card, the photos and their files all go.
   app.delete("/api/account", requireAuth, requireCsrf, (req, res) => {
     const user = currentUser(req);
+    social.disconnectUser(user.id);
     store.removeUser(user.id);
     if (isAdmin(req)) bot.clearPresence("online");
     req.session = null;
@@ -516,6 +523,91 @@ function createApp({ store, bot, keepAlive, activity, effective, version, produc
     }).catch((error) => {
       res.status(error instanceof ActivityError ? error.status : 500).json({ ok: false, error: error.message || "Something went wrong." });
     });
+  });
+
+  /* ---- the OAuth connect flow: the server-side presence pipeline ---- */
+
+  // One click on the dashboard: consent screen, code, tokens stored, the
+  // Social SDK pushes the card from the server - nothing for the user to
+  // keep open. The redirect URI must be registered in the Developer Portal.
+  app.get("/oauth/connect", requireAuth, (req, res) => {
+    const clientId = effective().clientId;
+    if (!clientId) return res.redirect("/?e=3");
+    req.session.oauthState = crypto.randomBytes(24).toString("hex");
+    const redirectUri = effective().publicUrl + "/oauth/callback";
+    const url =
+      "https://discord.com/oauth2/authorize?client_id=" + encodeURIComponent(clientId) +
+      "&response_type=code" +
+      "&redirect_uri=" + encodeURIComponent(redirectUri) +
+      "&scope=" + encodeURIComponent(social.OAUTH_SCOPES) +
+      "&state=" + req.session.oauthState +
+      "&prompt=consent";
+    res.redirect(url);
+  });
+
+  app.get("/oauth/callback", async (req, res) => {
+    const user = currentUser(req);
+    if (!user) return res.redirect("/");
+    if (req.query.error) {
+      return render(res, "error.html", pageVars({ STATUS: 403, TITLE: "Discord said no", MESSAGE: "The authorization was refused: " + escapeHtml(String(req.query.error_description || req.query.error)) }), 403);
+    }
+    if (!req.session.oauthState || String(req.query.state || "") !== req.session.oauthState) {
+      return render(res, "error.html", pageVars({ STATUS: 400, TITLE: "Stale request", MESSAGE: "That connect request was stale - open the dashboard and press Connect Discord again." }), 400);
+    }
+    req.session.oauthState = null;
+    const config = effective();
+    if (!config.clientId || !config.clientSecret) {
+      return render(res, "error.html", pageVars({ STATUS: 500, TITLE: "Not configured", MESSAGE: "CLIENT_ID and CLIENT_SECRET must be set (as environment variables) for the connect flow." }), 500);
+    }
+    const redirectUri = config.publicUrl + "/oauth/callback";
+    const body = new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      grant_type: "authorization_code",
+      code: String(req.query.code || ""),
+      redirect_uri: redirectUri
+    });
+    try {
+      const tokenRes = await fetch("https://discord.com/api/v10/oauth2/token", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body
+      });
+      const tokenJson = await tokenRes.json();
+      if (!tokenRes.ok || !tokenJson.access_token) throw new Error(String(tokenJson.error_description || tokenJson.error || "HTTP " + tokenRes.status));
+      const meRes = await fetch("https://discord.com/api/v10/users/@me", { headers: { authorization: "Bearer " + tokenJson.access_token } });
+      const me = await meRes.json();
+      if (!meRes.ok || !me.id) throw new Error("Discord did not say who authorized.");
+      if (String(me.id) !== String(user.id)) {
+        return render(res, "error.html", pageVars({ STATUS: 403, TITLE: "Different account", MESSAGE: "You authorized as @" + escapeHtml(String(me.username || "unknown")) + ", but this dashboard belongs to @" + escapeHtml(user.username) + ". Authorize with the Discord account this dashboard was opened for." }), 403);
+      }
+      store.setOauth(user.id, {
+        accessToken: tokenJson.access_token,
+        refreshToken: tokenJson.refresh_token || "",
+        expiresAt: Date.now() + (Number(tokenJson.expires_in) || 604800) * 1000,
+        scope: tokenJson.scope || "",
+        connectedAt: new Date().toISOString()
+      });
+      if (me.avatar && me.avatar !== user.avatar) store.updateDiscordProfile(user.id, { avatar: me.avatar });
+      const connect = social.connectUser(store.getUser(user.id));
+      console.log("[oauth] presence connect for " + user.username + ":", connect.ok ? "started" : connect.error);
+      res.redirect("/");
+    } catch (error) {
+      console.error("[oauth] token exchange failed:", error.message);
+      render(res, "error.html", pageVars({ STATUS: 502, TITLE: "Discord refused", MESSAGE: "The token exchange failed: " + escapeHtml(error.message) }), 502);
+    }
+  });
+
+  app.get("/api/social/status", requireAuth, (req, res) => {
+    const user = currentUser(req);
+    res.json(Object.assign({ ok: true }, social.userStatus(user.id)));
+  });
+
+  app.post("/api/social/disconnect", requireAuth, requireCsrf, (req, res) => {
+    const user = currentUser(req);
+    social.disconnectUser(user.id);
+    store.setOauth(user.id, null);
+    res.json({ ok: true });
   });
 
   /* ---- public card pages ---- */

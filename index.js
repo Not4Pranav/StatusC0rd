@@ -22,6 +22,7 @@ const { DiscordBot } = require("./src/bot");
 const { KeepAlive } = require("./src/keepalive");
 const { createActivityService } = require("./src/activity");
 const { createCommandsService } = require("./src/commands");
+const { createSocialSdkService } = require("./src/socialsdk");
 const { Backup } = require("./src/backup");
 const { createApp } = require("./server");
 
@@ -105,6 +106,12 @@ const keepAlive = new KeepAlive({});
 
 const activity = createActivityService({ effective, store });
 
+// The server-side presence pipeline: the Discord Social SDK pushing cards
+// from the server once a user presses "Connect Discord". Arms itself only
+// when the SDK library is present (vendor/socialsdk).
+const social = createSocialSdkService({ effective, store });
+void social.restore();
+
 function applyKeepAlive() {
   const config = effective();
   keepAlive.configure({
@@ -115,7 +122,7 @@ function applyKeepAlive() {
 }
 applyKeepAlive();
 
-const app = createApp({ store, bot, keepAlive, activity, effective, version, production: PRODUCTION, applyKeepAlive, applyBotPresence });
+const app = createApp({ store, bot, keepAlive, activity, social, effective, version, production: PRODUCTION, applyKeepAlive, applyBotPresence });
 
 const server = http.createServer(app);
 server.listen(PORT, () => {
@@ -137,6 +144,7 @@ server.listen(PORT, () => {
 function shutdown() {
   keepAlive.stop();
   backup.stop();
+  social.stopAll();
   void bot.stop();
   server.close(() => process.exit(0));
   Promise.resolve(backup.flush()).finally(() => process.exit(0));
