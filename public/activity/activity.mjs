@@ -114,7 +114,7 @@ function renderPreview(payload) {
   el.type.textContent = TYPES[type] || "PLAYING";
   el.name.textContent = payload.presence?.name || "StatusC0rd";
   el.details.textContent = activity.details || "";
-  el.state.textContent = activity.state || (type === 4 ? activity.state || "" : "");
+  el.state.textContent = activity.state || "";
 
   if (assets.large_image) {
     el.artLarge.src = assets.large_image;
@@ -238,7 +238,9 @@ async function tick() {
         await push(body.activity);
       }
     } catch (error) {
-      // The dashboard answered - it is Discord that would not take the card.
+      // The dashboard answered - it is Discord that would not take the card:
+      // drop the fingerprint so the next tick retries instead of skipping.
+      lastPushed = null;
       fail("Discord refused the activity", error.message || "The client rejected the presence.", {
         retry: true
       });

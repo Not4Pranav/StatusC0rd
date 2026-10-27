@@ -18,7 +18,7 @@ const ACCESS_TOKEN_TTL_MS = 30 * 60_000;
 const RPC_COOLDOWN_MS = 5_000;
 
 const RPC_TITLE = "Custom RPC Dashboard";
-const RPC_DESCRIPTION = "Sign in, link your Discord and set your own status and images. Saved a card? Press Launch in Discord on the dashboard (or type /live) and it goes on your profile.";
+const RPC_DESCRIPTION = "Sign in, link your Discord and set your own status and images. Saved a card? Press Go live in Discord on the dashboard (or type /live) and it goes on your profile.";
 const WELCOME_TITLE = "Your activity, your way";
 const WELCOME_DESCRIPTION =
   "Create a custom, fully configurable Discord activity. Pick the title, details, images and buttons, then go live in seconds.";
@@ -169,7 +169,7 @@ function createCommandsService({ effective, store, logger = console }) {
               await interaction.client.rest.post(Routes.interactionCallback(interaction.id, interaction.token), { body: { type: 12, data: {} } });
             } catch (error2) {
               logger.warn("[commands] /live callback failed:", error2.message);
-              await interaction.reply({ content: "Could not launch the app here. Join a voice channel, open the App Launcher and start " + (interaction.client && interaction.client.user ? interaction.client.user.username : "the app") + " - then your card goes live on your profile.", flags: 64 }).catch(function () {});
+              await interaction.reply({ content: "Could not launch the app here. Press Go live in Discord on the dashboard - or open the App Launcher in Discord and start " + (interaction.client && interaction.client.user ? interaction.client.user.username : "the app") + " - then your card goes live on your profile.", flags: 64 }).catch(function () {});
             }
           }
         } else if (interaction.commandName === "invite") {

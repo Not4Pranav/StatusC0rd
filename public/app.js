@@ -377,7 +377,7 @@
     if (act.connected) lines.push("Your card is on your profile right now" + (act.username ? " (as " + act.username + ")" : "") + ".");
     else if (act.error) lines.push(act.error);
     else if (act.lastSeenAt) lines.push("The in-Discord app last checked in " + timeAgo(act.lastSeenAt) + ".");
-    else lines.push("The in-Discord app has not checked in yet. Open it: Discord → a voice channel → App Launcher → " + (state.siteName || "StatusC0rd") + ".");
+    else lines.push("The in-Discord app has not checked in yet. Press Go live in Discord above, or open the App Launcher in Discord and start " + (state.siteName || "StatusC0rd") + ".");
     $("activity-status").textContent = lines.join(" ");
   }
 
