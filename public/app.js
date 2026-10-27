@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  var TYPES = { 0: "PLAYING", 1: "STREAMING", 2: "LISTENING", 3: "WATCHING", 4: "CUSTOM STATUS", 5: "COMPETING" };
+  var TYPES = { 0: "PLAYING A GAME", 1: "STREAMING", 2: "LISTENING TO", 3: "WATCHING", 4: "CUSTOM STATUS", 5: "COMPETING IN" };
   var IDS = ["pill-bot", "pill-bot-text", "pill-activity", "pill-activity-text", "logout", "f-name", "f-type", "f-details", "f-state", "row-url", "f-url", "pick-large", "thumb-large", "fallback-large", "pick-small", "thumb-small", "fallback-small", "f-large-text", "f-small-text", "btn-rows", "add-button", "f-timer", "row-restart", "f-restart", "f-bot", "f-profile", "f-enabled", "save", "take-down", "save-note", "errors", "photo-input", "upload", "photo-grid", "discord-user", "activity-status", "publish-card", "card-link", "copy-link", "open-card", "s-site-name", "s-keepalive", "s-interval", "s-client-id", "s-client-secret", "s-bot-token", "save-settings", "pv-large", "pv-fallback", "pv-small-wrap", "pv-small", "pv-type", "pv-name", "pv-details", "pv-state", "pv-time", "pv-buttons", "picker", "picker-close", "picker-grid", "picker-empty", "toast"];
   var el = {};
   IDS.forEach(function (id) { el[id] = document.getElementById(id); });
@@ -26,6 +26,13 @@
   }
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
+
+  function updateCounts() {
+    document.querySelectorAll(".count[data-for]").forEach(function (badge) {
+      var input = document.getElementById(badge.dataset.for);
+      if (input) badge.textContent = String(input.value.length) + "/" + (badge.dataset.max || "128");
+    });
+  }
 
   function node(id) { return document.getElementById(id); }
 
@@ -80,7 +87,7 @@
     if (!draft) return;
     var type = Number(draft.type) || 0;
     $("pv-type").textContent = TYPES[type] || "PLAYING";
-    $("pv-name").textContent = draft.name || "—";
+    $("pv-name").textContent = draft.name || "Editing details...";
     $("pv-details").textContent = type === 4 ? "" : (draft.details || "");
     $("pv-state").textContent = type === 4 ? (draft.name || "") : (draft.state || "");
 
@@ -174,6 +181,7 @@
     renderButtonRows();
     renderImageSlots();
     renderPreview();
+    updateCounts();
   }
 
   function payload() {
@@ -336,6 +344,8 @@
 
     var owner = state.user || {};
     $("discord-user").textContent = "Signed in as " + (owner.username || "your Discord account") + (owner.admin ? " (admin)." : ".");
+    var pvUser = document.getElementById("pv-user");
+    if (pvUser) pvUser.textContent = owner.username || "you";
 
     var lines = [];
     if (act.connected) lines.push("Your card is on your profile right now" + (act.username ? " (as " + act.username + ")" : "") + ".");
@@ -375,7 +385,7 @@
 
   function applyRole() {
     var admin = Boolean(state.user && state.user.admin);
-    ["status-row", "row-bot", "pill-bot", "panel-instance"].forEach(function (id) {
+    ["status-row", "row-bot", "row-client-id", "pill-bot", "panel-instance"].forEach(function (id) {
       var node = document.getElementById(id);
       if (node) node.hidden = !admin;
     });
@@ -413,6 +423,10 @@
       renderPreview();
     });
     $("f-large-text").addEventListener("input", function () { draft.largeText = $("f-large-text").value; });
+    document.querySelectorAll(".count[data-for]").forEach(function (badge) {
+      var input = document.getElementById(badge.dataset.for);
+      if (input) input.addEventListener("input", updateCounts);
+    });
     $("f-small-text").addEventListener("input", function () { draft.smallText = $("f-small-text").value; });
     $("add-button").addEventListener("click", function () {
       draft.buttons = draft.buttons || [];

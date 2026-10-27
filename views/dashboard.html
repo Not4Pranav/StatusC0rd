@@ -24,154 +24,188 @@
       </div>
     </header>
 
-    <main class="single">
-      <section class="panel">
-        <h2>Account Center</h2>
-        <p class="hint" id="discord-user">Signed in.</p>
-        <div class="actions">
-          <a class="btn small" id="support-server" href="#" target="_blank" rel="noreferrer noopener" hidden>Support server</a>
-          <a class="btn ghost small" href="/invite">Add to Discord</a>
-          <button class="btn danger small" id="delete-account" type="button">Delete my account</button>
-        </div>
-        <p class="hint" id="activity-status">The in-Discord app has not checked in yet.</p>
-        <hr />
-        <h3>Public card page</h3>
-        <label class="check"><input type="checkbox" id="publish-card" /> Publish my card page</label>
-        <div class="copy-row">
-          <input id="card-link" readonly />
-          <button class="btn ghost small" id="copy-link" type="button">Copy</button>
-          <a class="btn ghost small" id="open-card" href="/card" target="_blank" rel="noreferrer noopener">Open</a>
-        </div>
-      </section>
+    <input type="radio" name="work-tab" id="tab-edit" class="tab-radio" checked />
+    <input type="radio" name="work-tab" id="tab-preview" class="tab-radio" />
+    <nav class="work-tabs" aria-label="Workspace">
+      <label for="tab-edit">Customize</label>
+      <label for="tab-preview">Preview</label>
+    </nav>
 
-      <section class="panel">
-        <h2>RPC Configuration</h2>
-        <p class="hint">Fill it in, then press Save &amp; Update.</p>
-        <div class="toggle-row">
-          <label class="check"><input type="checkbox" id="f-enabled" /> <span>Enable Rich Presence</span></label>
-        </div>
-        <div class="row2">
-          <label class="field"><span>Activity type</span>
-            <select id="f-type">
-              <option value="0">Playing</option>
-              <option value="2">Listening</option>
-              <option value="3">Watching</option>
-              <option value="1">Streaming</option>
-              <option value="5">Competing</option>
-              <option value="4">Custom status</option>
-            </select>
-          </label>
-          <label class="field"><span>Activity name</span><input id="f-name" maxlength="128" placeholder="what Discord shows first" /></label>
-        </div>
-        <div class="row2">
-          <label class="field"><span>Details</span><input id="f-details" maxlength="128" placeholder="second line" /></label>
-          <label class="field"><span>State</span><input id="f-state" maxlength="128" placeholder="third line" /></label>
-        </div>
-        <label class="field" id="row-url" hidden style="margin-bottom:10px;"><span>Stream URL (twitch / youtube)</span><input id="f-url" placeholder="https://twitch.tv/…" /></label>
+    <main class="workbench">
+      <section class="work-config">
 
-        <h3>Status</h3>
-        <div class="status-row" id="status-row">
-          <button type="button" class="status-btn" data-status="online"><span class="dot dot-online"></span>Online</button>
-          <button type="button" class="status-btn" data-status="idle"><span class="dot dot-idle"></span>Idle</button>
-          <button type="button" class="status-btn" data-status="dnd"><span class="dot dot-dnd"></span>DND</button>
-          <button type="button" class="status-btn" data-status="invisible"><span class="dot dot-off"></span>Offline</button>
-        </div>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Application Credentials</h2>
+            <label class="check"><input class="toggle" type="checkbox" id="f-enabled" /> <span>Rich Presence</span></label>
+          </div>
+          <div class="row2">
+            <label class="field"><span>Current status</span>
+              <select id="f-type">
+                <option value="0">Playing</option>
+                <option value="2">Listening</option>
+                <option value="3">Watching</option>
+                <option value="1">Streaming</option>
+                <option value="5">Competing</option>
+                <option value="4">Custom status</option>
+              </select>
+            </label>
+            <label class="field"><span>Activity name <span class="count" data-for="f-name" data-max="128">0/128</span></span><input id="f-name" maxlength="128" placeholder="what Discord shows first" /></label>
+          </div>
+          <label class="field" id="row-client-id" hidden style="margin-bottom:12px;"><span>Discord Client ID (admin)</span><input id="s-client-id" maxlength="32" placeholder="Discord application id" /></label>
+          <label class="field" id="row-url" hidden style="margin-bottom:12px;"><span>Stream URL (twitch / youtube)</span><input id="f-url" placeholder="https://twitch.tv/…" /></label>
+          <h3 id="status-row-label" hidden>Online status</h3>
+          <div class="status-row" id="status-row">
+            <button type="button" class="status-btn" data-status="online"><span class="dot dot-online"></span>Online</button>
+            <button type="button" class="status-btn" data-status="idle"><span class="dot dot-idle"></span>Idle</button>
+            <button type="button" class="status-btn" data-status="dnd"><span class="dot dot-dnd"></span>DND</button>
+            <button type="button" class="status-btn" data-status="invisible"><span class="dot dot-off"></span>Offline</button>
+          </div>
+        </section>
 
-        <h3>Images</h3>
-        <div class="img-row">
-          <div class="img-slot">
-            <span class="img-label">Large image</span>
-            <button class="img-box" id="pick-large" type="button" title="Pick a photo"><img id="thumb-large" alt="" hidden /><span class="pv-fallback" id="fallback-large">＋</span></button>
-            <div class="img-actions">
-              <button class="btn tiny" id="upload-large" type="button">↑ Upload</button>
-              <button class="btn ghost tiny" id="clear-large" type="button">✕</button>
+        <section class="panel">
+          <div class="panel-head"><h2>Text Details</h2></div>
+          <div class="row2">
+            <label class="field"><span>Details <span class="count" data-for="f-details" data-max="128">0/128</span></span><input id="f-details" maxlength="128" placeholder="second line" /></label>
+            <label class="field"><span>State <span class="count" data-for="f-state" data-max="128">0/128</span></span><input id="f-state" maxlength="128" placeholder="third line" /></label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>Asset Selection</h2></div>
+          <div class="img-row">
+            <div class="img-slot">
+              <span class="img-label">Large image key</span>
+              <button class="img-box" id="pick-large" type="button" title="Pick a photo"><img id="thumb-large" alt="" hidden /><span class="pv-fallback" id="fallback-large">＋</span></button>
+              <div class="img-actions">
+                <button class="btn tiny" id="upload-large" type="button">Upload</button>
+                <button class="btn ghost tiny" id="clear-large" type="button">Clear</button>
+              </div>
+              <input id="f-large-text" maxlength="128" placeholder="hover text" />
             </div>
-            <input id="f-large-text" maxlength="128" placeholder="hover text" />
-          </div>
-          <div class="img-slot">
-            <span class="img-label">Small image</span>
-            <button class="img-box" id="pick-small" type="button" title="Pick a photo"><img id="thumb-small" alt="" hidden /><span class="pv-fallback" id="fallback-small">＋</span></button>
-            <div class="img-actions">
-              <button class="btn tiny" id="upload-small" type="button">↑ Upload</button>
-              <button class="btn ghost tiny" id="clear-small" type="button">✕</button>
+            <div class="img-slot">
+              <span class="img-label">Small image key</span>
+              <button class="img-box" id="pick-small" type="button" title="Pick a photo"><img id="thumb-small" alt="" hidden /><span class="pv-fallback" id="fallback-small">＋</span></button>
+              <div class="img-actions">
+                <button class="btn tiny" id="upload-small" type="button">Upload</button>
+                <button class="btn ghost tiny" id="clear-small" type="button">Clear</button>
+              </div>
+              <input id="f-small-text" maxlength="128" placeholder="hover text" />
             </div>
-            <input id="f-small-text" maxlength="128" placeholder="hover text" />
           </div>
-        </div>
+        </section>
 
-        <h3>Buttons</h3>
-        <div id="btn-rows"></div>
-        <button class="btn ghost small" id="add-button" type="button">＋ Add a button (max 2)</button>
+        <section class="panel">
+          <div class="panel-head"><h2>Interactive Elements</h2></div>
+          <div id="btn-rows"></div>
+          <button class="btn ghost small" id="add-button" type="button">＋ Add a button (max 2)</button>
+        </section>
 
-        <div class="checks">
-          <label class="check"><input type="checkbox" id="f-timer" /> Elapsed timer</label>
-          <label class="check" id="row-restart" hidden><input type="checkbox" id="f-restart" checked /> Restart it now</label>
-          <label class="check" id="row-bot" hidden><input type="checkbox" id="f-bot" /> On the bot (24/7, text only)</label>
-          <label class="check"><input type="checkbox" id="f-profile" /> On my profile (photos + buttons)</label>
-        </div>
-
-        <div class="actions">
-          <button class="btn primary" id="save" type="button">Save &amp; Update</button>
-          <button class="btn ghost" id="refresh" type="button">Refresh</button>
-          <button class="btn ghost" id="take-down" type="button">Take down</button>
-          <span class="save-note" id="save-note"></span>
-        </div>
-        <ul class="errors" id="errors" hidden></ul>
-      </section>
-
-      <section class="panel">
-        <h2>Live Preview</h2>
-        <p class="hint">How it looks on your Discord profile.</p>
-        <article class="pv" aria-label="card preview">
-          <div class="pv-art">
-            <img id="pv-large" alt="" hidden />
-            <span class="pv-fallback" id="pv-fallback">S</span>
-            <span class="pv-small" id="pv-small-wrap" hidden><img id="pv-small" alt="" /></span>
+        <section class="panel">
+          <div class="panel-head"><h2>Delivery</h2></div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="f-timer" /> Elapsed timer</label>
+            <label class="check" id="row-restart" hidden><input type="checkbox" id="f-restart" checked /> Restart it now</label>
+            <label class="check" id="row-bot" hidden><input type="checkbox" id="f-bot" /> On the bot (24/7, text only)</label>
+            <label class="check"><input type="checkbox" id="f-profile" /> On my profile (photos + buttons)</label>
           </div>
-          <div class="pv-body">
-            <div class="pv-type" id="pv-type">PLAYING</div>
-            <div class="pv-name" id="pv-name">—</div>
-            <div class="pv-line" id="pv-details"></div>
-            <div class="pv-line" id="pv-state"></div>
-            <div class="pv-time" id="pv-time"></div>
-            <div class="pv-buttons" id="pv-buttons"></div>
+          <div class="actions">
+            <button class="btn primary" id="save" type="button">Save &amp; Update</button>
+            <button class="btn ghost" id="refresh" type="button">Refresh</button>
+            <button class="btn ghost" id="take-down" type="button">Take down</button>
+            <span class="save-note" id="save-note"></span>
           </div>
-        </article>
-      </section>
+          <ul class="errors" id="errors" hidden></ul>
+        </section>
 
-      <section class="panel">
-        <h2>Photos</h2>
-        <p class="hint">PNG, JPEG, GIF or WebP up to 2 MB — up to 10 per account. Hover a photo for actions.</p>
-        <div class="photo-bar">
+        <section class="panel">
+          <div class="panel-head"><h2>Photos</h2>
+            <button class="btn small" id="upload" type="button">Upload photos</button>
+          </div>
+          <p class="hint">PNG, JPEG, GIF or WebP up to 2 MB — up to 10 per account. Hover a photo for actions.</p>
           <input type="file" id="photo-input" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden />
           <input type="file" id="slot-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
-          <button class="btn small" id="upload" type="button">Upload photos</button>
-        </div>
-        <div class="photo-grid" id="photo-grid"></div>
+          <div class="photo-grid" id="photo-grid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h2>Account</h2></div>
+          <p class="hint" id="discord-user">Signed in.</p>
+          <p class="hint" id="activity-status">The in-Discord app has not checked in yet.</p>
+          <div class="actions" style="margin-top:6px;">
+            <a class="btn small" id="support-server" href="#" target="_blank" rel="noreferrer noopener" hidden>Support server</a>
+            <a class="btn ghost small" href="/invite">Add to Discord</a>
+            <button class="btn danger small" id="delete-account" type="button">Delete my account</button>
+          </div>
+          <hr />
+          <h3>Public card page</h3>
+          <label class="check"><input type="checkbox" id="publish-card" /> Publish my card page</label>
+          <div class="copy-row">
+            <input id="card-link" readonly />
+            <button class="btn ghost small" id="copy-link" type="button">Copy</button>
+            <a class="btn ghost small" id="open-card" href="/card" target="_blank" rel="noreferrer noopener">Open</a>
+          </div>
+        </section>
+
+        <section class="panel" id="panel-instance" hidden>
+          <div class="panel-head"><h2>Instance</h2></div>
+          <div class="row2">
+            <label class="field"><span>Site name</span><input id="s-site-name" maxlength="40" /></label>
+            <label class="field"><span>Support server URL</span><input id="s-support-url" placeholder="https://discord.gg/…" /></label>
+          </div>
+          <div class="row2">
+            <label class="field"><span>Keep-alive</span>
+              <select id="s-keepalive"><option value="on">On</option><option value="off">Off</option></select>
+            </label>
+            <label class="field"><span>Ping every (minutes)</span><input id="s-interval" type="number" min="5" max="60" /></label>
+          </div>
+          <div class="row2">
+            <label class="field"><span>Client secret</span><input id="s-client-secret" type="password" placeholder="(unchanged)" autocomplete="new-password" /></label>
+            <label class="field"><span>Bot token</span><input id="s-bot-token" type="password" placeholder="(unchanged)" autocomplete="new-password" /></label>
+          </div>
+          <p class="hint">Admins only. Blank secret fields mean unchanged. Environment variables win over everything here.</p>
+          <button class="btn primary small" id="save-settings" type="button">Save instance</button>
+        </section>
+
       </section>
 
-      <section class="panel" id="panel-instance" hidden>
-        <h2>Instance</h2>
-        <div class="row2">
-          <label class="field"><span>Site name</span><input id="s-site-name" maxlength="40" /></label>
-          <label class="field"><span>Support server URL</span><input id="s-support-url" placeholder="https://discord.gg/…" /></label>
+      <aside class="work-preview">
+        <div class="preview-head">
+          <h2>Live Preview</h2>
+          <p class="hint">Exactly what your friends see.</p>
         </div>
-        <div class="row2">
-          <label class="field"><span>Keep-alive</span>
-            <select id="s-keepalive"><option value="on">On</option><option value="off">Off</option></select>
-          </label>
-          <label class="field"><span>Ping every (minutes)</span><input id="s-interval" type="number" min="5" max="60" /></label>
-        </div>
-        <div class="row2">
-          <label class="field"><span>Application ID</span><input id="s-client-id" maxlength="32" placeholder="Discord application id" /></label>
-        </div>
-        <div class="row2">
-          <label class="field"><span>Client secret</span><input id="s-client-secret" type="password" placeholder="(unchanged)" autocomplete="new-password" /></label>
-          <label class="field"><span>Bot token</span><input id="s-bot-token" type="password" placeholder="(unchanged)" autocomplete="new-password" /></label>
-        </div>
-        <p class="hint">Admins only. Blank secret fields mean unchanged. Environment variables win over everything here.</p>
-        <button class="btn primary small" id="save-settings" type="button">Save instance</button>
-      </section>
+        <article class="pc" aria-label="Discord profile preview">
+          <div class="pc-banner"></div>
+          <div class="pc-head">
+            <div class="pc-avatar" aria-hidden="true">S</div>
+            <div class="pc-user">
+              <div class="pc-username" id="pv-user">you</div>
+              <div class="pc-tag">custom status card</div>
+            </div>
+          </div>
+          <div class="pc-section">
+            <div class="pc-label">About me</div>
+            <p class="pc-bio">Custom rich presence, built with {{{BRAND_HTML}}}.</p>
+          </div>
+          <div class="pc-section">
+            <article class="pv">
+              <div class="pv-art">
+                <img id="pv-large" alt="" hidden />
+                <span class="pv-fallback" id="pv-fallback">S</span>
+                <span class="pv-small" id="pv-small-wrap" hidden><img id="pv-small" alt="" /></span>
+              </div>
+              <div class="pv-body">
+                <div class="pv-type" id="pv-type">PLAYING A GAME</div>
+                <div class="pv-name" id="pv-name">Editing details...</div>
+                <div class="pv-line" id="pv-details"></div>
+                <div class="pv-line" id="pv-state"></div>
+                <div class="pv-time" id="pv-time"></div>
+                <div class="pv-buttons" id="pv-buttons"></div>
+              </div>
+            </article>
+          </div>
+        </article>
+      </aside>
     </main>
 
     <p class="foot">{{SITE_NAME}} v{{VERSION}} · <a href="https://github.com/Not4Pranav/StatusC0rd/blob/main/SETUP.md" target="_blank" rel="noreferrer noopener">Setup guide</a> · <a href="/invite">Add to Discord</a></p>
