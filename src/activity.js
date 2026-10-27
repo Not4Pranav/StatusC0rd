@@ -50,7 +50,7 @@ function createActivityService({ effective, store, now = Date.now }) {
 
   function identify(accessToken) {
     const token = String(accessToken || "").trim();
-    if (!token) throw new ActivityError("Not signed in to Discord inside the Activity.", 401);
+    if (!token) return Promise.reject(new ActivityError("Not signed in to Discord inside the Activity.", 401));
     const cached = identities.get(token);
     if (cached && cached.expiresAt > now()) return Promise.resolve(cached);
     return fetchMe(token).then((me) => {

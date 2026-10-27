@@ -18,7 +18,7 @@ const ACCESS_TOKEN_TTL_MS = 30 * 60_000;
 const RPC_COOLDOWN_MS = 5_000;
 
 const RPC_TITLE = "Custom RPC Dashboard";
-const RPC_DESCRIPTION = "Sign in, link your Discord and set your own status and images.";
+const RPC_DESCRIPTION = "Sign in, link your Discord and set your own status and images. Saved a card? Type /live in Discord to put it on your profile.";
 const WELCOME_TITLE = "Your activity, your way";
 const WELCOME_DESCRIPTION =
   "Create a custom, fully configurable Discord activity. Pick the title, details, images and buttons, then go live in seconds.";
@@ -40,6 +40,12 @@ function commandDefs() {
     {
       name: "invite",
       description: "Add this app to your account - works anywhere, no server needed",
+      integration_types: [0, 1],
+      contexts: [0, 1, 2]
+    },
+    {
+      name: "live",
+      description: "Launch the in-Discord app - puts your saved card on your profile",
       integration_types: [0, 1],
       contexts: [0, 1, 2]
     }
@@ -149,6 +155,10 @@ function createCommandsService({ effective, store, logger = console }) {
             content: "Your public card page (publish it in the dashboard first): " + base() + "/card/" + interaction.user.id,
             flags: 64
           });
+        } else if (interaction.commandName === "live") {
+          const { MessageFlags } = require("discord.js");
+          const launchFlag = MessageFlags && MessageFlags.LaunchActivity ? MessageFlags.LaunchActivity : (1 << 15);
+          await interaction.reply({ flags: launchFlag });
         } else if (interaction.commandName === "invite") {
           await interaction.reply(Object.assign(
             { content: "Add me to your account - no server needed:", flags: 64 },
